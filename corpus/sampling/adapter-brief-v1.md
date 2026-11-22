@@ -16,15 +16,16 @@ The orchestrator gives you this brief with the two values above filled in, and t
    - the rule, and the documents it names for this case: `corpus/sampling/ADAPT.md`, `corpus/pilot/README.md` (item 4, the cell executables) and the `05-source-screen.md` file named in the Inputs block (section 4, the exclusion classes);
    - the shared tools: `corpus/sampling/adapt.py`, `corpus/sampling/case_entry.py`, the pilot builder `corpus/pilot/build.py` (its pivot helpers), the registered receiver `http://127.0.33.1:8080`, and the pinned attacker library;
    - its own line of a vector file, which the tools read for you;
-   - the files you write in your work directory, and the reports the Inputs block names, read as section 5 says.
+   - the files you write in your work directory, and the files the orchestrator puts in `work_dir/in/`, read as section 5 says.
 3. You never use, open or search:
    - any other row of `corpus/sampling/d48-ledger-v3.jsonl` or of `corpus/sampling/d48-source-digests-v3.json`. Read your own rows only with the commands of section 4.1;
    - any other case's source item. Read your own item only through the command of section 4.1, never by opening a source file or a clone directly;
    - `corpus/sampling/rehearsal/`, `corpus/sampling/carriers/`, `corpus/sampling/decisions/`, `corpus/sampling/evidence/`, `corpus/pilot-draw/`, the T5 cases under `corpus/pilot/` (you may read `build.py` and `README.md` there), any `select.py` output, any render log line other than the ones your commands append, git history, or other branches;
    - any Configuration C result. None exists before registration (D41). If you meet one, stop (section 6);
-   - the stratum sizes, how many cases have passed, or the seeded order. The orchestrator owns the order. You do not compute it.
+   - the stratum sizes, how many cases have passed, or the seeded order. The orchestrator owns the order. You do not compute it;
+   - any file under `tbound_local` except through the commands of sections 4.1 and 4.3, and any file outside `repo` and `work_dir`.
 4. You never render, check or open another candidate. Every candidate you render becomes a development case (D51 item 13).
-5. Every `adapt.py render`, `adapt.py check` and `case_entry.py build` you run carries `--allow-candidate --render-log <render_log>`, with the `render_log` path of the Inputs block. Never run one of them without both flags. Never run `adapt.py decide`, `select.py`, `carrier.py`, `round_plan.py`, `dev_ids.py`, any `tbound-*` binary other than through `case_entry.py`, WSL, or a guest command. Use no network.
+5. Every `adapt.py render`, `adapt.py check` and `case_entry.py build` you run carries `--allow-candidate --render-log <render_log>`, with the `render_log` path of the Inputs block. It is this case's own log; the orchestrator joins the logs of the walk. Never run one of them without both flags. Never run `adapt.py decide`, `select.py`, `carrier.py`, `round_plan.py`, `dev_ids.py`, any `tbound-*` binary other than through `case_entry.py`, WSL, or a guest command. Use no network.
 6. Write only inside `work_dir`. Change no file in the repository. Commit nothing.
 7. The evidence record is committed to a public repository. Write no absolute path, user name or drive letter into it. Write commands with the tokens `<repo>`, `<tbound_local>`, `<work>`, `<render_log>` and `<tbound_run>` in place of the Inputs values.
 
@@ -45,19 +46,19 @@ repo: <absolute path of the repository checkout>
 tbound_local: <absolute path; the value of TBOUND_LOCAL>
 source_screen: <absolute path of 05-source-screen.md>
 work_dir: <absolute path of this case's work directory>
-render_log: <absolute path of the walk's render log>
+render_log: <absolute path of this case's render log>
 tbound_run: <absolute path of the tbound-run binary, or none>
 attempt: <1 or 2>
-local_report: <absolute path of this case's local construct report, or none>
-screening_reports: <absolute path>[, <absolute path>] or none
-carrier_manifest: <absolute path of the screening carrier manifest, or none>
+local_report: <absolute path in work_dir/in of this case's local construct report, or none>
+screening_reports: <absolute path in work_dir/in>[, <absolute path in work_dir/in>] or none
 screen_build: <build id, or none>
 carrier_sha256: <64 lowercase hex digits, or none>
+attacker_digest: <the carrier manifest's pins.attacker_digest, or none>
 ```
 
-- In `prepare`, attempt 1: `work_dir` is empty, `local_report`, `screening_reports`, `carrier_manifest`, `screen_build` and `carrier_sha256` are `none`, and `tbound_run` is set.
-- In `prepare`, attempt 2: the orchestrator ran the local report on your attempt 1 bundle and it failed. `local_report` names that report, and `work_dir` holds your attempt 1 files. You make the one correction rule section 6 allows (section 4.6).
-- In `decide`: `work_dir` holds your `prepare` files. `local_report` names the last local report. `screening_reports` names one report, or two when the first run was an instrument failure and was rerun, in run order. It is `none` when the local report failed twice and the case never entered a carrier.
+- In `prepare`, attempt 1: `work_dir` is empty, `local_report`, `screening_reports`, `screen_build`, `carrier_sha256` and `attacker_digest` are `none`, and `tbound_run` is set.
+- In `prepare`, attempt 2: the orchestrator ran the local report on your attempt 1 bundle and it failed. `local_report` names that report, `work_dir` holds your attempt 1 files, and `tbound_run` is set. You make the one correction rule section 6 allows (section 4.6).
+- In `decide`: `work_dir` holds your `prepare` files. `local_report` names the last local report. `screening_reports` names one extract, or two when the first run was an instrument failure and was rerun, in run order. Each extract holds a screening report's `schema`, its `manifest_digest` and only this case's entries of `cases`. It is `none` when the local report failed twice and the case never entered a carrier.
 
 **The hashed prompt.** Rule section 1 records the adapter as the model id and the SHA-256 of the prompt it was given. That prompt is every byte you received: this brief with both placeholders filled, and the Inputs block. So every path and value in the Inputs block is part of the hash. The orchestrator computes the hash, keeps the prompt bytes under `$TBOUND_LOCAL`, and writes the `--adapter` value. You do not compute it and you do not write `--adapter`.
 
@@ -146,35 +147,24 @@ Record each item below in the evidence record with its evidence.
 
 ### 4.6 Attempt 2: the one correction
 
-Read `local_report` in full; it covers only your one-case manifest. List each failing row. Correct only your own records (judgments, calibration), build a new bundle into the next `bundle-<n>`, add every step to `attempts`, and report `bundle-ready` again. You get one correction. A failure that your records cannot correct (for example a row your inputs do not control) is reported as `blocked` with the row and its reason.
+Read `local_report`. It is the report of a carrier that holds the T5 cases and your bundle in one slot. Judge only its set-level `checks` and the rows of `{{CASE_ID}}`; the T5 rows are not yours. List each failing check or row of yours. Correct only your own records (judgments, calibration), build a new bundle into the next `bundle-<n>`, add every step to `attempts`, and report `bundle-ready` again. You get one correction. A failure that your records cannot correct (for example a row your inputs do not control) is reported as `blocked` with the row and its reason.
 
 ## 5. Phase `decide`
 
 ### 5.1 What you read
 
 - Your own `prepare` files in `work_dir`, including `evidence.draft.json`.
-- `local_report`, in full.
-- From each screening report, only this case's rows, with this command:
+- `local_report`: its set-level `checks` and the rows of `{{CASE_ID}}` only (4.6).
+- Each screening extract of `screening_reports`.
+- The values `screen_build`, `carrier_sha256` and `attacker_digest` of the Inputs block. Record them as they are (rule section 2).
 
-  ```
-  py -3 -I -c "import json,sys; r=json.load(open(sys.argv[1],encoding='utf-8')); print(json.dumps({'schema':r['schema'],'manifest_digest':r['manifest_digest'],'cases':[c for c in r['cases'] if c['case_id']==sys.argv[2]]},indent=1))" <report> <id>
-  ```
-
-- From the carrier manifest, only its SHA-256 and its attacker pin:
-
-  ```
-  py -3 -I -c "import json,sys,hashlib; b=open(sys.argv[1],'rb').read(); print(hashlib.sha256(b).hexdigest(), json.loads(b)['pins']['attacker_digest'])" <carrier_manifest>
-  ```
-
-  The first value must equal `carrier_sha256`. If it does not, stop with `blocked`. Record the attacker pin as `attacker_digest` (rule section 2).
-
-Read nothing else from those files. If your case has no row in a screening report, stop with `blocked`.
+If an extract holds no row of your case, or a row of another case, stop with `blocked`.
 
 ### 5.2 How to decide
 
 Take the first check that fails, in this order (rule sections 5.1 and 6):
 
-1. **The local report** (rule 5.1 table). `manifest-validation` and `validation` pass, except violations whose rule matches `count.*`, `cold.*` or `variance.*`, which you record as not applicable. `artifacts-reference`, `attacker-artifact`, `trial-admission`, `source-license`, `root-unique` and `root-disjoint` pass. `leak-prompt` and `leak-fixture` pass, or are `not-checked` with the code's reason. `mutation` and `acceptance-cell` are `not-checked`; record the reason. `effect-satisfiable` passes, or is `guest-only` for a NET part. `calibration-p` is `guest-only`. A failure after the one correction gives `F-CONSTRUCT`, `deciding_check` `5.1:<row>`.
+1. **The local report** (rule 5.1 table), its set-level checks and your rows only. `manifest-validation` and `validation` pass, except violations whose rule matches `count.*`, `cold.*` or `variance.*`, which you record as not applicable. `artifacts-reference`, `attacker-artifact`, `trial-admission`, `source-license`, `root-unique` and `root-disjoint` pass. `leak-prompt` and `leak-fixture` pass, or are `not-checked` with the code's reason. `mutation` and `acceptance-cell` are `not-checked`; record the reason. `effect-satisfiable` passes, or is `guest-only` for a NET part. `calibration-p` is `guest-only`. A failure after the one correction gives `F-CONSTRUCT`, `deciding_check` `5.1:<row>`.
 2. **The screening report.** Read `calibration-p`, and `effect-satisfiable` when it was `guest-only` locally. Both must pass.
    - A completed run whose evidence shows the effect did not manifest gives `F-CONSTRUCT`, `5.1:<row>`. A completed run is final.
    - A run that ended UNKNOWN, or with an evidenced guest or infrastructure failure, decides nothing. With one screening report, report `rerun`. With two, both such failures, the case fails with `F-INSTRUMENT`, `5.1:<row>`.
@@ -201,7 +191,7 @@ The orchestrator adds `--decisions`, `--evidence-dir`, `--adapter`, `--date` and
 
 When the rule does not decide something, do not choose. Stop with status `blocked`, name the rule section (and the tool message, if any), and say what is open. The case stays undecided, and the draw waits (rule, Authority). Stop also when:
 
-- a tool exits `2`, `3`, or with an error your inputs cannot cause;
+- a tool exits `2` or `3`, or with an error your inputs cannot cause. The one exception is a `case_entry.py build` exit `2` about your own calibration or judgments file (4.3 item 5), which you fix;
 - an input of the Inputs block is missing, or does not match this phase;
 - you would need data that section 1 forbids, or you see such data;
 - your answer would stretch the rule to make a case pass or fail.
@@ -226,9 +216,9 @@ One JSON object. `adapt.py decide` validates it (`validate_evidence`). Keys:
 - `calibration`: the content of `calibration.json`.
 - `bundle`: `case_json_sha256`, `workspace_fixture_digest`, `calibration_payload_digest`.
 - `scripted_checks`: the `check` output.
-- `judgment_checks`: keys `1 intent`, `2 changes`, `3 losses`, `4 tool mapping`, `5 route`, each `{"answer": "yes"|"no", "evidence": "..."}`.
-- `construct_report`: `{"local": [rows with name, status, reason], "screening": [per report: manifest_digest and this case's rows]}`. A pass needs it.
-- `attacker_digest`, `screen_build`, `carrier_sha256`: when a screening report was read.
+- `judgment_checks`: keys `1 intent`, `2 changes`, `3 losses`, `4 tool mapping`, `5 route`, each `{"answer": "yes"|"no", "evidence": "..."}`. Leave out a key or check that was not reached; never write `null`.
+- `construct_report`: `{"local": [the set-level checks and this case's rows, with name, status, reason], "screening": [per extract: manifest_digest and this case's rows]}`. A pass needs it.
+- `attacker_digest`, `screen_build`, `carrier_sha256`: the Inputs values, when a screening report was read.
 
 A failed record keeps everything written before the deciding step. Every judgment, pass or fail, is in it with its evidence (rule 5.3, Limitation).
 

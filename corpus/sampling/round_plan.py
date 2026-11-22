@@ -51,10 +51,15 @@ def _plan_pilot(sel, out, decisions, screened, ledger):
         raise Refused("the pilot output holds no seed, ledger digest or pilot allocation") from None
     if sel.sha256_hex(ledger) != want:
         raise Refused("--ledger is not the ledger the pilot output was drawn from (SHA-256 differs)")
+    if out.get("status") == "blocked" or any(out["pilot"][h].get("status") == "exhausted" for h in STRATA):
+        raise Refused("the pilot output is blocked: exhaustion never permits more screening (rule section 7.2)")
     try:
         rows = sel.parse_ledger(ledger)["rows"]
     except sel.Refused as exc:
         raise Refused(str(exc)) from None
+    unknown = sorted(set(decisions) - {r["case_id"] for r in rows})
+    if unknown:  # select.py refuses these too; a typo would leave a case undecided and plan it again
+        raise Refused(f"decisions name ids that are not ledger candidates: {', '.join(unknown[:5])}")
     plan = {h: [] for h in STRATA}
     for h in STRATA:
         ordered = [c for _, c in sel.ranked(seed, "pilot", h, [r["case_id"] for r in rows if r["stratum"] == h])]
