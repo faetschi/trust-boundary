@@ -5,10 +5,8 @@ set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 
-# The owner's Linux login is written jeli[2]k so that this file does not contain it.
 FORBIDDEN='F:[/\\]+[A-Za-z]|[A-Za-z]:[/\\]+(Users|ProgramData|Desktop|trust-boundary|TBound)|/mnt/[def]/|/mnt/[a-z]/Users|/[a-z]/trust-boundary|TBoundAssets|TBoundVMs|[/\\]Users[/\\]+Admin|\.t3[/\\]+(worktrees|userdata)|AppData[/\\]+Local[/\\]+(TBound|Temp[/\\]+claude)|jeli[2]k'
 # Historical records and files measured byte-for-byte on the guest keep the paths they were written with.
-# corpus/third/compliant/tools holds scripts pinned by tag f32-corpus-1 (on main, not yet on every branch).
 hits=$(git grep -nIE "$FORBIDDEN" -- . \
   ':!evidence' ':!infra/freeze/freezes' ':!corpus/third/compliant/tools' \
   ':!infra/guest/systemd/var-lib-tbound-live.mount' ':!infra/guest/systemd/var-lib-tbound-runtime.mount' \
@@ -67,7 +65,6 @@ git -C "$PROBE" add .
 if bash "$PROBE/scripts/check-self-contained.sh" >/dev/null 2>&1; then
   echo "FAIL: checker missed an outside path" >&2; exit 1
 fi
-# Machine paths are caught. Placeholders and stock Windows paths pass.
 for bad in 'C:\Users\x\a' 'D:/Users/x/a' 'E:\trust-boundary\x' 'cd /f/trust-boundary/y' '/mnt/c/Users/x' 'C:/Users/x/.t3/worktrees/w' 'x/.t3/userdata/s' 'AppData/Local/Temp/claude/s' 'as jeli''2k'; do
   printf '%s\n' "$bad" > "$PROBE/docs/a.md"; git -C "$PROBE" add .
   if bash "$PROBE/scripts/check-self-contained.sh" >/dev/null 2>&1; then

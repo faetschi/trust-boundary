@@ -36,7 +36,7 @@ GUEST_IP=172.21.171.248
 GUEST_OPTS="-F /dev/null -i id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=known_hosts -o GlobalKnownHostsFile=/dev/null -o HostKeyAlias=tbound-product-demo -o ConnectTimeout=10"
 ```
 
-The key and `known_hosts` paths are relative, so run SSH from that directory:
+The key and `known_hosts` paths are relative, so run SSH from that directory. Run the `cd` from the repository root, or set `TBOUND_LOCAL` to the absolute `.local` path:
 
 ```sh
 cd "${TBOUND_LOCAL:-.local}/product-demo"
