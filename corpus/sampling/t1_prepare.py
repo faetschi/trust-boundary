@@ -131,6 +131,8 @@ def build(args):
     else:
         text = fill(blob(TEMPLATE).decode("utf-8"), tag_object, tag_commit)
     commitment = json.loads(text)
+    if commitment["signed_tag"]["name"] != tag:  # the published file must name the tag it was built from
+        sys.exit(f"--tag {tag} is not the tag the template names ({commitment['signed_tag']['name']})")
     checked = check_digests(commitment, blob)
     if kind == "main":
         if commitment["kind"] != "main":
