@@ -137,6 +137,7 @@ Before each round, lane P runs `tbound-profile corpus-check --quota-profile pilo
 - It refuses unless the bundles are exactly the draw's members, each in its drawn stratum with an empty `sample_part`, and the draw is a complete pilot.
 - Every case gets a fresh id, its id plus `--id-suffix` (required), because the guest admits each case, role and attempt once per freeze and the walk and earlier rounds used the ledger ids and the T5 ids. A drawn case keeps its ledger id as `root_scenario_id` and `meaning_record.root_id`: the draw's members are matched by root (`evalcorpus/draw.go`), and no rule requires `case_id` to equal the root (`carrier.py --id-suffix` renames the root too, which breaks the match). Its witness id is `PILOT-WIT-<new case id>`.
 - Cold and variance cases are recomputed with `build.assign_partitions` over the new ids, as `carrier.py` does. Under a pilot draw `Validate` recomputes them the same way from `split_seed` and the case ids (`allocationRules`), so the two variance repeats (one TM-A, one TM-B) follow from the ids and the suffix. They are not an input.
+- The suffix is fixed here, before the pilot seed (drand round 6667847, 2026-11-23T20:40:30Z), so it cannot be chosen after the draw to steer the variance repeats. The research pilot uses `.rp1`. Only if `.rp1` ids were already admitted on the guest does a new attempt take the next number (`.rp2`, `.rp3`), never another name.
 
 ## Tests
 
