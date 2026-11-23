@@ -584,3 +584,21 @@ func TestPreregistrationPlanTakesTheAttackerArtifactCaps(t *testing.T) {
 		t.Fatalf("runner caps that differ from the artifact's were recorded: %q", out)
 	}
 }
+
+func TestPreregistrationRecordBindsTheScreeningRecord(t *testing.T) {
+	dir := t.TempDir()
+	p := basePrereg(t, dir)
+	screening := filepath.Join(dir, "screening.json")
+	if err := os.WriteFile(screening, []byte(`{"rounds":[]}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p.panel = append(p.panel, "--screening-record", screening)
+	var rec evalreport.Registration
+	if err := json.Unmarshal([]byte(preregOut(t, p)), &rec); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(`{"rounds":[]}` + "\n"))
+	if rec.ScreeningRecordDigest != "sha256:"+hex.EncodeToString(sum[:]) {
+		t.Fatalf("screening_record_digest %q, want the sha256 of the file", rec.ScreeningRecordDigest)
+	}
+}

@@ -32,6 +32,7 @@ const (
 	maxRunnerConfigBytes = 1 << 20
 	maxRubricBytes       = 16 << 20
 	maxCorpusCheckBytes  = 64 << 20
+	maxScreeningBytes    = 16 << 20
 )
 
 var (
@@ -59,6 +60,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	runBinding := flags.String("run-binding", "", "the run_binding that `tbound-run plan` prints for the registered run.json (D49 drain grace, admission policy, receipt pins)")
 	rubricPath := flags.String("attribution-rubric", "", "the frozen attribution rubric file; the run's attribution file must name its sha256 as rubric_digest")
 	corpusCheckPath := flags.String("corpus-check", "", "the `tbound-profile corpus-check` report.json of this manifest, with no failed and no guest-only row")
+	screeningPath := flags.String("screening-record", "", "optional screening record of the compliant tasks (D58 item 4); the record carries its sha256")
 	certificationPath := flags.String("certification", "", "the select.py certify output for the manifest's pinned main draw (required with a main draw, refused without)")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -166,6 +168,14 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 		if rec.ResearchLedgerConfigDigest, err = researchLedgerConfigDigest(*ledgerConfigPath); err != nil {
 			return err
 		}
+	}
+	if *screeningPath != "" {
+		data, err := readRegularBounded(*screeningPath, maxScreeningBytes)
+		if err != nil {
+			return fmt.Errorf("screening record: %w", err)
+		}
+		sum := sha256.Sum256(data)
+		rec.ScreeningRecordDigest = "sha256:" + hex.EncodeToString(sum[:])
 	}
 	if rec.RecordDigest, err = rec.ComputeDigest(); err != nil {
 		return err
