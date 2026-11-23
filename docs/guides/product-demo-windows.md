@@ -5,6 +5,9 @@ workstation, in the terminal and in your browser. The service runs in a Linux
 VM; Windows only needs an SSH client. To set up the VM and the service first,
 follow [Run a first governed product turn](product-first-turn.md).
 
+To create the VM, start with [Create a product VM on Windows](hyperv-from-zero.md).
+The connection values below are one owner's example. Replace them with yours.
+
 The prompts below assume the Bash-deny install from that guide. For Bash through
 the signed D09 cell, follow [Enable Bash](product-bash.md) first.
 

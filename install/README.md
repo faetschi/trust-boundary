@@ -5,16 +5,18 @@ and the runtime bundle into a user-owned prefix, verifying the artifact checksum
 uses `sudo` and never modifies your global Node or Pi. It supports Linux x86_64 only
 and refuses every other platform before it downloads anything.
 
-No prebuilt release is published yet, so build the archive from a Linux checkout
-first (see the [quickstart](../docs/guides/quickstart.md)):
+GitHub Release `v0.1.0` is published, with a `linux-amd64` archive and a
+`SHA256SUMS` file. It also lists darwin and windows archives; the installer
+refuses those platforms. To build the archive yourself from a Linux checkout
+instead, see the [quickstart](../docs/guides/quickstart.md):
 
 ```sh
-# local build (offline, recommended today)
+# a published GitHub Release (the default download base)
+bash install/install.sh --version 0.1.0
+
+# local build (offline)
 make build VERSION=dev
 bash install/install.sh --version dev --local-dist dist --no-path
-
-# a published GitHub Release, once one exists (the default download base)
-bash install/install.sh --version <ver>
 
 # options
 install/install.sh --version <ver> --prefix <dir> --base-url <url> --local-dist <dir> --no-path

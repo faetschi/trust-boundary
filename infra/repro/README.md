@@ -186,13 +186,15 @@ it only if they match. `probe-host.ps1` requires that verified key in
 
 On 2026-10-12, the existing Ubuntu 24.04.5 Hyper-V guest ran kernel
 `6.8.0-146-generic`. The fresh probe reported `PASS=13 FAIL=0 UNVERIFIED=2`:
-user-namespace creation now passes, but Landlock is still ABI 4. The two
-UNVERIFIED rows are `cgroup.kill-write` and `uidmap-helpers` (shown below).
-The HWE 7.0 package is installed but is **not** the active kernel; boot behavior
-has not been qualified. This is not the result of a clean bootstrap and must not
-be presented as an expected clean-host result. Query and record the running ABI
-and required TSYNC behavior; do not infer them from an installed or reported
-kernel version.
+user-namespace creation passed, but Landlock was ABI 4, because the HWE 7.0
+kernel was installed and not yet the running kernel. Later, the reference guest
+ran kernel `7.0.0-38-generic` in the F29 guest chain of 2026-11-17, under the D09
+profile that requires exactly ABI 8 (`evidence/F29/F29-RESULT.md`). Neither observation is the result
+of a clean bootstrap, and neither may be presented as an expected clean-host
+result. A clean bootstrap run has not been recorded yet. Query and record the
+running ABI and required TSYNC behavior; do not infer them from an installed or
+reported kernel version. The two UNVERIFIED rows are `cgroup.kill-write` and
+`uidmap-helpers` (shown below).
 
 ```
 UNVERIFIED   cgroup.kill-write: ... behavior is untested because writing kills processes
