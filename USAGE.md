@@ -59,7 +59,9 @@ Details: [setup](docs/guides/setup.md).
 ## 4. Try it without a governed host
 
 Two fixtures are available after installation. Their receipts say `claim_bearing=false`:
-they show the flow, not a security boundary.
+they show the flow, not a security boundary. Run them in a shell with `umask 077`
+and a private `TMPDIR`, as in the [quickstart](docs/guides/quickstart.md#4-check-the-machine);
+a shared `/tmp` makes the fixture fail with `broader permissions than allowed`.
 
 ```sh
 mkdir -m 700 -p "$HOME/.cache/tbound-build"

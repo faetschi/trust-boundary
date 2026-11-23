@@ -120,7 +120,7 @@ func TestResumedCompliantStepTakesTheGuestsStoredResult(t *testing.T) {
 	j := openJournal(t, dir, s) // the next process
 	defer j.Close()
 	rep, err := mustRunner(t, s, j, governedStack(s, g, dir+"/dispatched"), Options{}).Run(context.Background())
-	if err != nil || !rep.Finished || rep.Abandoned != 0 || rep.UnitsUsed != 89 {
+	if err != nil || !rep.Finished || rep.Abandoned != 0 || rep.UnitsUsed != 81 {
 		t.Fatalf("report %+v %v", rep, err)
 	}
 	term, ok := j.Final(st.ID())

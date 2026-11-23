@@ -25,7 +25,7 @@ const VarianceRepeats = 2
 // RerunHeadroomFor is the owner-decided ceiling, and the default, of the units
 // that outage reruns may use beyond the planned units: 5% of the planned units,
 // rounded up. It is computed from the manifest's own total (evalreport.PlannedUnits,
-// D53 item 4); a pre-D48 manifest keeps 1,935 x 5 / 100 = 96.75, rounded up to 97.
+// D53 item 4); a pre-D48 manifest keeps 1,835 x 5 / 100 = 91.75, rounded up to 92.
 func RerunHeadroomFor(planned int) int { return (planned*5 + 99) / 100 }
 
 const (
@@ -65,7 +65,7 @@ type Config struct {
 	UnitCap int `json:"unit_cap"`
 	// RerunHeadroom is the number of units beyond UnitCap that outage reruns may
 	// use. The owner bounds it at RerunHeadroomFor the planned units (5%,
-	// rounded up; 97 for a pre-D48 manifest). 0 means that default, and a larger or a negative value is refused
+	// rounded up; 92 for a pre-D48 manifest). 0 means that default, and a larger or a negative value is refused
 	// before anything is journaled. The normalized value is part of the plan
 	// digest.
 	RerunHeadroom int `json:"rerun_headroom"`
@@ -198,7 +198,7 @@ func (s *Step) setEffects(a *evalcorpus.Adversarial) {
 //
 // Order: adversarial cases in seeded-rank order, each as the C trajectory then
 // the static P/C replays then the adaptive P/C replays; then compliant tasks in
-// seeded-rank order, each as B, C and V in a balanced pair order; then the
+// seeded-rank order, each as B and C in a balanced pair order (no V, D58 amendment); then the
 // ambiguous cases as B and C; then the two variance repeats of each
 // variance-subset case. Configuration A is never planned. A construct-witness
 // plan is only the static P replay of each adversarial case.
@@ -293,14 +293,13 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 		add(c, CfgP, RoleAdaptiveReplay, 0)
 		add(c, CfgC, RoleAdaptiveReplay, 0)
 	}
-	perms := [6][3]Configuration{
-		{CfgB, CfgC, CfgV}, {CfgB, CfgV, CfgC}, {CfgC, CfgB, CfgV},
-		{CfgC, CfgV, CfgB}, {CfgV, CfgB, CfgC}, {CfgV, CfgC, CfgB},
-	}
 	for i, id := range rankOrder(seed, "order/compliant", cmp) {
-		for _, cf := range perms[i%len(perms)] {
-			add(byID[id], cf, RoleCompliant, 0)
+		first, second := CfgB, CfgC
+		if i%2 == 1 {
+			first, second = CfgC, CfgB
 		}
+		add(byID[id], first, RoleCompliant, 0)
+		add(byID[id], second, RoleCompliant, 0)
 	}
 	for i, id := range rankOrder(seed, "order/ambiguous", amb) {
 		first, second := CfgB, CfgC

@@ -3,7 +3,9 @@ package runner
 import (
 	"context"
 	"fmt"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -98,7 +100,7 @@ func smallSchedule(t testing.TB, cfg Config) Schedule {
 // smallConfig sizes the unit cap to the small corpus.
 func smallConfig() Config {
 	cfg := testConfig()
-	cfg.UnitCap = 89
+	cfg.UnitCap = 81
 	return cfg
 }
 
@@ -171,7 +173,7 @@ func mustSnap(t testing.TB, committed int64) usdledger.Snapshot {
 }
 
 // legacyThesisQuotas is the pre-D48 thesis shape (299 adversarial as 100/100/99, 100 compliant, 20 ambiguous,
-// 50 variance as 17/17/16): 1,935 planned units. Its manifest pins no draw, so it keeps the legacy totals and the
+// 50 variance as 17/17/16): 1,835 planned units. Its manifest pins no draw, so it keeps the legacy totals and the
 // plan digests pinned in plan_test.go.
 func legacyThesisQuotas() evalcorpus.Quotas {
 	return evalcorpus.Quotas{
@@ -181,4 +183,14 @@ func legacyThesisQuotas() evalcorpus.Quotas {
 		Variance:    map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 17, evalcorpus.ClassTMB: 17, evalcorpus.ClassTMC: 16},
 		ColdPercent: 20,
 	}
+}
+
+func withV(t testing.TB, s Schedule, caseID string) (Schedule, Step) {
+	t.Helper()
+	v := findStep(t, s, caseID, RoleCompliant, CfgB)
+	v.Configuration, v.Index = CfgV, len(s.Steps)
+	s.Steps = append(slices.Clone(s.Steps), v)
+	s.index = maps.Clone(s.index)
+	s.index[v.ID()] = v.Index
+	return s, v
 }

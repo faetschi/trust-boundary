@@ -156,20 +156,25 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           npm run check
 
-  # One matrix runs both Go suites, so setup is written once. fail-fast is off: a failed unit leg
-  # does not stop the race sweep from reporting. The runtime job below reports the combined result.
+  # One matrix runs the Go suites, so setup is written once. The race suite is split into shards
+  # (scripts/ci-race-shard.sh) so no single leg takes the whole sweep. fail-fast is off: a failed leg
+  # does not stop the others from reporting. The runtime job below reports the combined result.
   runtime-tests:
     needs: changes
     # Fail open: if the decision job fails, run the suite instead of leaving a
     # required check skipped.
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true') }}
-    name: runtime (${{ matrix.suite }})
+    name: runtime (${{ matrix.label }})
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        suite: [unit, race]
+        include:
+          - { suite: unit, label: unit }
+          - { suite: race, label: race-heavy, shard: heavy }
+          - { suite: race, label: race-cmd, shard: cmd }
+          - { suite: race, label: race-rest, shard: rest }
     env:
       TBOUND_REQUIRE_PI_CLI_INTEGRATION: "1"
     steps:
@@ -291,10 +296,12 @@ jobs:
         id: go-race-suite
         if: ${{ matrix.suite == 'race' }}
         working-directory: supervisor
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
           umask 077
-          go test -race -mod=readonly -count=1 -timeout 40m -json ./... > "$TMPDIR/go-test-race.jsonl"
+          sh ../scripts/ci-race-shard.sh "$SHARD" > "$TMPDIR/go-test-race.jsonl"
 
       - name: Go race suite timing
         continue-on-error: true
@@ -312,7 +319,7 @@ jobs:
         if: ${{ matrix.suite == 'race' && always() && steps.go-race-suite.outcome != 'skipped' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: go-race-suite-timing-${{ github.run_attempt }}
+          name: go-race-suite-timing-${{ matrix.shard }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/go-test-timing/race.json
           retention-days: 14
 

@@ -12,7 +12,7 @@ import (
 type Configuration string
 
 const (
-	// CfgA is native Pi in the cell. Diagnostic only and outside the 1,935 units,
+	// CfgA is native Pi in the cell. Diagnostic only and outside the 1,835 units,
 	// so Plan never emits an A step. The executor slot exists so that a separate
 	// diagnostic plan can reuse this runner.
 	CfgA Configuration = "A"
@@ -25,7 +25,7 @@ const (
 	// CfgP is a deterministic stub or hostile entrypoint in a synthetic fixture.
 	// It makes no model call and is calibration only.
 	CfgP Configuration = "P"
-	// CfgV is native Pi without tbound (descriptive).
+	// CfgV is native Pi without tbound (descriptive). No thesis plan schedules it (D58 amendment); the product keeps it.
 	CfgV Configuration = "V"
 )
 
@@ -36,7 +36,7 @@ const (
 	RoleTrajectory     Role = "trajectory"      // the C adversarial trajectory
 	RoleStaticReplay   Role = "static-replay"   // one half (P or C) of the static P/C pair
 	RoleAdaptiveReplay Role = "adaptive-replay" // one half (P or C) of the adaptive P/C pair
-	RoleCompliant      Role = "compliant"       // B, C or V run of a compliant task
+	RoleCompliant      Role = "compliant"       // B or C run of a compliant task
 	RoleAmbiguous      Role = "ambiguous"       // B or C run of an ambiguous case (outside evalscore)
 	RoleVarianceRepeat Role = "variance-repeat" // separate-session C repeat of a variance-subset case
 )
