@@ -1226,7 +1226,7 @@ read -rs TBA_PW; export TBA_PW; KIT_FREEZE=F33 bash infra/freeze/guest/00-sessio
 GSSH 'sudo -n ls -l /etc/tbound/provider; sudo -n test -e /var/lib/tbound/sessions/usd-ledger && echo LEDGER-EXISTS'      # [READ-ONLY]
 ```
 
-Expect only `opencode-go.key` and no `LEDGER-EXISTS`. If a ledger exists, an earlier research round ran on this guest: skip RA-4, and check its continuity against the kept checkpoint (RA-12) before the round. Rollback: `KIT_FREEZE=F33 bash infra/freeze/guest/00-session-sudo.sh close`.
+Expect only `opencode-go.key` and no `LEDGER-EXISTS`. If a ledger exists, an earlier research round ran on this guest: skip RA-4, and check its continuity against the kept checkpoint (RA-12) before the round; for the US$5 ledger of 2026-11-21 see "Cap change" under RA-4 instead. Rollback: `KIT_FREEZE=F33 bash infra/freeze/guest/00-session-sudo.sh close`.
 
 ### RA-2 (RR-1) [PRIVILEGED WRITE, needs owner approval] frozen profile and ledger configuration
 
@@ -1280,6 +1280,23 @@ GSSH 'sudo -n cat /etc/tbound/provider/research-ledger-checkpoint.json' | WSL cm
 Genesis refuses a second run. If it succeeded but its output was lost (`genesis.json` empty or missing), do not run it again: copy the ledger out and rebuild `records` and `head_sha256` from it with the RA-12 recipe (`wc -l`, and the hash of the last record), then write `checkpoint-1.json` from them, and `rm $RR/genesis.json` or fill it with the rebuilt values (`finish_step` refuses a 0-byte file under `$HF`).
 
 The owner keeps `genesis.json` (records, head, `profile_digest`) and `checkpoint-1.json` off the guest. Rollback: before the first reserved request (RA-11), `GSSH 'sudo -n rm /var/lib/tbound/sessions/usd-ledger /etc/tbound/provider/research-ledger-checkpoint.json'`; after it, none.
+
+**Cap change, US$5 to US$10 (owner, 2026-11-23).** A ledger keeps the cap of its genesis, and the service refuses a ledger whose cap differs from the installed configuration (`supervisor/internal/researchroute/ledgerconfig.go`). The ledger made on 2026-11-21 has the US$5 cap: `records 1`, head `6bed50e0065343fbb41b4121873d4b715b0cbd2b26331933176ee22f334148ec` (`evidence/F32/proving-rounds/round-research/logs/checkpoint-1.json`). If RA-1 prints `LEDGER-EXISTS` before the research pilot's first paid call, the owner replaces that ledger in the session sudo window, as below. Without `LEDGER-EXISTS` (for example after a checkpoint restore removed it), skip this and run RA-2 and RA-4 as written.
+
+```
+# WSL
+mkdir -p -m 0700 $RR
+# Git Bash
+GSSH "$OP svc stop"
+GSSH 'sudo -n cat /var/lib/tbound/sessions/usd-ledger' | WSL tee $RR/usd-ledger.cap5 > /dev/null
+# WSL
+L=$RR/usd-ledger.cap5
+[ "$(wc -l < $L)" = 1 ] && [ "$(head -n 1 $L | head -c -1 | sha256sum | cut -c1-64)" = 6bed50e0065343fbb41b4121873d4b715b0cbd2b26331933176ee22f334148ec ] && echo UNTOUCHED      # [READ-ONLY]
+# Git Bash, only after UNTOUCHED
+GSSH 'sudo -n rm /var/lib/tbound/sessions/usd-ledger /etc/tbound/provider/research-ledger-checkpoint.json'
+```
+
+Anything but `UNTOUCHED`: stop. A request was reserved, and no rollback applies. After the `rm`, run RA-2 again: it moves the old `$RR` aside with `usd-ledger.cap5` in it (the evidence of this check), and installs the same frozen profile and the committed `research-ledger.json` with `cap_micro_usd` 10000000. Then RA-4 runs genesis into the new `$RR`. The frozen profile does not change; only the ledger configuration and the ledger do.
 
 ### RA-4a [PRIVILEGED WRITE, needs owner approval] confirmatory corpus (thesis profile only)
 
@@ -1458,4 +1475,4 @@ First `GSSH "$OP status pilot"`. While the research files are installed, "instal
 
 The files in `/etc/tbound/provider` and the ledger can stay: the engineering route never reads a research file or opens the ledger (`research_route_linux.go:16-21`).
 
-Spend. Each request reserves the worst case at the ceiling prices: 131072 × 0.30 + 4096 × 1.20 = 44,237 µUSD, rounded up (`infra/guest/research/research-profile.json:16-20`, `profile.go:318-328`). A unit makes at most the `max_host_calls` of its trial: 11 gives 486,607 µUSD (about US$0.487), and 17 gives 752,029 µUSD. The ledger stop rule fires only when less than 752,029 µUSD of the 5,000,000 µUSD cap remain (`route.go:374-377`, `research-ledger.json:4-5`). So the stop rule does not limit a short round. Its limit comes from the plan size and `--max-steps`, and optionally from a credit limit on the OpenRouter key. The proving round and H1 on this guest share one ledger (`ledger_id` `tbound-h1-research`, one genesis), so what the round spends counts against the H1 cap.
+Spend. Each request reserves the worst case at the ceiling prices: 131072 × 0.30 + 4096 × 1.20 = 44,237 µUSD, rounded up (`infra/guest/research/research-profile.json:16-20`, `profile.go:318-328`). A unit makes at most the `max_host_calls` of its trial: 11 gives 486,607 µUSD (about US$0.487), and 17 gives 752,029 µUSD. The ledger stop rule fires only when less than 752,029 µUSD of the 10,000,000 µUSD cap (US$10 since 2026-11-23, first US$5) remain (`route.go:374-377`, `research-ledger.json:4-5`). So the stop rule does not limit a short round. Its limit comes from the plan size and `--max-steps`, and optionally from a credit limit on the OpenRouter key. The proving round and H1 on this guest share one ledger (`ledger_id` `tbound-h1-research`, one genesis), so what the round spends counts against the H1 cap.

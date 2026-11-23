@@ -1,6 +1,6 @@
 // Package researchprofile defines the research-provider profile for the thesis's
 // final headline runs: OpenRouter, model deepseek/deepseek-v4.1-flash, under the
-// US$5 total cap (docs/decisions/2026-10-14-qualification-and-research-procedure.md).
+// US$10 total cap (owner, 2026-11-23; US$5 in docs/decisions/2026-10-14-qualification-and-research-procedure.md).
 // It provides the schema, the strict loader, the canonical digest, the freeze
 // checks and the worst-case arithmetic. It holds no frozen profile. The
 // committed draft is OPEN, so Frozen reports false for it, and the only fully

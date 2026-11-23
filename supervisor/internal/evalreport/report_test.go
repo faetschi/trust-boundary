@@ -510,14 +510,14 @@ func TestSpendFlags(t *testing.T) {
 		flag   string
 		within bool
 	}{
-		{"over cap", func(s *usdledger.Snapshot) { withMoney(s, 0, 0, 5_000_001) }, "spend_over_cap", false},
-		{"uncertain counts against cap", func(s *usdledger.Snapshot) { withMoney(s, 0, 4_000_000, 1_250_000) }, "spend_over_cap", false},
+		{"over cap", func(s *usdledger.Snapshot) { withMoney(s, 0, 0, RegisteredCapMicroUSD+1) }, "spend_over_cap", false},
+		{"uncertain counts against cap", func(s *usdledger.Snapshot) { withMoney(s, 0, RegisteredCapMicroUSD-1_000_000, 1_250_000) }, "spend_over_cap", false},
 		{"cap differs from registered", func(s *usdledger.Snapshot) {
-			s.CapMicroUSD = 10_000_000
+			s.CapMicroUSD = 2 * RegisteredCapMicroUSD
 			withMoney(s, 0, 0, s.SettledMicroUSD)
 		}, "spend_cap_mismatch", false},
 		{"overspent", func(s *usdledger.Snapshot) { s.Overspent = true }, "ledger_overspent", false},
-		{"stop rule", func(s *usdledger.Snapshot) { withMoney(s, 0, 0, 4_999_000) }, "ledger_stop_rule", true},
+		{"stop rule", func(s *usdledger.Snapshot) { withMoney(s, 0, 0, RegisteredCapMicroUSD-1_000) }, "ledger_stop_rule", true},
 		{"units over planned", func(s *usdledger.Snapshot) { s.SettledUnits = LegacyPlannedUnits + 1 }, "units_over_planned", true},
 	}
 	for _, tc := range cases {
@@ -535,7 +535,7 @@ func TestSpendFlags(t *testing.T) {
 	}
 	r := mustBuild(t, smallInputs())
 	s := r.Spend
-	if s.TotalUnits != 400 || s.PlannedUnits != 1835 || s.RegisteredCapMicroUSD != 5_000_000 ||
+	if s.TotalUnits != 400 || s.PlannedUnits != 1835 || s.RegisteredCapMicroUSD != 10_000_000 ||
 		s.CommittedMicroUSD != 1_250_000 || !s.CapMatchesRegistered || s.OverCap || !s.WithinBudget {
 		t.Errorf("spend %+v", s)
 	}
@@ -575,7 +575,7 @@ func TestBuildRejectsMalformedSnapshot(t *testing.T) {
 		"negative threshold":       func(s *usdledger.Snapshot) { s.MinPerUnitWorstCaseMicroUSD = -1 },
 		"threshold above cap":      func(s *usdledger.Snapshot) { s.MinPerUnitWorstCaseMicroUSD = s.CapMicroUSD + 1 },
 		"stop rule set, not due":   func(s *usdledger.Snapshot) { s.StopRule = true },
-		"stop rule clear, due":     func(s *usdledger.Snapshot) { withMoney(s, 0, 0, 4_999_000); s.StopRule = false },
+		"stop rule clear, due":     func(s *usdledger.Snapshot) { withMoney(s, 0, 0, RegisteredCapMicroUSD-1_000); s.StopRule = false },
 		// Wraps to committed 0, remaining = cap: only the overflow check rejects it.
 		"addition overflow": func(s *usdledger.Snapshot) {
 			s.OpenMicroUSD, s.UncertainMicroUSD, s.SettledMicroUSD = maxI, maxI, 2
@@ -601,7 +601,7 @@ func TestBuildRejectsMalformedSnapshot(t *testing.T) {
 	// Valid edge cases stay valid: a recorded overage (negative remaining) and a
 	// threshold equal to the cap.
 	over := smallInputs()
-	withMoney(&over.Ledger, 0, 0, 5_000_001)
+	withMoney(&over.Ledger, 0, 0, RegisteredCapMicroUSD+1)
 	over.Ledger.Overspent = true
 	if r := mustBuild(t, over); r.Spend.RemainingMicroUSD != -1 || r.Spend.WithinBudget {
 		t.Errorf("overage spend %+v", r.Spend)
@@ -972,7 +972,7 @@ func TestMarkdown(t *testing.T) {
 	for _, want := range []string{
 		"tbound-eval-report/v1", r.Digest, r.Bindings.ManifestDigest, synthHead,
 		"adversarial/TM-A/cold", "compliant/bash", "rule_satisfied", "AC-Security", "AC-Friction",
-		"US$1.250000", "US$5.000000", "Coverage",
+		"US$1.250000", "US$10.000000", "Coverage",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("Markdown lacks %q:\n%s", want, md)

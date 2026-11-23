@@ -119,11 +119,11 @@ func TestPlannedUnitsAreComputedFromTheFinalCounts(t *testing.T) {
 }
 
 // A manifest without top-up or TM-C cases and without a pinned draw gives the report it gave before D48 stage 2:
-// these digests were computed on the base commit (78e475cb) and moved once, for the D58 amendment (planned_units 1935 to 1835).
+// these digests were computed on the base commit (78e475cb) and moved twice: the D58 amendment (planned_units 1935 to 1835) and the US$10 cap (registered_cap_micro_usd).
 func TestLegacyReportDigestsAreUnchanged(t *testing.T) {
 	for want, in := range map[string]Inputs{
-		"sha256:098808d4ce08b3492335a38a0f10a63820854ddf5aa57a801df1836571d01d3c": smallInputs(),
-		"sha256:382a34a684bf3a256c1f5f389508991f5a75c6b743e067bf23876127b8dc74f2": fullInputs(),
+		"sha256:ee2ef1239e554c6830401a7566f262a5787230e6de4a89af6be177930439682f": smallInputs(),
+		"sha256:2e8a51efe429dca9277a59341e309e88caf892887529156f28bce1c6df4dfb82": fullInputs(),
 	} {
 		if got := mustBuild(t, in).Digest; got != want {
 			t.Errorf("legacy report digest %s, want %s", got, want)
