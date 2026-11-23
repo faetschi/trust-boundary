@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -394,7 +396,9 @@ func (r *runner) writeAudit(d panelData, receiptDigest string) error {
 		if err != nil {
 			return err
 		}
-		pkt := filepath.ToSlash(filepath.Join("audit-packets", c.CaseID+".md"))
+		// Ledger ids contain ':', which Windows refuses in a filename; the packet's first line names the case.
+		sum := sha256.Sum256([]byte(c.CaseID))
+		pkt := filepath.ToSlash(filepath.Join("audit-packets", hex.EncodeToString(sum[:])+".md"))
 		if err := writeFile(filepath.Join(r.out, pkt), []byte("# "+c.CaseID+"\n\n"+p.User)); err != nil {
 			return err
 		}
