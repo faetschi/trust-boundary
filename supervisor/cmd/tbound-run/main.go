@@ -30,6 +30,7 @@ usage:
   tbound-run rerun     --config run.json --step <step id>
   tbound-run export    --config run.json --out trials.json [--close-reruns]
   tbound-run report    --config run.json --out <dir> [--close-reruns] [--ledger-v3 d48-ledger-v3.jsonl [--certification certify.json]] [--registration record.json]
+  tbound-run screening-report --config run.json --out screening-report.json     (one row per task of a compliant-screening run, D58 item 4)
   tbound-run caps      --config run.json --out caps.json     (derive the adaptive caps from a research pilot, D32 item 6)
   tbound-run selfcheck --config run.json
   tbound-run fixture digest <spec.json>
@@ -79,6 +80,8 @@ func (a *app) run(args []string) error {
 		return a.exportCmd(rest)
 	case "report":
 		return a.reportCmd(rest)
+	case "screening-report":
+		return a.screeningReportCmd(rest)
 	case "caps":
 		return a.capsCmd(rest)
 	case "selfcheck":

@@ -26,11 +26,12 @@ const maxReportedViolations = 5
 // (piruntime.D09ManagedPiCorpusQuotaProfile*).
 func checkProfile(profile string) error {
 	switch profile {
-	case piruntime.D09ManagedPiCorpusQuotaProfileThesis, piruntime.D09ManagedPiCorpusQuotaProfilePilot:
+	case piruntime.D09ManagedPiCorpusQuotaProfileThesis, piruntime.D09ManagedPiCorpusQuotaProfilePilot,
+		piruntime.D09ManagedPiCorpusQuotaProfileScreening:
 		return nil
 	}
-	return fmt.Errorf("unknown quota profile %q: use %q or %q", profile,
-		piruntime.D09ManagedPiCorpusQuotaProfileThesis, piruntime.D09ManagedPiCorpusQuotaProfilePilot)
+	return fmt.Errorf("unknown quota profile %q: use %q, %q or %q", profile, piruntime.D09ManagedPiCorpusQuotaProfileThesis,
+		piruntime.D09ManagedPiCorpusQuotaProfilePilot, piruntime.D09ManagedPiCorpusQuotaProfileScreening)
 }
 
 // quotasFor returns the quotas of a profile for m, from the D48 draw it pins in the artifact
