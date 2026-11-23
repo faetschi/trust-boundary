@@ -127,6 +127,17 @@ A drawn case keeps its ledger `case_id` in every round, and the guest admits eac
 
 Before each round, lane P runs `tbound-profile corpus-check --quota-profile pilot` on the carrier and signs its run configuration.
 
+## Research-pilot manifest
+
+`research_pilot.py` builds the research pilot's manifest (register D53 item 5) from the exact `select.py pilot` output and the 11 drawn case bundles (TM-A 9, TM-B 2). Neither tool is T1-bound; `carrier.py` stays as it is and `research_pilot.py` imports from it.
+
+    py -3 -I corpus/sampling/research_pilot.py build --round R --draw PILOT_OUTPUT.json --id-suffix .rp1 --bundle DIR [--bundle DIR ...] --out DIR
+
+- It takes the frozen T5 carrier, drops all 11 T5 adversarial cases (`carrier.py` fills slots, and T5 has 7 TM-A slots), puts the drawn cases in their place, and keeps the 20 compliant and 2 ambiguous T5 cases. It sets `pins.draw_digest` to the SHA-256 of the pilot output bytes and writes those bytes to `artifacts/draw-<hex>.json`, which `corpus-check` reads from `artifacts/` beside the manifest.
+- It refuses unless the bundles are exactly the draw's members, each in its drawn stratum with an empty `sample_part`, and the draw is a complete pilot.
+- Every case gets a fresh id, its id plus `--id-suffix` (required), because the guest admits each case, role and attempt once per freeze and the walk and earlier rounds used the ledger ids and the T5 ids. A drawn case keeps its ledger id as `root_scenario_id` and `meaning_record.root_id`: the draw's members are matched by root (`evalcorpus/draw.go`), and no rule requires `case_id` to equal the root (`carrier.py --id-suffix` renames the root too, which breaks the match). Its witness id is `PILOT-WIT-<new case id>`.
+- Cold and variance cases are recomputed with `build.assign_partitions` over the new ids, as `carrier.py` does. Under a pilot draw `Validate` recomputes them the same way from `split_seed` and the case ids (`allocationRules`), so the two variance repeats (one TM-A, one TM-B) follow from the ids and the suffix. They are not an input.
+
 ## Tests
 
     py -3 -I -m unittest discover -s corpus/sampling -p "test_*.py" -v
