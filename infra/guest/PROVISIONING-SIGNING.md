@@ -1226,7 +1226,7 @@ read -rs TBA_PW; export TBA_PW; KIT_FREEZE=F31 bash infra/freeze/guest/00-sessio
 GSSH 'sudo -n ls -l /etc/tbound/provider; sudo -n test -e /var/lib/tbound/sessions/usd-ledger && echo LEDGER-EXISTS'      # [READ-ONLY]
 ```
 
-Expect only `opencode-go.key` and no `LEDGER-EXISTS`. If a ledger exists, an earlier research round ran on this guest: skip RA-4, and check its continuity against the kept checkpoint (RA-12) before the round. Rollback: `KIT_FREEZE=F31 bash infra/freeze/guest/00-session-sudo.sh close`.
+Expect only `opencode-go.key` and no `LEDGER-EXISTS`. If a ledger exists, an earlier research round ran on this guest: skip RA-4, and check its continuity against the kept checkpoint (RA-12) before the round; for the US$5 ledger of 2026-11-21 see "Cap change" under RA-4 instead. Rollback: `KIT_FREEZE=F31 bash infra/freeze/guest/00-session-sudo.sh close`.
 
 ### RA-2 (RR-1) [PRIVILEGED WRITE, needs owner approval] frozen profile and ledger configuration
 
