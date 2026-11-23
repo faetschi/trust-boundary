@@ -67,8 +67,10 @@ ssh-keygen -t ed25519 -f .\.local\secrets\abi8-qualification\id_ed25519
      -GuestHostKeyFingerprint '<SHA256 fingerprint printed by the bootstrap>'
    ```
 
-5. The bootstrap leaves `tboundadmin` without a password or sudo. Open the VM
-   in the Hyper-V console and log in as the user you created in step 2. Run
+5. `tboundadmin` has a locked password and key-only SSH login. It has
+   passwordless sudo for provisioning, so do not use it for the product steps.
+   Open the VM in the Hyper-V console and log in as the user you created in
+   step 2. Run
    everything below as that user, including the root steps of the next guide.
    Clone this repository and install as that user, never as root. The download
    is checked against `SHA256SUMS` only, which detects corruption and not a
