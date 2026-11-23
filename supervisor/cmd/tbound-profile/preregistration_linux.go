@@ -51,7 +51,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	panelReceipt := flags.String("panel-receipt", "", "optional supplementary panel receipt.json")
 	panelAudit := flags.String("panel-audit", "", "optional supplementary panel audit.json; supply all three panel files together")
 	panelStats := flags.String("panel-stats", "", "optional supplementary panel diagnostics stats.json")
-	profile := flags.String("quota-profile", "", "quota profile: thesis or pilot")
+	profile := flags.String("quota-profile", "", "quota profile: thesis, pilot or screening")
 	runnerConfigPath := flags.String("runner-config", "", "runner Config JSON (its freeze_commit must equal --freeze-commit)")
 	researchProfilePath := flags.String("research-profile", "", "optional frozen research profile JSON")
 	ledgerConfigPath := flags.String("research-ledger-config", "", "optional research ledger configuration JSON")

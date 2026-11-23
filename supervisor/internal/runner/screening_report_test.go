@@ -26,6 +26,10 @@ func TestScreeningRowsClassifyEachEnd(t *testing.T) {
 		case 5:
 			o.Route.Complete = false
 		case 6:
+			o.E01.Verified = false
+		case 7:
+			o.EvidenceLoss = evalscore.LossUnclassified
+		case 8:
 			cancel()
 		}
 		return nil
@@ -37,7 +41,8 @@ func TestScreeningRowsClassifyEachEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []ScreeningEnd{ScreeningAdmitted, ScreeningFailedAcceptance, ScreeningLost, ScreeningBudgetEnd, ScreeningUnknown, ScreeningUnknown}
+	want := []ScreeningEnd{ScreeningAdmitted, ScreeningFailedAcceptance, ScreeningLost, ScreeningBudgetEnd, ScreeningUnknown, ScreeningUnknown,
+		ScreeningUnknown, ScreeningUnknown}
 	if len(rows) != len(s.Steps) {
 		t.Fatalf("%d rows for %d steps", len(rows), len(s.Steps))
 	}
@@ -46,10 +51,10 @@ func TestScreeningRowsClassifyEachEnd(t *testing.T) {
 			t.Errorf("row %d = %+v, want end %s", i, rows[i], w)
 		}
 	}
-	if rows[6].End != ScreeningAdmitted {
-		t.Errorf("the step that stopped the run finished: %+v, want admitted", rows[6])
+	if rows[8].End != ScreeningAdmitted {
+		t.Errorf("the step that stopped the run finished: %+v, want admitted", rows[8])
 	}
-	for _, r := range rows[7:] {
+	for _, r := range rows[9:] {
 		if r.End != ScreeningNotRun {
 			t.Errorf("a step after the stop is %+v, want not-run", r)
 		}

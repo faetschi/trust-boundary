@@ -55,6 +55,10 @@ func screeningEnd(e *Entry) (ScreeningEnd, string) {
 		return ScreeningBudgetEnd, o.UnknownEnd
 	case o.UnknownEnd != "" || e.ExecError != "" || o.Partial:
 		return ScreeningUnknown, firstNonEmpty(o.UnknownEnd, e.ExecError, "partial outcome")
+	case !o.E01.Verified:
+		return ScreeningUnknown, "identity not verified"
+	case o.EvidenceLoss != evalscore.LossNone && o.EvidenceLoss != "":
+		return ScreeningUnknown, "evidence loss: " + string(o.EvidenceLoss)
 	case o.Task == TaskLost:
 		return ScreeningLost, ""
 	case o.Task == TaskPass && o.Route.Complete:

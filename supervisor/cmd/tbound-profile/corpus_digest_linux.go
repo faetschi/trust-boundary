@@ -166,7 +166,7 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("tbound-profile corpus-digest", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	manifestPath := flags.String("manifest", "", "corpus manifest JSON")
-	profile := flags.String("quota-profile", piruntime.D09ManagedPiCorpusQuotaProfileThesis, "quota profile: thesis or pilot")
+	profile := flags.String("quota-profile", piruntime.D09ManagedPiCorpusQuotaProfileThesis, "quota profile: thesis, pilot or screening")
 	var ceilings corpusadmit.Ceilings
 	flags.Uint64Var(&ceilings.MaxHostCalls, "max-host-calls", 0, "service config workflow_max_host_calls (with --max-tokens and --duration-seconds)")
 	flags.Uint64Var(&ceilings.MaxTokens, "max-tokens", 0, "service config workflow_max_tokens")
