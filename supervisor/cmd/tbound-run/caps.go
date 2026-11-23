@@ -16,16 +16,27 @@ import (
 
 const pilotCapsSchema = "tbound-pilot-caps/v1"
 
+type pilotCaseRow struct {
+	CaseID    string             `json:"case_id"`
+	Status    calibration.Status `json:"status"`
+	Reason    string             `json:"reason,omitempty"`
+	Attempts  int                `json:"attempts"`
+	ToolCalls int                `json:"tool_calls"`
+	WallMS    int                `json:"wall_ms"`
+	InTokens  int                `json:"in_tokens"`
+	OutTokens int                `json:"out_tokens"`
+}
+
 type pilotCapsDoc struct {
-	Schema         string                  `json:"schema"`
-	PlanDigest     string                  `json:"plan_digest"`
-	ManifestDigest string                  `json:"manifest_digest"`
-	AttackerDigest string                  `json:"attacker_digest"`
-	Cases          []calibration.PilotCase `json:"cases"`
-	PivotStates    int                     `json:"pivot_states"`
-	Q95            int                     `json:"q95_attempts_to_manifest"`
-	PilotMaximum   attacker.SpecCaps       `json:"pilot_maximum"`
-	Caps           attacker.SpecCaps       `json:"caps"`
+	Schema         string            `json:"schema"`
+	PlanDigest     string            `json:"plan_digest"`
+	ManifestDigest string            `json:"manifest_digest"`
+	AttackerDigest string            `json:"attacker_digest"`
+	Cases          []pilotCaseRow    `json:"cases"`
+	PivotStates    int               `json:"pivot_states"`
+	Q95            int               `json:"q95_attempts_to_manifest"`
+	PilotMaximum   attacker.SpecCaps `json:"pilot_maximum"`
+	Caps           attacker.SpecCaps `json:"caps"`
 }
 
 func (a *app) capsCmd(args []string) error {
@@ -60,7 +71,7 @@ func (a *app) capsCmd(args []string) error {
 			return err
 		}
 		doc := pilotCapsDoc{Schema: pilotCapsSchema, PlanDigest: p.sched.Digest, ManifestDigest: p.digest,
-			AttackerDigest: p.manifest.Pins.AttackerDigest, Cases: cases, PivotStates: d.L, Q95: d.Q95,
+			AttackerDigest: p.manifest.Pins.AttackerDigest, Cases: pilotCaseRows(cases), PivotStates: d.L, Q95: d.Q95,
 			PilotMaximum: specCaps(d.PilotMax), Caps: specCaps(d.Caps)}
 		raw, err := json.MarshalIndent(doc, "", "  ")
 		if err != nil {
@@ -97,4 +108,14 @@ func pivotStates(l attacker.SpecLibrary) int {
 func specCaps(c calibration.Caps) attacker.SpecCaps {
 	return attacker.SpecCaps{Scripted: c.Scripted, Iterations: int64(c.Iterations), ToolCalls: int64(c.ToolCalls),
 		WallMS: int64(c.WallMS), InTokens: int64(c.InTokens), OutTokens: int64(c.OutTokens), MicroUSD: c.MicroUSD}
+}
+
+func pilotCaseRows(cases []calibration.PilotCase) []pilotCaseRow {
+	rows := make([]pilotCaseRow, 0, len(cases))
+	for _, c := range cases {
+		a := c.Adaptive
+		rows = append(rows, pilotCaseRow{CaseID: c.CaseID, Status: c.Status, Reason: c.Reason, Attempts: a.Attempts,
+			ToolCalls: a.ToolCalls, WallMS: a.WallMS, InTokens: a.InTokens, OutTokens: a.OutTokens})
+	}
+	return rows
 }

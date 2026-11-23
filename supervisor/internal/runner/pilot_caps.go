@@ -14,8 +14,13 @@ func PilotCases(s Schedule, j *Journal) []calibration.PilotCase {
 		if !slices.ContainsFunc(steps, func(st Step) bool { return st.Role == RoleAdaptiveReplay && st.Configuration == CfgP }) {
 			continue
 		}
+		rerun, done := complete(j, steps)
+		if !done {
+			out = append(out, calibration.PilotCase{CaseID: id, Status: calibration.NotRun, Reason: "a step or its rerun has no terminal record"})
+			continue
+		}
 		attempt := 1
-		if _, has := j.rerunOf(id); has {
+		if rerun {
 			attempt = 2
 		}
 		pair := s.Config.pairOf(advView(j, steps, attempt))
