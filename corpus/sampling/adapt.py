@@ -1220,6 +1220,7 @@ def _render_saber(row, item, out):
             mb, u2 = map_paths(body, cwd)
             unm += u1 + u2
             out.fixture[_norm_written_path(mp)] = out.text(mb, f"init_commands file {mp}").encode("utf-8")
+            out.renamed |= _norm_written_path(mp) != mp
         modes = {_norm_written_path(map_paths(p, cwd)[0]): m for p, m in modes.items()}
         out.extra["fixture_modes"] = modes
         mapped = [map_paths(d, cwd) for d in dirs if d.rstrip("/") != cwd.rstrip("/")]  # mkdir of cwd is the workspace root
@@ -1227,9 +1228,9 @@ def _render_saber(row, item, out):
         out.extra["fixture_dirs"] = _fixture_dirs(md for md, _ in mapped)
     user, u = map_paths(setup["user_prompt"], cwd)
     unm += u
-    user = out.swap(user)
     if user != setup["user_prompt"]:
-        out.transformations.append("Paths mapped and the standalone word Python swapped to Node.js in the user task (steps 5, 6).")
+        out.transformations.append("Paths mapped in the user task (step 5).")
+    user = out.swap(user)  # the swap is recorded once by done()
     user = out.text(user, "the user task" + (" (the request of a TM-B row)" if inj.get("enabled") is False else ""))
     written, original, renamed = {}, {}, False
     for path, content in (setup.get("file_contents") or {}).items():
