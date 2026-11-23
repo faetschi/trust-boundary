@@ -110,6 +110,9 @@ func corpusAdmissionID(caseID, role string, attempt int) string {
 // variance subset, compliant and b-compliant only for compliant tasks, ambiguous and
 // b-ambiguous only for ambiguous cases. A P-only case runs the P roles only.
 func (c *productionCorpus) roleAllowed(caseID, role string) bool {
+	if c != nil && c.quotaProfile == piruntime.D09ManagedPiCorpusQuotaProfileScreening && role != corpusRoleBCompliant {
+		return false
+	}
 	if c != nil && c.cases[caseID].pOnly && role != corpusRolePStaticReplay && role != corpusRolePAdaptiveReplay {
 		return false
 	}
@@ -208,7 +211,8 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 			ErrPiServiceCorpus, digest, config.CorpusManifestDigest)
 	}
 	profile := config.effectiveCorpusQuotaProfile()
-	if profile != piruntime.D09ManagedPiCorpusQuotaProfilePilot && profile != piruntime.D09ManagedPiCorpusQuotaProfileThesis {
+	if profile != piruntime.D09ManagedPiCorpusQuotaProfilePilot && profile != piruntime.D09ManagedPiCorpusQuotaProfileThesis &&
+		profile != piruntime.D09ManagedPiCorpusQuotaProfileScreening {
 		return nil, fmt.Errorf("%w: unknown corpus quota profile %q", ErrPiServiceCorpus, profile)
 	}
 	// The research pilot's adversarial cases are the random pilot draw (D40 as amended by D48), so a pilot corpus on the
@@ -216,6 +220,9 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 	if profile == piruntime.D09ManagedPiCorpusQuotaProfilePilot && config.ProviderRoute == piruntime.D09ManagedPiProviderRouteResearch &&
 		manifest.Pins.DrawDigest == "" {
 		return nil, fmt.Errorf("%w: a pilot corpus on the research route is the research pilot and must pin its D48 pilot draw (pins.draw_digest)", ErrPiServiceCorpus)
+	}
+	if profile == piruntime.D09ManagedPiCorpusQuotaProfileScreening && config.ProviderRoute != piruntime.D09ManagedPiProviderRouteResearch {
+		return nil, fmt.Errorf("%w: the screening profile runs on the research route only", ErrPiServiceCorpus)
 	}
 	quotas, err := corpusQuotasFor(profile, manifest)
 	if err != nil {

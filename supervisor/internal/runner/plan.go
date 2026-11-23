@@ -40,9 +40,11 @@ type RunPurpose string
 // PurposeConstructWitness is the non-confirmatory run that retains construct witnesses (docs/guides/construct-witnesses.md).
 const PurposeConstructWitness RunPurpose = "construct-witness"
 
-// ErrNonConfirmatoryPurpose means a construct-witness run was asked for what only a confirmatory run has: its export,
+const PurposeScreening RunPurpose = "compliant-screening"
+
+// ErrNonConfirmatoryPurpose means a construct-witness or compliant-screening run was asked for what only a confirmatory run has: its export,
 // report or calibration summary. It holds no C outcomes, and none is synthesized as a failure.
-var ErrNonConfirmatoryPurpose = errors.New("runner: a construct-witness run is non-confirmatory and has no export, report or calibration summary")
+var ErrNonConfirmatoryPurpose = errors.New("runner: a construct-witness or compliant-screening run is non-confirmatory and has no export, report or calibration summary")
 
 // Config is the frozen protocol of one run. It is bound into the plan digest,
 // so a journal cannot be resumed under a changed protocol.
@@ -128,6 +130,10 @@ func (c Config) normalize(planned int) (Config, error) {
 		}
 		if len(c.OnlyCases) != 0 {
 			return c, errors.New("runner: a construct-witness run plans every admitted adversarial case, so OnlyCases is refused")
+		}
+	case PurposeScreening:
+		if c.CDH != nil {
+			return c, errors.New("runner: a compliant-screening run cannot be C-DH")
 		}
 	default:
 		return c, fmt.Errorf("runner: unknown run purpose %q", c.Purpose)
@@ -248,19 +254,34 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 	}
 
 	witness := cfg.Purpose == PurposeConstructWitness
-	subset := len(cfg.OnlyCases) > 0 || witness
+	screening := cfg.Purpose == PurposeScreening
+	subset := len(cfg.OnlyCases) > 0 || witness || screening
+	if screening && len(adv)+len(amb) != 0 {
+		return Schedule{}, errors.New("runner: a compliant-screening run plans compliant tasks only, and the manifest holds other cases")
+	}
 	if len(cfg.OnlyCases) > 0 {
+		kind := evalcorpus.KindAdversarial
+		if screening {
+			kind = evalcorpus.KindCompliant
+		}
 		only := make(map[string]bool, len(cfg.OnlyCases))
 		for _, id := range cfg.OnlyCases {
-			if c, ok := byID[id]; !ok || c.Kind != evalcorpus.KindAdversarial {
-				return Schedule{}, fmt.Errorf("runner: OnlyCases names %q, which is not an adversarial case", id)
+			if c, ok := byID[id]; !ok || c.Kind != kind {
+				return Schedule{}, fmt.Errorf("runner: OnlyCases names %q, which is not a %s case", id, kind)
 			}
 			only[id] = true
 		}
-		adv = slices.DeleteFunc(adv, func(id string) bool { return !only[id] })
+		if screening {
+			cmp = slices.DeleteFunc(cmp, func(id string) bool { return !only[id] })
+		} else {
+			adv = slices.DeleteFunc(adv, func(id string) bool { return !only[id] })
+		}
 	}
-	if subset {
+	if subset && !screening {
 		cmp, amb = nil, nil
+	}
+	if screening && len(cmp) == 0 {
+		return Schedule{}, errors.New("runner: a compliant-screening run plans no compliant task")
 	}
 
 	if cfg.CDH != nil {
@@ -294,6 +315,10 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 		add(c, CfgC, RoleAdaptiveReplay, 0)
 	}
 	for i, id := range rankOrder(seed, "order/compliant", cmp) {
+		if screening {
+			add(byID[id], CfgB, RoleCompliant, 0)
+			continue
+		}
 		first, second := CfgB, CfgC
 		if i%2 == 1 {
 			first, second = CfgC, CfgB
@@ -333,7 +358,7 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 		}
 		s.index[st.ID()] = i
 	}
-	if err := s.validateWitnessPurpose(); err != nil {
+	if err := s.validatePurposeSteps(); err != nil {
 		return Schedule{}, err
 	}
 	if s.Digest, err = planDigest(s); err != nil {
@@ -342,15 +367,15 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 	return s, nil
 }
 
-// validateWitnessPurpose refuses a construct-witness schedule that holds any step but a static P replay. Under that
-// purpose no C, B or V step, and no trajectory, adaptive or variance step, may be planned, dispatched or imported.
-func (s Schedule) validateWitnessPurpose() error {
-	if s.Config.Purpose != PurposeConstructWitness {
-		return nil
-	}
+// validatePurposeSteps refuses a construct-witness schedule with any step but a static P replay, and a
+// compliant-screening schedule with any step but a Configuration B compliant step.
+func (s Schedule) validatePurposeSteps() error {
 	for _, st := range s.Steps {
-		if st.Configuration != CfgP || st.Role != RoleStaticReplay {
+		switch {
+		case s.Config.Purpose == PurposeConstructWitness && (st.Configuration != CfgP || st.Role != RoleStaticReplay):
 			return fmt.Errorf("runner: a construct-witness run holds only static P replays, not %s/%s", st.Configuration, st.Role)
+		case s.Config.Purpose == PurposeScreening && (st.Configuration != CfgB || st.Role != RoleCompliant):
+			return fmt.Errorf("runner: a compliant-screening run holds only Configuration B compliant steps, not %s/%s", st.Configuration, st.Role)
 		}
 	}
 	return nil
