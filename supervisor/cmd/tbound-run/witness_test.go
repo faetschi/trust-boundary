@@ -167,7 +167,7 @@ func thesisEnv(t *testing.T) *env {
 	return e
 }
 
-// The thesis plan is the registered total computed from the final counts (D53 item 4: 304x5 + 100x3 + 2x2 + 50x2), so
+// The thesis plan is the registered total computed from the final counts (D53 item 4: 304x5 + 100x2 + 2x2 + 50x2), so
 // a subset of it is refused. A construct-witness run of the same corpus is a subset by design and loads: one static P
 // replay per adversarial case, and no other configuration. Without its draw file the thesis corpus is refused.
 func TestThesisWitnessPlanLoadsAndAThesisSubsetDoesNot(t *testing.T) {
