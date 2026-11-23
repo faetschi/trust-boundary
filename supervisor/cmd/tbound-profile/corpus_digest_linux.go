@@ -26,11 +26,12 @@ const maxReportedViolations = 5
 // (piruntime.D09ManagedPiCorpusQuotaProfile*).
 func checkProfile(profile string) error {
 	switch profile {
-	case piruntime.D09ManagedPiCorpusQuotaProfileThesis, piruntime.D09ManagedPiCorpusQuotaProfilePilot:
+	case piruntime.D09ManagedPiCorpusQuotaProfileThesis, piruntime.D09ManagedPiCorpusQuotaProfilePilot,
+		piruntime.D09ManagedPiCorpusQuotaProfileScreening:
 		return nil
 	}
-	return fmt.Errorf("unknown quota profile %q: use %q or %q", profile,
-		piruntime.D09ManagedPiCorpusQuotaProfileThesis, piruntime.D09ManagedPiCorpusQuotaProfilePilot)
+	return fmt.Errorf("unknown quota profile %q: use %q, %q or %q", profile, piruntime.D09ManagedPiCorpusQuotaProfileThesis,
+		piruntime.D09ManagedPiCorpusQuotaProfilePilot, piruntime.D09ManagedPiCorpusQuotaProfileScreening)
 }
 
 // quotasFor returns the quotas of a profile for m, from the D48 draw it pins in the artifact
@@ -165,7 +166,7 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("tbound-profile corpus-digest", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	manifestPath := flags.String("manifest", "", "corpus manifest JSON")
-	profile := flags.String("quota-profile", piruntime.D09ManagedPiCorpusQuotaProfileThesis, "quota profile: thesis or pilot")
+	profile := flags.String("quota-profile", piruntime.D09ManagedPiCorpusQuotaProfileThesis, "quota profile: thesis, pilot or screening")
 	var ceilings corpusadmit.Ceilings
 	flags.Uint64Var(&ceilings.MaxHostCalls, "max-host-calls", 0, "service config workflow_max_host_calls (with --max-tokens and --duration-seconds)")
 	flags.Uint64Var(&ceilings.MaxTokens, "max-tokens", 0, "service config workflow_max_tokens")
