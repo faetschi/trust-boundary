@@ -424,7 +424,9 @@ with the D49 drain grace. `--attribution-rubric` is the frozen rubric file.
 refuses a report that has a failed or a guest-only row, or that misses a case.
 With a main draw, `--certification` is the `select.py certify` output for the
 population ranges and main sizes of that draw. The command checks it against the
-draw and records its digest.
+draw and records its digest. `--screening-record` is the screening record of the
+compliant tasks (D58 item 4, `docs/design/compliant-screening.md`); the record
+carries its SHA-256.
 
 ```sh
 tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
@@ -435,7 +437,8 @@ tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
   --run-binding sha256:<run_binding from tbound-run plan> \
   --attribution-rubric /absolute/path/to/attribution-rubric.md \
   --corpus-check /absolute/path/to/construct-report/report.json \
-  --certification /absolute/path/to/certify.json
+  --certification /absolute/path/to/certify.json \
+  --screening-record /absolute/path/to/screening-record.json
 ```
 
 ### Evaluate H1
