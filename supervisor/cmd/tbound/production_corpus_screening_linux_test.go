@@ -102,6 +102,10 @@ func TestScreeningCorpusValidation(t *testing.T) {
 }
 
 func TestScreeningAllowsBCompliantOnly(t *testing.T) {
+	var none *productionCorpus
+	if none.roleAllowed("any", corpusRoleBCompliant) {
+		t.Fatal("a nil corpus allowed b-compliant")
+	}
 	m := screeningTestManifest(t, 25)
 	corpus, err := loadProductionCorpus(screeningConfig(t, m, piruntime.D09ManagedPiProviderRouteResearch))
 	if err != nil {

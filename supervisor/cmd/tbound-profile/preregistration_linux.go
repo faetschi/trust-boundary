@@ -93,8 +93,8 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	if cfg.FreezeCommit != *commit {
 		return fmt.Errorf("the runner config freeze_commit %q is not --freeze-commit %q", cfg.FreezeCommit, *commit)
 	}
-	if cfg.Purpose == runner.PurposeConstructWitness {
-		return errors.New("the runner config is a construct-witness run, which is non-confirmatory and cannot be pre-registered")
+	if cfg.Purpose == runner.PurposeConstructWitness || cfg.Purpose == runner.PurposeScreening {
+		return fmt.Errorf("the runner config is a %s run, which is non-confirmatory and cannot be pre-registered", cfg.Purpose)
 	}
 	// tbound-run plans from run.json with freeze_commit, evq_obligations, adaptive_caps, only_cases and purpose only
 	// (runConfig.runnerConfig), so a record with any other runner field could match no run. C-DH is outside H1.
