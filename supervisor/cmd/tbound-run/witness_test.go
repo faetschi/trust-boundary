@@ -173,7 +173,7 @@ func thesisEnv(t *testing.T) *env {
 func TestThesisWitnessPlanLoadsAndAThesisSubsetDoesNot(t *testing.T) {
 	e := thesisEnv(t)
 	out, err := e.cliCfg(nil, "plan")
-	if err != nil || line(out, "units") != strconv.Itoa(304*5+100*3+2*2+50*2) || line(out, "subset") != "false" {
+	if err != nil || line(out, "units") != strconv.Itoa(304*5+100*2+2*2+50*2) || line(out, "subset") != "false" {
 		t.Fatalf("the ordinary thesis plan: %v\n%s", err, out)
 	}
 	for _, dir := range []string{e.path("no-artifacts"), ""} {

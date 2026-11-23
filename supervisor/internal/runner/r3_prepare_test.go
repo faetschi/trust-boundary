@@ -47,7 +47,7 @@ func TestR3VisibleEffectThenSetupRefusedSpendsTheUnit(t *testing.T) {
 		j := openJournal(t, dir, s)
 		ex := &silentRefuser{Executor: NewFakeExecutor(s.Config), j: j, target: traj, err: refusal}
 		rep, err := mustRunner(t, s, j, ex, Options{}).Run(context.Background())
-		if err != nil || !rep.Finished || rep.UnitsUsed != 89 || j.UnitsUsed() != 89 || rep.SetupFailures != 1 {
+		if err != nil || !rep.Finished || rep.UnitsUsed != 81 || j.UnitsUsed() != 81 || rep.SetupFailures != 1 {
 			t.Fatalf("%v: a refusal after a visible effect did not spend the unit: %+v %v", refusal, rep, err)
 		}
 		if ex.visible != 1 || !ex.startedBefore {
@@ -64,7 +64,7 @@ func TestR3VisibleEffectThenSetupRefusedSpendsTheUnit(t *testing.T) {
 		j = openJournal(t, dir, s)
 		ex2 := &silentRefuser{Executor: NewFakeExecutor(s.Config), j: j, target: traj, err: refusal}
 		rep, err = mustRunner(t, s, j, ex2, Options{}).Run(context.Background())
-		if err != nil || ex2.visible != 0 || rep.UnitsUsed != 89 || rep.AlreadyDone != 89 {
+		if err != nil || ex2.visible != 0 || rep.UnitsUsed != 81 || rep.AlreadyDone != 81 {
 			t.Fatalf("%v: second run: visible %d %+v %v", refusal, ex2.visible, rep, err)
 		}
 		_ = j.Close()
@@ -107,7 +107,7 @@ func TestR3PrepareRefusalVoidsTheAttempt(t *testing.T) {
 		}}
 		j := openJournal(t, t.TempDir(), s)
 		rep, err := mustRunner(t, s, j, ex, Options{}).Run(context.Background())
-		if !errors.Is(err, refusal) || rep.UnitsUsed != 0 || j.UnitsUsed() != 0 || rep.Finished || rep.Remaining != 89 {
+		if !errors.Is(err, refusal) || rep.UnitsUsed != 0 || j.UnitsUsed() != 0 || rep.Finished || rep.Remaining != 81 {
 			t.Fatalf("%v: %+v %v", refusal, rep, err)
 		}
 		if slices.Contains(ex.executed, traj.ID()) {
@@ -136,7 +136,7 @@ func TestR3PrepareRunsBeforeStartedBeforeExecute(t *testing.T) {
 	if _, err := mustRunner(t, s, j, ex, Options{}).Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(order) != 2*89 {
+	if len(order) != 2*81 {
 		t.Fatalf("%d phase events", len(order))
 	}
 	for i := 0; i < len(order); i += 2 {
@@ -206,7 +206,7 @@ func TestR3CrashAfterStartedIsAbandonedAndSpentOnResume(t *testing.T) {
 	}
 	ex := &preparing{Executor: NewFakeExecutor(s.Config)}
 	rep, err := mustRunner(t, s, j, ex, Options{}).Run(context.Background())
-	if err != nil || rep.Abandoned != 1 || rep.UnitsUsed != 89 || !rep.Finished {
+	if err != nil || rep.Abandoned != 1 || rep.UnitsUsed != 81 || !rep.Finished {
 		t.Fatalf("%+v %v", rep, err)
 	}
 	if slices.Contains(ex.prepared, st.ID()) || slices.Contains(ex.executed, st.ID()) {

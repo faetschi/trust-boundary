@@ -128,7 +128,7 @@
 //     collectors. Any SSH or parse failure is ErrEvidenceAbsent, so coverage stays
 //     incomplete and never reads as none.
 //   - The rerun headroom is capped at RerunHeadroomFor the manifest's planned units:
-//     5%, rounded up (97 for the pre-D48 1,935 units, 96.75 rounded up). 0 means
+//     5%, rounded up (92 for the pre-D48 1,835 units, 91.75 rounded up). 0 means
 //     that ceiling; NoRerunHeadroom switches it off. Plan refuses larger values before any
 //     journal exists and the plan digest binds the value. Reruns are still
 //     limited to one per case and to an evidenced external outage.
