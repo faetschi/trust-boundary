@@ -186,7 +186,7 @@ func TestPreregistrationRecordIsDeterministicAndBindsTheRegisteredFacts(t *testi
 		t.Fatal(err)
 	}
 	// A pre-D48 pilot manifest (no pinned draw) keeps the legacy totals, so its record and plan digest do not move.
-	if evalreport.LegacyPlannedUnits != 1935 || runner.RerunHeadroomFor(evalreport.LegacyPlannedUnits) != 97 {
+	if evalreport.LegacyPlannedUnits != 1835 || runner.RerunHeadroomFor(evalreport.LegacyPlannedUnits) != 92 {
 		t.Fatalf("registered constants drifted: %d units, headroom %d", evalreport.LegacyPlannedUnits, runner.RerunHeadroomFor(evalreport.LegacyPlannedUnits))
 	}
 	rubricSum := sha256.Sum256([]byte("# Attribution rubric\n"))
@@ -202,8 +202,8 @@ func TestPreregistrationRecordIsDeterministicAndBindsTheRegisteredFacts(t *testi
 	if rec.Domain != "tbound-preregistration/v2" || rec.FreezeCommit != commitA || rec.CorpusManifestDigest != m ||
 		rec.QuotaProfile != "pilot" || rec.EvalscoreSchema != evalscore.SchemaVersion ||
 		rec.PlannedUnits != evalreport.LegacyPlannedUnits ||
-		rec.RerunHeadroom != 97 ||
-		rec.PlanSteps != 123 || !strings.HasPrefix(rec.RunnerPlanDigest, "sha256:") ||
+		rec.RerunHeadroom != 92 ||
+		rec.PlanSteps != 103 || !strings.HasPrefix(rec.RunnerPlanDigest, "sha256:") ||
 		!strings.HasPrefix(rec.ResearchProfileDigest, "sha256:") || !strings.HasPrefix(rec.ResearchLedgerConfigDigest, "sha256:") {
 		t.Fatalf("record %+v", rec)
 	}
@@ -351,7 +351,7 @@ func TestPreregistrationRecordRefusals(t *testing.T) {
 			p.config = writeFile(t, dir, "runner-bad.json", `{"freeze_commit":"`+commitA+`","surprise":1}`)
 		},
 		"runner config over the headroom": func(p *preregInputs) {
-			p.config = runnerConfigFile(t, dir, "runner-big.json", commitA, func(c *runner.Config) { c.RerunHeadroom = 98 })
+			p.config = runnerConfigFile(t, dir, "runner-big.json", commitA, func(c *runner.Config) { c.RerunHeadroom = 93 })
 		},
 		"unfrozen research profile":  func(p *preregInputs) { p.profile = unfrozen },
 		"bad ledger config":          func(p *preregInputs) { p.ledger = writeFile(t, dir, "ledger-bad.json", `{"schema_version":1}`) },
@@ -428,7 +428,7 @@ func TestPreregistrationRecordRefusals(t *testing.T) {
 }
 
 // D53 item 4: the thesis record's planned units are computed from the final counts of the D48 manifest (here the
-// main-draw test vector: 299 main and 5 top-up cases, 100 compliant, 2 ambiguous, 50 variance), not the fixed 1,935,
+// main-draw test vector: 299 main and 5 top-up cases, 100 compliant, 2 ambiguous, 50 variance), not the fixed 1,835,
 // and the rerun headroom is 5% of that total. A manifest without its draw file is refused.
 func TestPreregistrationRecordThesisPlanIsTheRegisteredUnits(t *testing.T) {
 	if testing.Short() {
@@ -451,7 +451,7 @@ func TestPreregistrationRecordThesisPlanIsTheRegisteredUnits(t *testing.T) {
 	if err := json.Unmarshal([]byte(preregOut(t, p)), &rec); err != nil {
 		t.Fatal(err)
 	}
-	want := 304*5 + 100*3 + 2*2 + 50*2
+	want := 304*5 + 100*2 + 2*2 + 50*2
 	if rec.PlanSteps != want || rec.PlannedUnits != want || rec.RerunHeadroom != runner.RerunHeadroomFor(want) || rec.QuotaProfile != "thesis" {
 		t.Fatalf("thesis record %+v, want %d units", rec, want)
 	}

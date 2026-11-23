@@ -14,7 +14,7 @@
 # The pathspec is deliberate: a rename out of one of these trees still matches
 # the deleted side, so it cannot hide a runtime change. Every path the suite
 # reads is listed here: the Go module, adapter contracts, corpus fixtures, guest
-# scripts and runbooks, the installer, evaluation metadata, this workflow, and its timing helper.
+# scripts and runbooks, the installer, evaluation metadata, this workflow, and its timing and race-shard helpers.
 set -eu
 
 base=${1:-}
@@ -54,7 +54,7 @@ fi
 # Both callers below treat every non-zero status as "changed".
 runtime_unchanged() {
   git diff --quiet "$range" -- \
-    supervisor adapter corpus infra install docs/evaluation .github/workflows/ci.yml scripts/ci_go_test_timing.py scripts/ci-private-tmpdir.sh
+    supervisor adapter corpus infra install docs/evaluation .github/workflows/ci.yml scripts/ci_go_test_timing.py scripts/ci-private-tmpdir.sh scripts/ci-race-shard.sh
 }
 
 if [ "$field" = "docs-only" ]; then

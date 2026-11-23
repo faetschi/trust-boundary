@@ -84,15 +84,15 @@ const (
 	RegisteredCapMicroUSD int64 = 10_000_000
 
 	// LegacyPlannedUnits is the pre-D48 planned execution-unit ledger (tbound-thesis.md
-	// section 7.5): 299x5 + 100x3 + 20x2 + 50x2. D53 item 4 withdrew it; it stays the
+	// section 7.5, B and C only per the D58 amendment): 299x5 + 100x2 + 20x2 + 50x2. D53 item 4 withdrew it; it stays the
 	// total of a manifest that pins no D48 draw, so those plans and reports keep their digests.
-	LegacyPlannedUnits = 1935
+	LegacyPlannedUnits = 1835
 
 	// The planned units of one case, as runner.Plan schedules them: an adversarial case
-	// runs the C trajectory and the static and adaptive P/C replays, a compliant task B, C
-	// and V, an ambiguous case B and C, and a variance case two more C repeats.
+	// runs the C trajectory and the static and adaptive P/C replays, a compliant task B and C
+	// (D58 amendment: no V), an ambiguous case B and C, and a variance case two more C repeats.
 	AdversarialUnits = 5
-	CompliantUnits   = 3
+	CompliantUnits   = 2
 	AmbiguousUnits   = 2
 	VarianceUnits    = 2
 )

@@ -1,6 +1,6 @@
 // Package researchroute is the host side of the research provider route: the
 // thesis's final runs use OpenRouter deepseek/deepseek-v4.1-flash under a hard
-// US$5 total cap. It loads the frozen research profile and the owner's ledger
+// US$10 total cap. It loads the frozen research profile and the owner's ledger
 // configuration from fixed root-owned files, builds the provider route (endpoint,
 // model and request members) from the profile, opens the durable USD ledger, and
 // accounts every provider request against it: reserve a worst case before the

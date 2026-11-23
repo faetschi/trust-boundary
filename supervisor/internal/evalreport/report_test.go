@@ -535,7 +535,7 @@ func TestSpendFlags(t *testing.T) {
 	}
 	r := mustBuild(t, smallInputs())
 	s := r.Spend
-	if s.TotalUnits != 400 || s.PlannedUnits != 1935 || s.RegisteredCapMicroUSD != 10_000_000 ||
+	if s.TotalUnits != 400 || s.PlannedUnits != 1835 || s.RegisteredCapMicroUSD != 10_000_000 ||
 		s.CommittedMicroUSD != 1_250_000 || !s.CapMatchesRegistered || s.OverCap || !s.WithinBudget {
 		t.Errorf("spend %+v", s)
 	}
