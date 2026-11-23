@@ -21,7 +21,7 @@ func TestRunCompletesAndCountsUnits(t *testing.T) {
 	if !rep.Finished || rep.Stop != "" || rep.Remaining != 0 {
 		t.Fatalf("report %+v", rep)
 	}
-	if rep.Executed != 89 || rep.UnitsUsed != 89 || rep.PlannedUnits != 89 || len(fake.Calls()) != 89 {
+	if rep.Executed != 81 || rep.UnitsUsed != 81 || rep.PlannedUnits != 81 || len(fake.Calls()) != 81 {
 		t.Fatalf("report %+v calls %d", rep, len(fake.Calls()))
 	}
 	if rep.PlanDigest != s.Digest {
@@ -35,7 +35,7 @@ func TestRunCompletesAndCountsUnits(t *testing.T) {
 	}
 	// A second run does nothing.
 	rep2, err := mustRunner(t, s, j, fake, Options{}).Run(context.Background())
-	if err != nil || rep2.Executed != 0 || rep2.AlreadyDone != 89 || !rep2.Finished || len(fake.Calls()) != 89 {
+	if err != nil || rep2.Executed != 0 || rep2.AlreadyDone != 81 || !rep2.Finished || len(fake.Calls()) != 81 {
 		t.Fatalf("second run: %+v %v", rep2, err)
 	}
 }
@@ -99,12 +99,12 @@ func TestResumeAfterCrashMidRun(t *testing.T) {
 		}
 		ran = append(ran, c)
 	}
-	if len(ran) != 89-dieAt-1 {
-		t.Fatalf("resume executed %d steps, want %d", len(ran), 89-dieAt-1)
+	if len(ran) != 81-dieAt-1 {
+		t.Fatalf("resume executed %d steps, want %d", len(ran), 81-dieAt-1)
 	}
 	// The interrupted step consumed its unit and has no outcome; it is not retried.
-	if rep.UnitsUsed != 89 {
-		t.Fatalf("units used %d, want 89", rep.UnitsUsed)
+	if rep.UnitsUsed != 81 {
+		t.Fatalf("units used %d, want 81", rep.UnitsUsed)
 	}
 	var abandoned []Entry
 	for _, e := range j.Entries() {
@@ -277,7 +277,7 @@ func TestSetupFailureIsRecordedNotDropped(t *testing.T) {
 	}
 	j, rep := runAll(t, s, t.TempDir(), fake)
 	defer j.Close()
-	if !rep.Finished || rep.SetupFailures != 1 || rep.UnitsUsed != 89 {
+	if !rep.Finished || rep.SetupFailures != 1 || rep.UnitsUsed != 81 {
 		t.Fatalf("report %+v", rep)
 	}
 	res, err := Export(s, j, ExportOptions{})
@@ -314,7 +314,7 @@ func TestContextCancelStopsAndAbandonsNothingElse(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err %v", err)
 	}
-	if rep.Finished || rep.Stop != StopCanceled || rep.Remaining != 89-5 {
+	if rep.Finished || rep.Stop != StopCanceled || rep.Remaining != 81-5 {
 		t.Fatalf("report %+v", rep)
 	}
 }
@@ -417,8 +417,8 @@ func TestRerunWithOutageEvidenceKeepsBothAndIsScoredTerminal(t *testing.T) {
 	if err := r.Rerun(context.Background(), st.ID()); err != nil {
 		t.Fatalf("rerun: %v", err)
 	}
-	if j.UnitsUsed() != 90 {
-		t.Fatalf("units %d, want 90 (a rerun costs a unit)", j.UnitsUsed())
+	if j.UnitsUsed() != 82 {
+		t.Fatalf("units %d, want 82 (a rerun costs a unit)", j.UnitsUsed())
 	}
 	var attempts []int
 	for _, e := range j.Entries() {
@@ -457,7 +457,7 @@ func TestRerunWithOutageEvidenceKeepsBothAndIsScoredTerminal(t *testing.T) {
 	if err := r.Rerun(context.Background(), st.ID()); !errors.Is(err, ErrRerunLimit) {
 		t.Fatalf("second rerun: got %v, want ErrRerunLimit", err)
 	}
-	if j.UnitsUsed() != 90 {
+	if j.UnitsUsed() != 82 {
 		t.Fatal("a refused second rerun consumed a unit")
 	}
 }
@@ -525,7 +525,7 @@ func TestRerunRespectsUnitBudget(t *testing.T) {
 	if err := mustRunner(t, s, j, fake, Options{}).Rerun(context.Background(), st.ID()); !errors.Is(err, ErrBudgetExhausted) {
 		t.Fatalf("got %v, want ErrBudgetExhausted", err)
 	}
-	if j.UnitsUsed() != 89 {
+	if j.UnitsUsed() != 81 {
 		t.Fatalf("units %d", j.UnitsUsed())
 	}
 }

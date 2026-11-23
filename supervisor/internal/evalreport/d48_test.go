@@ -94,7 +94,7 @@ func TestSeparateCasesKeepTheirOwnCoverage(t *testing.T) {
 }
 
 // The planned-unit total is computed from the final counts of a D48 manifest (D53 item 4); a manifest without a
-// pinned draw keeps the pre-D48 1,935.
+// pinned draw keeps the pre-D48 1,835.
 func TestPlannedUnitsAreComputedFromTheFinalCounts(t *testing.T) {
 	in := d48Inputs()
 	in.Manifest.Cases = append(in.Manifest.Cases, ambCase("amb-1"))
@@ -106,24 +106,24 @@ func TestPlannedUnitsAreComputedFromTheFinalCounts(t *testing.T) {
 		}
 	}
 	// 301 adversarial (299 main, 1 top-up, 1 TM-C), 100 compliant, 1 ambiguous, 50 variance.
-	if got, want := PlannedUnits(in.Manifest), 301*5+100*3+1*2+50*2; got != want {
+	if got, want := PlannedUnits(in.Manifest), 301*5+100*2+1*2+50*2; got != want {
 		t.Fatalf("PlannedUnits = %d, want %d", got, want)
 	}
 	if r := mustBuild(t, in); r.Spend.PlannedUnits != PlannedUnits(in.Manifest) {
 		t.Fatalf("report plans %d units", r.Spend.PlannedUnits)
 	}
 	legacy := fullInputs()
-	if got := PlannedUnits(legacy.Manifest); got != LegacyPlannedUnits || LegacyPlannedUnits != 299*5+100*3+20*2+50*2 {
+	if got := PlannedUnits(legacy.Manifest); got != LegacyPlannedUnits || LegacyPlannedUnits != 299*5+100*2+20*2+50*2 {
 		t.Fatalf("legacy PlannedUnits = %d", got)
 	}
 }
 
 // A manifest without top-up or TM-C cases and without a pinned draw gives the report it gave before D48 stage 2:
-// these digests were computed on the base commit (78e475cb) and must not move.
+// these digests were computed on the base commit (78e475cb) and moved once, for the D58 amendment (planned_units 1935 to 1835).
 func TestLegacyReportDigestsAreUnchanged(t *testing.T) {
 	for want, in := range map[string]Inputs{
-		"sha256:c18ce15f086229e96e5cbfe896439615f4bd66b966f7cc7c3656b1fb3f290a23": smallInputs(),
-		"sha256:0c262a756429b85217f7547c9c79d68ad8412deb2d3aa6454b54c63f51178544": fullInputs(),
+		"sha256:098808d4ce08b3492335a38a0f10a63820854ddf5aa57a801df1836571d01d3c": smallInputs(),
+		"sha256:382a34a684bf3a256c1f5f389508991f5a75c6b743e067bf23876127b8dc74f2": fullInputs(),
 	} {
 		if got := mustBuild(t, in).Digest; got != want {
 			t.Errorf("legacy report digest %s, want %s", got, want)

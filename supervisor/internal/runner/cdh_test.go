@@ -141,7 +141,7 @@ func TestCDHExportAndIndependentReruns(t *testing.T) {
 	}
 }
 
-// This digest is measured against the pre-integration HEAD with the same test.
+// Re-measured once for the D58 amendment: with no V step every compliant record exports v_missing.
 func TestStaticCExportBytesUnchanged(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
 	j, _ := runAll(t, s, t.TempDir(), NewFakeExecutor(s.Config))
@@ -155,7 +155,7 @@ func TestStaticCExportBytesUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := fmt.Sprintf("%x", sha256.Sum256(b.Bytes()))
-	const want = "13e93137e2e3ee1ee114763d467c103163fdb7621f12c0f54890045cc88c5d36"
+	const want = "87367f9fdb1550c55fa99c646b568e97d4c7e3496ae39ce2b350722d1b385767"
 	if got != want {
 		t.Fatalf("static C export SHA256 = %s, want %s", got, want)
 	}

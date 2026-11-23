@@ -204,7 +204,7 @@ func TestR2AbandonedOutcomeCountsForCostAndEVQ(t *testing.T) {
 			}
 		} else {
 			// Finish the plan: the failed step is a terminal record and the rest is clean.
-			if rep.SpentMicroUSD != int64(100*89+400) {
+			if rep.SpentMicroUSD != int64(100*81+400) {
 				t.Errorf("%s: spent %d", v.name, rep.SpentMicroUSD)
 			}
 		}
@@ -267,7 +267,7 @@ func TestR2ExecuteRefusalSpendsTheUnit(t *testing.T) {
 		ex := refusingExecutor{Executor: NewFakeExecutor(s.Config), target: traj, err: refusal}
 		j := openJournal(t, t.TempDir(), s)
 		rep, err := mustRunner(t, s, j, ex, Options{}).Run(context.Background())
-		if err != nil || !rep.Finished || rep.UnitsUsed != 89 || rep.SetupFailures != 1 {
+		if err != nil || !rep.Finished || rep.UnitsUsed != 81 || rep.SetupFailures != 1 {
 			t.Fatalf("%v from Execute: %+v %v", refusal, rep, err)
 		}
 		started, voided := 0, 0
@@ -309,7 +309,7 @@ func TestR2FakeExecutorHookRefusalSpends(t *testing.T) {
 	j := openJournal(t, t.TempDir(), s)
 	defer j.Close()
 	rep, err := mustRunner(t, s, j, fake, Options{}).Run(context.Background())
-	if err != nil || rep.UnitsUsed != 89 || rep.SetupFailures != 1 {
+	if err != nil || rep.UnitsUsed != 81 || rep.SetupFailures != 1 {
 		t.Fatalf("%+v %v", rep, err)
 	}
 }
@@ -328,8 +328,8 @@ func TestR2RunnerJournalsOneStartedPerStep(t *testing.T) {
 			n[e.StepID]++
 		}
 	}
-	if len(n) != 89 {
-		t.Fatalf("%d steps have a started entry, want 89", len(n))
+	if len(n) != 81 {
+		t.Fatalf("%d steps have a started entry, want 81", len(n))
 	}
 	for id, c := range n {
 		if c != 1 {
@@ -370,7 +370,7 @@ func TestR2StartedWithoutTerminalIsAbandonedOnResume(t *testing.T) {
 	}
 	fake := NewFakeExecutor(s.Config)
 	rep, err := mustRunner(t, s, j, fake, Options{}).Run(context.Background())
-	if err != nil || rep.Abandoned != 1 || rep.UnitsUsed != 89 || !rep.Finished {
+	if err != nil || rep.Abandoned != 1 || rep.UnitsUsed != 81 || !rep.Finished {
 		t.Fatalf("%+v %v", rep, err)
 	}
 	for _, c := range fake.Calls() {

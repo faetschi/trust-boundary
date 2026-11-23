@@ -243,7 +243,7 @@ func TestPlanIsDeterministicThroughTheCLI(t *testing.T) {
 	if got := line(first, "plan_digest"); got != want.Digest {
 		t.Fatalf("plan digest %q, runner.Plan %q", got, want.Digest)
 	}
-	if line(first, "units") != "123" || line(first, "subset") != "false" || line(first, "manifest_digest") != want.ManifestDigest {
+	if line(first, "units") != "103" || line(first, "subset") != "false" || line(first, "manifest_digest") != want.ManifestDigest {
 		t.Fatalf("plan output:\n%s", first)
 	}
 	if line(first, "configuration C") == "" || line(first, "role trajectory") != "11" {
@@ -321,27 +321,15 @@ func TestConfigIsStrict(t *testing.T) {
 	}
 }
 
-// Configuration V is judged against the cell image it ran: a plan that contains V steps needs
-// the pinned image digest in run.json, and a plan without V steps does not.
-func TestPlanNeedsTheImagePinOnlyWhenVIsInThePlan(t *testing.T) {
+// Configuration V is judged against the cell image it ran, so a plan that holds V steps needs the pinned image digest in
+// run.json (corpus.go). runner.Plan schedules no V step (D58 amendment), so a plan needs no pin and carries no V step.
+func TestPlanNeedsNoImagePinBecauseItHoldsNoVStep(t *testing.T) {
 	e := newEnv(t)
 	delete(e.cfg, "v_image_digest")
 	e.write()
-	_, err := e.cliCfg(nil, "plan")
-	if err == nil || !strings.Contains(err.Error(), "v_image_digest") {
-		t.Fatalf("a plan with V steps and no image pin: %v", err)
-	}
-	// A subset of adversarial cases has no V step (V runs compliant tasks only).
-	var adversarial []string
-	for _, c := range e.manifest.Cases {
-		if c.Kind == evalcorpus.KindAdversarial {
-			adversarial = append(adversarial, c.CaseID)
-		}
-	}
-	e.cfg["only_cases"] = adversarial[:1]
-	e.write()
-	if _, err := e.cliCfg(nil, "plan"); err != nil {
-		t.Fatalf("a plan without V steps needs no image pin: %v", err)
+	out, err := e.cliCfg(nil, "plan")
+	if err != nil || line(out, "configuration V") != "" {
+		t.Fatalf("a plan without an image pin: %v\n%s", err, out)
 	}
 }
 
@@ -568,7 +556,7 @@ func TestRerunIsRefusedWithoutOutageEvidenceAndAllowedWithIt(t *testing.T) {
 		t.Fatal("a refused rerun reached the executor")
 	}
 	out, err := e.cliCfg(fakeWire(f), "rerun", "--step", outage.ID())
-	if err != nil || len(f.Calls()) != before+1 || f.Calls()[before].Attempt != 2 || !strings.Contains(out, "units_used 124") {
+	if err != nil || len(f.Calls()) != before+1 || f.Calls()[before].Attempt != 2 || !strings.Contains(out, "units_used 104") {
 		t.Fatalf("rerun with outage evidence: %v\n%s", err, out)
 	}
 	if _, err := e.cliCfg(fakeWire(f), "rerun", "--step", outage.ID()); err == nil {
