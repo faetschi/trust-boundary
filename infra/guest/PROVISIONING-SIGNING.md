@@ -1275,12 +1275,22 @@ Genesis refuses a second run. If it succeeded but its output was lost (`genesis.
 
 The owner keeps `genesis.json` (records, head, `profile_digest`) and `checkpoint-1.json` off the guest. Rollback: before the first reserved request (RA-11), `GSSH 'sudo -n rm /var/lib/tbound/sessions/usd-ledger /etc/tbound/provider/research-ledger-checkpoint.json'`; after it, none.
 
-**Cap change, US$5 to US$10 (owner, 2026-11-23).** A ledger keeps the cap of its genesis, and the service refuses a ledger whose cap differs from the installed configuration (`supervisor/internal/researchroute/ledgerconfig.go`). The ledger made on 2026-11-21 has the US$5 cap: `records 1`, head `6bed50e0065343fbb41b4121873d4b715b0cbd2b26331933176ee22f334148ec` (`evidence/F32/proving-rounds/round-research/logs/checkpoint-1.json`). Before the research pilot's first paid call, the owner replaces it, in a session sudo window (RA-1), in this order:
+**Cap change, US$5 to US$10 (owner, 2026-11-23).** A ledger keeps the cap of its genesis, and the service refuses a ledger whose cap differs from the installed configuration (`supervisor/internal/researchroute/ledgerconfig.go`). The ledger made on 2026-11-21 has the US$5 cap: `records 1`, head `6bed50e0065343fbb41b4121873d4b715b0cbd2b26331933176ee22f334148ec` (`evidence/F32/proving-rounds/round-research/logs/checkpoint-1.json`). If RA-1 prints `LEDGER-EXISTS` before the research pilot's first paid call, the owner replaces that ledger in the session sudo window, as below. Without `LEDGER-EXISTS` (for example after a checkpoint restore removed it), skip this and run RA-2 and RA-4 as written.
 
-1. [READ-ONLY] Prove that the old ledger is untouched. Copy it out as in RA-12, then in WSL: `wc -l` must print 1, and the hash of its one record must equal the kept head: `[ "$(head -n 1 $L | head -c -1 | sha256sum | cut -c1-64)" = 6bed50e0065343fbb41b4121873d4b715b0cbd2b26331933176ee22f334148ec ]`. Any other result: stop, because a request was reserved and the rollback no longer applies.
-2. The rollback above removes the ledger and its checkpoint.
-3. RA-2 installs the committed `research-ledger.json` with `cap_micro_usd` 10000000. The frozen profile does not change.
-4. RA-4 runs genesis again into the new `$RR`, and the owner keeps the new `genesis.json` and `checkpoint-1.json` off the guest. Keep the old copy with the 2026-11-21 round; it is the evidence for step 1.
+```
+# WSL
+mkdir -p -m 0700 $RR
+# Git Bash
+GSSH "$OP svc stop"
+GSSH 'sudo -n cat /var/lib/tbound/sessions/usd-ledger' | WSL tee $RR/usd-ledger.cap5 > /dev/null
+# WSL
+L=$RR/usd-ledger.cap5
+[ "$(wc -l < $L)" = 1 ] && [ "$(head -n 1 $L | head -c -1 | sha256sum | cut -c1-64)" = 6bed50e0065343fbb41b4121873d4b715b0cbd2b26331933176ee22f334148ec ] && echo UNTOUCHED      # [READ-ONLY]
+# Git Bash, only after UNTOUCHED
+GSSH 'sudo -n rm /var/lib/tbound/sessions/usd-ledger /etc/tbound/provider/research-ledger-checkpoint.json'
+```
+
+Anything but `UNTOUCHED`: stop. A request was reserved, and no rollback applies. After the `rm`, run RA-2 again: it moves the old `$RR` aside with `usd-ledger.cap5` in it (the evidence of this check), and installs the same frozen profile and the committed `research-ledger.json` with `cap_micro_usd` 10000000. Then RA-4 runs genesis into the new `$RR`. The frozen profile does not change; only the ledger configuration and the ledger do.
 
 ### RA-4a [PRIVILEGED WRITE, needs owner approval] confirmatory corpus (thesis profile only)
 
