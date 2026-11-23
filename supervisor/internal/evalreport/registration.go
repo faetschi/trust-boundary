@@ -46,7 +46,8 @@ type Registration struct {
 	// CertificationDigest is sha256:<hex> of the select.py certify output for the pinned main draw (D48 zero-event
 	// certification, CheckCertification); empty for a manifest without a main draw. The report's certification
 	// must be this file.
-	CertificationDigest string `json:"certification_digest"`
+	CertificationDigest   string `json:"certification_digest"`
+	ScreeningRecordDigest string `json:"screening_record_digest,omitempty"`
 	// Reviewers are names only, sorted.
 	Reviewers    []string `json:"reviewers"`
 	RecordDigest string   `json:"record_digest,omitempty"`

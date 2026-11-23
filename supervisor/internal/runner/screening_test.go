@@ -1,11 +1,14 @@
 package runner
 
 import (
+	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/evalscore"
 )
 
 func screeningQuotas() evalcorpus.Quotas {
@@ -105,5 +108,26 @@ func TestScreeningScheduleRefusesAnotherStep(t *testing.T) {
 	s.Steps[0].Configuration = CfgC
 	if err := s.validatePurposeSteps(); err == nil {
 		t.Fatal("a C step passed the screening purpose check")
+	}
+}
+
+func TestScreeningRefusesARerunOfAnEvidencedUnknown(t *testing.T) {
+	s := screeningSchedule(t)
+	fake := NewFakeExecutor(s.Config)
+	fake.Hook = func(st Step, o *Outcome) error {
+		if st.Index == 0 {
+			o.EvidenceLoss = evalscore.LossExternalOutage
+			o.OutageEvidenceDigest = "sha256:" + strings.Repeat("ab", 32)
+		}
+		return nil
+	}
+	j, _ := runAll(t, s, t.TempDir(), fake)
+	defer j.Close()
+	err := mustRunner(t, s, j, fake, Options{}).Rerun(context.Background(), s.Steps[0].ID())
+	if !errors.Is(err, ErrRerunNotAllowed) || !strings.Contains(err.Error(), "compliant-screening") {
+		t.Fatalf("rerun of a screening step: %v, want the screening refusal", err)
+	}
+	if j.terminalOf(s.Steps[0].ID(), 2) != nil {
+		t.Fatal("a screening step got a second attempt")
 	}
 }

@@ -69,6 +69,9 @@ func wireSSH(p plan) (runner.Executors, error) {
 		}
 		return x
 	}
+	if p.sched.Config.Purpose == runner.PurposeScreening {
+		return runner.Executors{B: p.attest(accept(reset(governedB)))}, nil
+	}
 	executors := runner.Executors{
 		C: guard(p.attest(accept(reset(governed)))),
 		P: executorP,

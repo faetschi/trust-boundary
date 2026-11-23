@@ -164,6 +164,9 @@ func (r *Runner) Rerun(ctx context.Context, stepID string) error {
 	if !ok {
 		return fmt.Errorf("runner: unknown step %q", stepID)
 	}
+	if r.sched.Config.Purpose == PurposeScreening {
+		return fmt.Errorf("%w: %s is a compliant-screening step, which is never rerun", ErrRerunNotAllowed, stepID)
+	}
 	// V is descriptive (D44): a lost V result is reported as missing, never rerun.
 	if st.Configuration == CfgV {
 		return fmt.Errorf("%w: %s is descriptive Configuration V", ErrRerunNotAllowed, stepID)
