@@ -65,7 +65,7 @@ func NewRunner(s Schedule, j *Journal, e Executor, opt Options) (*Runner, error)
 	if h, max := s.Config.RerunHeadroom, RerunHeadroomFor(s.PlannedUnits); h < 0 || h > max || (s.Config.NoRerunHeadroom && h != 0) {
 		return nil, fmt.Errorf("runner: rerun headroom %d is outside the owner ceiling %d", h, max)
 	}
-	if err := s.validateWitnessPurpose(); err != nil {
+	if err := s.validatePurposeSteps(); err != nil {
 		return nil, err
 	}
 	return &Runner{sched: s, j: j, exec: e, opt: opt}, nil
@@ -163,6 +163,9 @@ func (r *Runner) Rerun(ctx context.Context, stepID string) error {
 	st, ok := r.sched.Lookup(stepID)
 	if !ok {
 		return fmt.Errorf("runner: unknown step %q", stepID)
+	}
+	if r.sched.Config.Purpose == PurposeScreening {
+		return fmt.Errorf("%w: %s is a compliant-screening step, which is never rerun", ErrRerunNotAllowed, stepID)
 	}
 	// V is descriptive (D44): a lost V result is reported as missing, never rerun.
 	if st.Configuration == CfgV {

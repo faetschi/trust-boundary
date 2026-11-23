@@ -29,6 +29,7 @@ const (
 	ledgerSyntheticEmpty = "synthetic-empty"
 	quotaThesis          = "thesis"
 	quotaPilot           = "pilot"
+	quotaScreening       = "screening"
 )
 
 // runConfig is the one run.json. It is decoded strictly: an unknown member, a duplicate
@@ -39,14 +40,14 @@ type runConfig struct {
 	CDHBaseline pinnedFile        `json:"cdh_baseline,omitempty"`
 	// Attributions pins the attribution file of the friction candidates. Absent: every candidate stays unresolved.
 	Attributions pinnedFile `json:"attributions,omitempty"`
-	// Manifest is the corpus manifest. QuotaProfile is thesis or pilot.
+	// Manifest is the corpus manifest. QuotaProfile is thesis, pilot or screening.
 	Manifest     string `json:"manifest"`
 	QuotaProfile string `json:"quota_profile"`
 	// FreezeCommit, EVQObligations, AdaptiveCaps, OnlyCases and Purpose are runner.Config.
 	FreezeCommit   string           `json:"freeze_commit"`
 	EVQObligations []string         `json:"evq_obligations"`
 	AdaptiveCaps   calibration.Caps `json:"adaptive_caps"`
-	// Purpose is "construct-witness" for a non-confirmatory witness run; absent is the study's run.
+	// Purpose is "construct-witness" or "compliant-screening" for a non-confirmatory run; absent is the study's run.
 	Purpose runner.RunPurpose `json:"purpose,omitempty"`
 	// Artifacts is the directory of the corpus artifacts (attacker-<hex>.json and draw-<hex>.json among them). A manifest
 	// that pins an attacker artifact needs it: the adaptive caps are then those of the artifact (runner.AdaptiveCapsFor).
@@ -182,9 +183,12 @@ func (c runConfig) validate() error {
 		return errors.New("attributions needs an absolute path and a sha256:<64 hex> digest")
 	}
 	switch c.QuotaProfile {
-	case quotaThesis, quotaPilot:
+	case quotaThesis, quotaPilot, quotaScreening:
 	default:
-		return fmt.Errorf("quota_profile %q: use %q or %q", c.QuotaProfile, quotaThesis, quotaPilot)
+		return fmt.Errorf("quota_profile %q: use %q, %q or %q", c.QuotaProfile, quotaThesis, quotaPilot, quotaScreening)
+	}
+	if (c.Purpose == runner.PurposeScreening) != (c.QuotaProfile == quotaScreening) {
+		return fmt.Errorf("purpose %q and quota_profile %q go together: the screening purpose needs the screening profile and no other run may use it", c.Purpose, c.QuotaProfile)
 	}
 	if err := c.Ledger.validate(); err != nil {
 		return err

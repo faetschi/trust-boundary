@@ -92,8 +92,9 @@ const (
 	// Corpus quota profiles. "thesis" (the default when the member is absent) validates a
 	// corpus manifest against the pre-registered quotas; "pilot" against the small explicit
 	// pilot quotas of a pilot or G4 dry run, whose results are not thesis results.
-	D09ManagedPiCorpusQuotaProfileThesis = "thesis"
-	D09ManagedPiCorpusQuotaProfilePilot  = "pilot"
+	D09ManagedPiCorpusQuotaProfileThesis    = "thesis"
+	D09ManagedPiCorpusQuotaProfilePilot     = "pilot"
+	D09ManagedPiCorpusQuotaProfileScreening = "screening"
 )
 
 // D09ManagedPiServiceSocket is the fixed systemd activation policy for the
@@ -253,6 +254,8 @@ func (c D09ManagedPiServiceConfig) validCorpusQuotaProfile() bool {
 		return !c.AllowPilotOnResearch
 	case D09ManagedPiCorpusQuotaProfilePilot:
 		return c.AllowPilotOnResearch == (c.ProviderRoute == D09ManagedPiProviderRouteResearch)
+	case D09ManagedPiCorpusQuotaProfileScreening:
+		return !c.AllowPilotOnResearch && c.ProviderRoute == D09ManagedPiProviderRouteResearch
 	}
 	return false
 }

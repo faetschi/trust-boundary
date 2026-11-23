@@ -864,6 +864,8 @@ func validPiServiceCorpusQuotaProfile(config piServiceConfig) bool {
 		return !config.AllowPilotOnResearch
 	case piruntime.D09ManagedPiCorpusQuotaProfilePilot:
 		return config.AllowPilotOnResearch == (config.ProviderRoute == piruntime.D09ManagedPiProviderRouteResearch)
+	case piruntime.D09ManagedPiCorpusQuotaProfileScreening:
+		return !config.AllowPilotOnResearch && config.ProviderRoute == piruntime.D09ManagedPiProviderRouteResearch
 	}
 	return false
 }

@@ -25,7 +25,7 @@ var ErrRerunInconsistent = errors.New("runner: rerun whose original attempt is n
 // D30, and Export refuses an inconsistent rerun as before. A C-DH plan keeps its own export
 // check (exportCDH and evalreport), and a construct-witness plan is never exported.
 func rerunEligible(s Schedule, j *Journal, st Step, attr evalscore.Attribution) error {
-	if !rerunScope(st) || s.Config.CDH != nil || s.Config.Purpose == PurposeConstructWitness {
+	if !rerunScope(st) || s.Config.CDH != nil || s.Config.Purpose == PurposeConstructWitness || s.Config.Purpose == PurposeScreening {
 		return nil
 	}
 	caseID := st.CaseID
@@ -232,7 +232,7 @@ func anyTerminal(j *Journal, steps []Step) bool {
 // step that has not run (a missing C result would read as a failed task). A
 // rerun gives a second record with attempt 2 and keeps the original.
 func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
-	if s.Config.Purpose == PurposeConstructWitness {
+	if s.Config.Purpose == PurposeConstructWitness || s.Config.Purpose == PurposeScreening {
 		return ExportResult{}, ErrNonConfirmatoryPurpose
 	}
 	if s.Config.CDH != nil {

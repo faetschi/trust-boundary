@@ -393,7 +393,7 @@ type CaseCalibration struct {
 }
 
 func Calibrations(s Schedule, j *Journal) ([]CaseCalibration, error) {
-	if s.Config.Purpose == PurposeConstructWitness {
+	if s.Config.Purpose == PurposeConstructWitness || s.Config.Purpose == PurposeScreening {
 		return nil, ErrNonConfirmatoryPurpose
 	}
 	order, groups := caseGroups(s)
