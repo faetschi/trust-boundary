@@ -7,9 +7,11 @@ Everything TBound and the thesis need lives in this repository directory, and no
 | `infra/freeze/` | yes | Freeze kit: gate, freeze, guest chain. |
 | `evidence/` | yes | F14 receipts and the few files the thesis cites. |
 | `.local/` | no | VM disks, the dedicated WSL distro's disk, seed disk, owner keys, `freeze-host.env`, worktrees, local history archive. |
-| `thesis/` | no | Checkout of `github.com/faetschi/MSE_MA_Thesis`. |
+| `thesis/` | no | Checkout of the thesis repository. |
 
 `scripts/check-self-contained.sh` fails in CI when a tracked file depends on a path outside the repo.
+
+**No hardcoded machine paths.** A live file (anything outside `evidence/` and the frozen `infra/freeze/freezes/`) names no drive-letter path, user profile, the owner's login, `.t3` worktree or Claude scratch folder. Use `$TBOUND_LOCAL`, `.local/`, a path relative to the repo root, an environment variable, or a placeholder such as `/home/<user>`. The same script enforces this.
 
 **Worktrees.** Create them in `.local/worktrees/<branch-slug>`. A worktree has no `.local/` of its own: set `TBOUND_LOCAL` to the primary checkout's.
 
