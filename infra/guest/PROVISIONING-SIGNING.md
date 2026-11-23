@@ -1232,13 +1232,14 @@ Expect only `opencode-go.key` and no `LEDGER-EXISTS`. If a ledger exists, an ear
 
 The research profile was frozen once, in the F32 research round: the committed profile with `frozen_at` `2026-11-21T13:35:13Z` (`supervisor/internal/researchprofile/profile.go:233-236`), sha256 `3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357` (`evidence/F32/proving-rounds/round-research/logs/SHA256`). Every later round, the research pilot and H1 install that same file, copied from where that round kept it. Never freeze it again: a new `frozen_at` is a new profile digest. Do not commit the frozen file: `supervisor/internal/researchroute/committed_profile_test.go:32-35` needs `frozen_at` null in the repository. The ledger configuration is installed unchanged from `$W/src`.
 
-`sign-run.sh rr` refuses a `$RR` that already holds an earlier round's S3 outputs (`infra/freeze/guest/sign-run.sh:32`, rule 4), so an existing `$RR` is moved aside first, never deleted. If the guest still holds its ledger (RA-1 printed `LEDGER-EXISTS`, and the ledger was not removed by the cap change of RA-4), RA-4 is skipped and RA-12 reads the ledger record from `$RR`: then also run the `cp -n` line, which carries `genesis.json` and the checkpoints over. After a cap change or on a guest without a ledger, do not run it, because RA-4 writes new ones.
+`sign-run.sh rr` refuses a `$RR` that already holds an earlier round's S3 outputs (`infra/freeze/guest/sign-run.sh:32`, rule 4), so an existing `$RR` is moved aside first, never deleted. If the guest still holds its ledger (RA-1 printed `LEDGER-EXISTS`, and the ledger was not removed by the cap change of RA-4), RA-4 is skipped and RA-12 reads the ledger record from `$RR`: then also run the two `PREV_RR` lines, which carry `genesis.json` and the checkpoints over from where the last research round kept them. That is `$OLD` when the first line moved `$RR` (a later round of the same freeze), and otherwise that round's `rr` directory under the earlier freeze (`$H/f32/rr` for the 2026-11-21 round). After a cap change or on a guest without a ledger, do not run them, because RA-4 writes new ones.
 
 ```
 # WSL
 [ ! -e $RR ] || { OLD=$RR.$(date -u +%Y%m%dT%H%M%SZ); mv -T -n $RR $OLD && echo "moved aside: $OLD"; }
 mkdir -m 0700 $RR      # new directory (rule 4)
-cp -n $OLD/genesis.json $OLD/checkpoint-*.json $RR/      # only while the guest ledger still exists (see above)
+PREV_RR=${OLD:-<the earlier freeze's rr directory>}      # only while the guest ledger still exists (see above)
+cp -n $PREV_RR/genesis.json $PREV_RR/checkpoint-*.json $RR/
 FROZEN=$H/f32/rr/research-profile.json      # the 2026-11-21 file; on F32 itself, where the first line moves $H/f32/rr, use $OLD/research-profile.json
 echo "3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357  $FROZEN" | sha256sum -c      # [READ-ONLY] must print OK
 cp $FROZEN $RR/research-profile.json
