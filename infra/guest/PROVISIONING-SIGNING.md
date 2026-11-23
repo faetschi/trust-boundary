@@ -1195,7 +1195,7 @@ Two shells, each one window. Blocks marked `# WSL` run in a WSL shell with the e
 
 ```
 # WSL
-export KIT_FREEZE=F31; K=<the Linux kit checkout that TBOUND_WGA names: TBOUND_WGA=$K/infra/freeze/guest>; . $K/infra/freeze/lib.sh; . $TBOUND_WORK/env.sh; . $W/session-env.sh; RR=$HF/rr; WGA=$K/infra/freeze/guest
+export KIT_FREEZE=F33; K=<the Linux kit checkout that TBOUND_WGA names: TBOUND_WGA=$K/infra/freeze/guest>; . $K/infra/freeze/lib.sh; . $TBOUND_WORK/env.sh; . $W/session-env.sh; RR=$HF/rr; WGA=$K/infra/freeze/guest
 # Git Bash
 export MSYS_NO_PATHCONV=1 GUEST_IP=<measured this session>
 GSSH() { sh infra/freeze/tools/gssh.sh "$@"; }                   # stdin passes through
@@ -1222,29 +1222,35 @@ Rollback: `GSSH "$OP svc start"`.
 ### RA-1 [PRIVILEGED WRITE, needs owner approval] open session sudo
 
 ```
-read -rs TBA_PW; export TBA_PW; KIT_FREEZE=F31 bash infra/freeze/guest/00-session-sudo.sh open
+read -rs TBA_PW; export TBA_PW; KIT_FREEZE=F33 bash infra/freeze/guest/00-session-sudo.sh open
 GSSH 'sudo -n ls -l /etc/tbound/provider; sudo -n test -e /var/lib/tbound/sessions/usd-ledger && echo LEDGER-EXISTS'      # [READ-ONLY]
 ```
 
-Expect only `opencode-go.key` and no `LEDGER-EXISTS`. If a ledger exists, an earlier research round ran on this guest: skip RA-4, and check its continuity against the kept checkpoint (RA-12) before the round. Rollback: `KIT_FREEZE=F31 bash infra/freeze/guest/00-session-sudo.sh close`.
+Expect only `opencode-go.key` and no `LEDGER-EXISTS`. If a ledger exists, an earlier research round ran on this guest: skip RA-4, and check its continuity against the kept checkpoint (RA-12) before the round. Rollback: `KIT_FREEZE=F33 bash infra/freeze/guest/00-session-sudo.sh close`.
 
 ### RA-2 (RR-1) [PRIVILEGED WRITE, needs owner approval] frozen profile and ledger configuration
 
-The one change to the committed profile is `frozen_at`, an RFC 3339 timestamp (`supervisor/internal/researchprofile/profile.go:233-236`). Do not commit the frozen file: `supervisor/internal/researchroute/committed_profile_test.go:32-35` needs `frozen_at` null in the repository. The ledger configuration is installed unchanged.
+The research profile was frozen once, in the F32 research round: the committed profile with `frozen_at` `2026-11-21T13:35:13Z` (`supervisor/internal/researchprofile/profile.go:233-236`), sha256 `3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357` (`evidence/F32/proving-rounds/round-research/logs/SHA256`). Every later round, the research pilot and H1 install that same file, copied from where that round kept it. Never freeze it again: a new `frozen_at` is a new profile digest. Do not commit the frozen file: `supervisor/internal/researchroute/committed_profile_test.go:32-35` needs `frozen_at` null in the repository. The ledger configuration is installed unchanged from `$W/src`.
+
+`sign-run.sh rr` refuses a `$RR` that already holds an earlier round's S3 outputs (`infra/freeze/guest/sign-run.sh:32`, rule 4), so an existing `$RR` is moved aside first, never deleted. If the guest still holds its ledger (RA-1 printed `LEDGER-EXISTS`, and the ledger was not removed by the cap change of RA-4), RA-4 is skipped and RA-12 reads the ledger record from `$RR`: then also run the two `PREV_RR` lines, which carry `genesis.json` and the checkpoints over from where the last research round kept them. That is `$OLD` when the first line moved `$RR` (a later round of the same freeze), and otherwise that round's `rr` directory under the earlier freeze (`$H/f32/rr` for the 2026-11-21 round). After a cap change or on a guest without a ledger, do not run them, because RA-4 writes new ones.
 
 ```
 # WSL
+[ ! -e $RR ] || { OLD=$RR.$(date -u +%Y%m%dT%H%M%SZ); mv -T -n $RR $OLD && echo "moved aside: $OLD"; }
 mkdir -m 0700 $RR      # new directory (rule 4)
-sed "s|\"frozen_at\": null|\"frozen_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"|" $W/src/infra/guest/research/research-profile.json > $RR/research-profile.json
+PREV_RR=${OLD:-<the earlier freeze's rr directory>}      # only while the guest ledger still exists (see above)
+cp -n $PREV_RR/genesis.json $PREV_RR/checkpoint-*.json $RR/
+FROZEN=$H/f32/rr/research-profile.json      # the 2026-11-21 file; on F32 itself, where the first line moves $H/f32/rr, use $OLD/research-profile.json
+echo "3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357  $FROZEN" | sha256sum -c      # [READ-ONLY] must print OK
+cp $FROZEN $RR/research-profile.json
 cp $W/src/infra/guest/research/research-ledger.json $RR/
-diff $W/src/infra/guest/research/research-profile.json $RR/research-profile.json      # [READ-ONLY] exactly one line, frozen_at
 sha256sum $RR/research-profile.json $RR/research-ledger.json | tee $RR/SHA256         # [READ-ONLY] the record off the guest
 # Git Bash
 for f in research-profile.json research-ledger.json; do WSL cat $RR/$f | GSSH "sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/provider/$f"; done
 GSSH 'sudo -n sha256sum /etc/tbound/provider/research-profile.json /etc/tbound/provider/research-ledger.json'      # [READ-ONLY] equal to $RR/SHA256
 ```
 
-H1 uses the same frozen file: a new `frozen_at` is a new profile digest. Rollback (before RA-4 only): `sudo -n rm` the two files.
+If the kept file is lost, the same bytes come from the committed profile with `frozen_at` set to `2026-11-21T13:35:13Z`, as long as the committed profile is unchanged since `f32-freeze`; the `sha256sum -c` line decides. Rollback (before RA-4 only): `sudo -n rm` the two files.
 
 ### RA-3 (RR-2) [PRIVILEGED WRITE, needs owner approval] OpenRouter key
 
@@ -1415,7 +1421,7 @@ Then run R5-4 [READ-ONLY]: TD == `ContainmentProfileDigest`. Rollback: reinstall
 GSSH 'sudo -n systemctl start tbound-pi.socket && sudo -n systemctl start tbound-pi.service; systemctl is-active tbound-pi.socket tbound-pi.service'      # active active
 GSSH 'sudo -n journalctl -u tbound-pi.service -n 50 --no-pager'      # [READ-ONLY] no "open the research provider route" or "exceeds the research profile" refusal
 GSSH "$OP diag l2"                                                     # [READ-ONLY] L2 checks; then the leftover-container check (Pilot run)
-KIT_FREEZE=F31 bash infra/freeze/guest/00-session-sudo.sh close
+KIT_FREEZE=F33 bash infra/freeze/guest/00-session-sudo.sh close
 ```
 
 Run the round's plan (Pilot run, with the RA-9 pins in a new `run_dir`). First the check, which spends nothing: `trial reset <case> --check` refuses on the USD stop rule (`supervisor/cmd/tbound/trial_linux.go:383-401`), a pending workflow (`:403-470`) or a leftover cell (`trial_host_linux.go:309`). Then one step at a time (`supervisor/cmd/tbound-run/commands.go:52-70`):
