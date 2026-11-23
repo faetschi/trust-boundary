@@ -35,7 +35,7 @@ type LedgerConfig struct {
 	SchemaVersion uint64 `json:"schema_version"`
 	// LedgerID names the spend domain. It is written to the ledger genesis record.
 	LedgerID string `json:"ledger_id"`
-	// CapMicroUSD is the hard total cap in integer micro-USD (US$5 is 5000000).
+	// CapMicroUSD is the hard total cap in integer micro-USD (US$10 is 10000000).
 	// It is written to the genesis record, and a ledger created with another cap
 	// is refused.
 	CapMicroUSD int64 `json:"cap_micro_usd"`

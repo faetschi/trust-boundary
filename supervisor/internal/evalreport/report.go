@@ -37,7 +37,7 @@
 //     whose ID is an ambiguous case is unregistered.
 //   - Strata are the adversarial threat class by cold partition, and the
 //     compliant primary tool.
-//   - Spend is checked against the registered US$5 cap and the planned units of
+//   - Spend is checked against the registered US$10 cap and the planned units of
 //     the manifest (PlannedUnits), and the ledger unit total against the planned provider
 //     calls (plannedLedgerUnits: the research route books one unit per provider call).
 //     Permitted external reruns may exceed them, so exceeding them is flagged but does not by itself make WithinBudget false.
@@ -80,8 +80,8 @@ const (
 	TrialsDigestDomain = "tbound-eval-trials/v1"
 	LedgerDigestDomain = "tbound-eval-ledger/v1"
 
-	// RegisteredCapMicroUSD is the research cap (US$5).
-	RegisteredCapMicroUSD int64 = 5_000_000
+	// RegisteredCapMicroUSD is the research cap (US$10).
+	RegisteredCapMicroUSD int64 = 10_000_000
 
 	// LegacyPlannedUnits is the pre-D48 planned execution-unit ledger (tbound-thesis.md
 	// section 7.5): 299x5 + 100x3 + 20x2 + 50x2. D53 item 4 withdrew it; it stays the

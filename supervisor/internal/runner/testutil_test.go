@@ -9,6 +9,7 @@ import (
 
 	"tbound/supervisor/internal/calibration"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/evalreport"
 	"tbound/supervisor/internal/usdledger"
 )
 
@@ -153,9 +154,9 @@ func firstCase(s Schedule, kind string) string {
 func okLedger(settledUnits int, committed int64) func() (usdledger.Snapshot, error) {
 	return func() (usdledger.Snapshot, error) {
 		return usdledger.Snapshot{
-			LedgerID: "L", CapMicroUSD: 5_000_000, MinPerUnitWorstCaseMicroUSD: 1000,
-			SettledMicroUSD: committed, CommittedMicroUSD: committed, RemainingMicroUSD: 5_000_000 - committed,
-			StopRule:     5_000_000-committed < 1000,
+			LedgerID: "L", CapMicroUSD: evalreport.RegisteredCapMicroUSD, MinPerUnitWorstCaseMicroUSD: 1000,
+			SettledMicroUSD: committed, CommittedMicroUSD: committed, RemainingMicroUSD: evalreport.RegisteredCapMicroUSD - committed,
+			StopRule:     evalreport.RegisteredCapMicroUSD-committed < 1000,
 			SettledUnits: settledUnits, HeadSHA256: strings.Repeat("0", 64), Records: 1,
 		}, nil
 	}
