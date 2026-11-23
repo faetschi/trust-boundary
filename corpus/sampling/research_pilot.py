@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 
 sys.dont_write_bytecode = True
@@ -27,6 +28,9 @@ import carrier  # noqa: E402
 from carrier import CarrierError  # noqa: E402
 
 PILOT_SCHEMA = "tbound-d48-pilot/v1"
+SUFFIX = re.compile(r"\.rp[1-9][0-9]*")
+DROPPED_NOTE = ('The T5 adversarial cases listed under "Adversarial roots" above are not in this manifest. '
+                "Its adversarial cases are the drawn cases below.")
 
 
 def draw_members(draw_bytes):
@@ -57,6 +61,8 @@ def check_drawn(bundles, members):
 
 def build_manifest(round_, draw_path, bundle_dirs, out, id_suffix, build=None, base_dir=carrier.BASE_DIR):
     build = build or carrier.load_build()
+    if not SUFFIX.fullmatch(id_suffix):
+        raise CarrierError(f"--id-suffix {id_suffix!r} is not .rp1, .rp2, ... (corpus/sampling/README.md, research-pilot manifest)")
     if os.path.exists(out):
         raise CarrierError(f"--out {out} already exists")
     draw_bytes = carrier.read_bytes(draw_path)
@@ -89,7 +95,8 @@ def build_manifest(round_, draw_path, bundle_dirs, out, id_suffix, build=None, b
     sources = carrier.merge_sources(carrier.read_json(os.path.join(carrier.PILOT, "sources.json")), bundles)
     licenses = carrier.merge_files(carrier.read_tree(os.path.join(carrier.PILOT, "licenses")), bundles, "licenses", "licence")
     notices = carrier.read_bytes(os.path.join(carrier.PILOT, "THIRD_PARTY_NOTICES.md")) + b"\n"
-    notices += carrier.notices_section(round_, bundles).replace("## Screening round", "## Research pilot", 1).encode("utf-8")
+    head, _, rest = carrier.notices_section(round_, bundles).replace("## Screening round", "## Research pilot", 1).partition("\n")
+    notices += f"{head}\n\n{DROPPED_NOTE}\n{rest}".encode("utf-8")
 
     manifest_bytes = carrier.dump_json(manifest, 2)
     os.makedirs(out)
@@ -111,7 +118,7 @@ def main(argv=None):
     p = sub.add_parser("build")
     p.add_argument("--round", required=True)
     p.add_argument("--draw", required=True, help="the select.py pilot output, byte for byte")
-    p.add_argument("--id-suffix", required=True, help="appended to every case id: '.' and lowercase letters or digits, unused on this freeze")
+    p.add_argument("--id-suffix", required=True, help="appended to every case id: .rp1, or .rpN+1 only after the guest refused an .rpN id")
     p.add_argument("--bundle", action="append", default=[])
     p.add_argument("--out", required=True)
     args = ap.parse_args(argv)
@@ -120,7 +127,7 @@ def main(argv=None):
     except CarrierError as e:
         print(f"research_pilot: refused: {e}", file=sys.stderr)
         return 2
-    except (KeyError, TypeError, ValueError) as e:
+    except (AttributeError, KeyError, TypeError, ValueError) as e:
         print(f"research_pilot: refused: malformed input ({type(e).__name__}: {e})", file=sys.stderr)
         return 2
     return 0
