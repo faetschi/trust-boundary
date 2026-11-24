@@ -4,7 +4,7 @@
 # Stops at the first failing step. The literal "32 then one 40 call with all six kinds" order is impossible: capability/procoracle/
 # landlock-connect need the service RUNNING and 32 stops it, while route-direct-runtime needs 32's RUNID. The chain therefore uses
 # 40's documented order: service producers after 30 (g1 service up), route-bash-view after 31, route-direct-runtime after 32.
-# CORPUS_PILOT=1 appends 33-corpus-pilot.sh (needs TBA_PW; the session drop-in is closed by then).
+# CORPUS_PILOT=1 appends 33-corpus-pilot.sh (needs TBA_PW; the session drop-in is closed by then); V_STUB_PROBE=1 (with CORPUS_PILOT=1 and TBOUND_TRIAL_KEY) then appends 34-v-stub-probe.sh.
 # 50 runs with RECLAIM_PODMAN_PAUSE=1: a stale uid-995 podman pause process after a dr run is expected ($PREV_FREEZE notes), so the chain reclaims
 # exactly that process (SIGTERM, re-verified in the same remote command) instead of stopping at the 50 precondition.
 . "$(dirname -- "${BASH_SOURCE[0]}")/../freeze-guard.sh" || exit 2
@@ -46,5 +46,16 @@ if [ "${CORPUS_PILOT:-0}" = 1 ]; then   # optional tail (owner approval): corpus
   bash 33-corpus-pilot.sh > "$L/guest-33-corpus-pilot.sh.txt" 2>&1; rc=$?
   tail -6 "$L/guest-33-corpus-pilot.sh.txt"
   [ "$rc" = 0 ] || { echo "STOP rc=$rc at 33-corpus-pilot.sh"; exit "$rc"; }
+fi
+if [ "${V_STUB_PROBE:-0}" = 1 ]; then
+  [ "${CORPUS_PILOT:-0}" = 1 ] || { echo "V_STUB_PROBE=1 needs CORPUS_PILOT=1: the probe runs on the corpus-mode service the pilot cycle leaves"; exit 2; }
+  echo "##### 34-v-stub-probe.sh $(date +%T)"
+  bash 34-v-stub-probe.sh > "$L/guest-34-v-stub-probe.sh.txt" 2>&1; rc=$?
+  tail -6 "$L/guest-34-v-stub-probe.sh.txt"
+  [ "$rc" = 0 ] || { echo "STOP rc=$rc at 34-v-stub-probe.sh"; exit "$rc"; }
+  echo "##### 40-guest-evidence.sh v-stub $(date +%T)"
+  bash 40-guest-evidence.sh v-stub > "$L/guest-40-guest-evidence.sh-v-stub.txt" 2>&1; rc=$?
+  tail -6 "$L/guest-40-guest-evidence.sh-v-stub.txt"
+  [ "$rc" = 0 ] || { echo "STOP rc=$rc at 40-guest-evidence.sh v-stub"; exit "$rc"; }
 fi
 echo "end $(date +%T)"

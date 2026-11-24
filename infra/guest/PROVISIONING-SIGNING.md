@@ -1024,6 +1024,49 @@ review fields are optional metadata and require no invented human signature.
 
 New receipt pins for the pilot: `profile_hash` (S4' `Digest`), `containment_profile_digest` (new TD), `frozen_source_digest` (`SRC_DIGEST`, the profile's `SourceProvenanceDigest`), and, for the guest evidence of the runs with a config of their own, `base_template_digest` (`BASE_TD`), `admin_pubkey_digest` (`ADMIN_PUB_DIGEST`, the digest of `<ADMIN_PUB_PATH>`), `runtime_bundle_digest` (`BUNDLE_DIGEST`) and `runner_digest` (`TBOUND_DIGEST`); the last five are the same as before D. The pilot's `profile_hash` covers the bundle and its `containment_profile_digest` the registration and so the runner; `runtime_bundle_digest` and `runner_digest` are checked against them on the owner machine by `verify --runtime-bundle-digest` and `managed-root-verify --runner-digest` (D4, D6), and for the evidence runs by the producers and validators.
 
+## V route probe against a stub upstream (D61 item 8, after Part D)
+
+`docs/design/v-research-route.md` item 6 asks for one V unit in the guest qualification, next to G1, rp and dr. It runs Configuration V on a development compliant case through the per-unit forwarder of the service (`internal/researchroute/forwarder.go`, `cmd/tbound/pi_service_v_linux.go`), against a stub upstream, with a throwaway ledger and no research key. It books nothing in the research ledger. It does not replace the real-exchange evidence: that is the first V unit of the research pilot, run alone and inspected (D61 item 6). `guest/34-v-stub-probe.sh` does the whole cycle. It needs `TBOUND_TRIAL_KEY=<trial key path>` and `TBA_PW`, and it runs after `33-corpus-pilot.sh` (`tools/guest-chain.sh` with `CORPUS_PILOT=1 V_STUB_PROBE=1`).
+
+`tbound-op` cannot install this config: its NAME list is `smoke|g1|rp|dr|pilot`, and `cfg_structural` compares a config with the shipped template of its NAME. So the probe is a hand install in one session sudo window, as RA-5 to RA-13 are, and it signs with `sign-run.sh vs` into `$HF/vs`. The service takes the probe's files from fixed paths only: `researchroute.StubPaths()` fixes them in code, `OpenStub` refuses the research ledger, checkpoint, configuration and key paths, and `VStubEndpoint` is `http://127.0.0.1:18443/api/v1/chat/completions`. The service config carries none of them. So the template `infra/guest/serve-pi-service.v-stub.json` is the pilot template with `provider_route` `v-stub` and nothing else changed (corpus mode, pilot profile, no `allow_pilot_on_research`).
+
+| Throwaway file | Content |
+| --- | --- |
+| `/etc/tbound/v-stub/research-profile.json` (root 0644) | the frozen research profile of RA-2: the committed profile with `frozen_at` `2026-11-21T13:35:13Z`, sha256 `3d0eaf64...c357`, checked by the script |
+| `/etc/tbound/v-stub/research-ledger.json` (root 0644) | `infra/guest/v-stub/research-ledger.json`: ledger id `tbound-v-stub-probe`, cap US$1 |
+| `/var/lib/tbound/sessions/v-stub-ledger` | genesis by `tbound-profile research-ledger-genesis --profile ... --ledger-config ... --ledger ...` as the service uid |
+| `/etc/tbound/v-stub/research-ledger-checkpoint.json` (root 0644) | `{"records": N, "head_sha256": "..."}` from the genesis output, as RA-4 |
+| `/etc/tbound/v-stub/stub.key` (995:986 0400) | a random string made for this run (`sk-vstub-` and 48 hex characters). It is not a research key and is never printed or kept |
+| `/var/lib/tbound/sessions/v-stub-admissions/` | the service's admission marker for the unit (the research route uses `v-admissions`) |
+| `/var/tmp/tbound-vs/`, `~tboundadmin/stage-vstub/` | the unsigned registration; the stub upstream (`infra/guest/v-stub/stub-upstream.py`, standard library only, started as `tboundadmin`) with its log |
+
+The case is the first compliant case of the installed pilot manifest, and the script refuses anything that is not a `PILOT-CMP-` development case. In the T5 pilot that is `PILOT-CMP-read-01`. It is a development case, so no V unit runs on an H1 task before T2. It is the case `33` uses for `trial reset`. Its task only reads, and the stub's reply has no tool call, so the unit has no effect to undo.
+
+- V-0 [READ-ONLY] preconditions: `$HF/pilot/CYCLE_OK`; `tbound-op status pilot` says "installed config matches state of: pilot"; no probe file on the guest; `$HF/vs` does not exist (move an earlier one aside); session sudo closed at the start.
+- V-1 [READ-ONLY] the research ledger before: record count, head hash and whole-file sha256, or "absent" (recorded as such), and `stat` of the research key, profile, ledger configuration and checkpoint (no content is read).
+- V-2 [PRIVILEGED WRITE, needs owner approval] open session sudo; `tbound-op svc stop`; install `$HF/vs/serve-pi-service.json` (RA-5). The script requires that it differs from the pilot config in `provider_route` only.
+- V-3 [PRIVILEGED WRITE] measure the registration (RA-6: the cgroup and the flags of `tbound-op reg-measure`), fetch it, and run the RA-6 checks (runner, calibration, uid, config digest, account digests).
+- V-4 [OWNER SIGN] `sign-run.sh vs s3`, install the registration, `sign-run.sh vs s4` (the profile pins the engineering route, so the corpus manifest's model pin stays the pilot's), install profile and template, verify them on the guest (RA-7 to RA-10).
+- V-5 [PRIVILEGED WRITE] the throwaway files of the table, genesis and checkpoint; the stub upstream on `127.0.0.1:18443`; `systemctl start` (RA-11), and a check of the journal since the start for a refusal.
+- V-6 the unit: `trial v-run <case>` through the trial key. The stub holds its reply for 20 s, so the container is alive, and `podman inspect` as the service uid must show exactly three bind mounts (`/work` rw, `/runtime` ro, `/run/tbound/fwd` ro), no environment name with KEY, TOKEN, SECRET or PASSWORD, no mount source under `/etc/tbound` or ending in `.key`, and the stub key nowhere. The V document must be clean: exit 0, not timed out, evaluated, every booked call settled (`ledger_records == usage_events`), no uncertain unit, no overage, and tokens and cost equal to the stub's fixed usage times the record count. The task result itself (`accept.passed`) is recorded, not required.
+- V-7 the stub log holds exactly that many requests, each the research POST with the stub key (compared by sha256) and with the profile's model, `max_completion_tokens` and provider order. The throwaway ledger extends its genesis head. The research ledger, checkpoint, profile, configuration and key file are unchanged: the same text as in V-1.
+- V-8 [PRIVILEGED WRITE] teardown and restore (RA-13): kill the stub, `svc stop`, delete the throwaway files by their fixed names (a listing before, `DELETED` after, and a check that nothing named `v-stub*` is left in `/var/lib/tbound/sessions`), reinstall the six pilot files from `$HF/pilot`, `tbound-op svc start`, `diag l2`, close session sudo. Then the research ledger is read again and must still equal V-1.
+
+Teardown runs on every exit, a failure included. If it cannot finish, the owner removes by hand only the paths of the table and reinstalls the six files of `$HF/pilot`. The research ledger and `/etc/tbound/provider` are never touched.
+
+Evidence. The log `$GOUT/logs/34-v-stub-probe.log` holds every step, the deletion included, and `pull-receipts.sh` keeps it. `$HF/vs/` holds `research-before.txt`, `research-after.txt`, `genesis.json`, `inspect.json`, `v-doc.json`, `stub.log`, `v-stub-ledger.after`, `deleted-listing-before.txt`, `DELETED`, the signed files and `record.json` (with `commit`). `40-guest-evidence.sh v-stub` copies the record to `$HF/evq/v-stub.json` once `CHECKS_OK`, `DELETED` and `record.json` exist.
+
+Not verified without the guest (the first run decides):
+
+- the service (uid 995) reaches `127.0.0.1:18443` on the host loopback;
+- rootless Podman started by `trial v-run` binds the read-only forwarder directory (a socket and a token under `/run/tbound-pi/v-fwd/`), and Pi in the container reaches the socket through the relay;
+- `podman inspect` names its fields as the check expects (`Mounts[].RW`, `Config.Env`; `ReadonlyRootfs` and `CapDrop` are only recorded);
+- Pi makes the one call the stub answers and exits 0 on a reply without tool calls, and the stub reply (`usage.cost` 0.000002) settles as 2 micro-USD per call;
+- the pilot service restarts with the netsink attestation of `33` still valid;
+- `tbound-op svc start` accepts the restored pilot files (they are byte-identical to the installed ones, and its own `verify_installed` is the check);
+- a `v-stub` service accepts the pilot corpus manifest and artifacts (`validCorpusQuotaProfile`: `pilot` with no allowance on a non-research route);
+- the service starts with an earlier pilot workflow catalog and journal under a different provider route.
+
 ## Spike B (after D8; needs owner approval for every privileged step)
 
 Now `trial reset` works. Corrections to the earlier checklist, checked against `trial_linux.go`, `trial_host_linux.go`, `d09_delta.go`:

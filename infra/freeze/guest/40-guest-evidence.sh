@@ -34,7 +34,7 @@ load_env
 preflight_op
 OUT=/var/tmp/tbound-op
 EV=evq
-[ "$#" -ge 1 ] || die "usage: bash 40-guest-evidence.sh status|provider-exchange|capability|procoracle|landlock-connect|netsink|route-bash-view|route-direct-runtime ..."
+[ "$#" -ge 1 ] || die "usage: bash 40-guest-evidence.sh status|provider-exchange|capability|procoracle|landlock-connect|netsink|route-bash-view|route-direct-runtime|v-stub ..."
 WX mkdir -p -m 0700 "$HF/$EV"
 BASE_TD=$(hf_get BASE_TD); need_dig BASE_TD "$BASE_TD"
 CAP_DIR=$CF/guest-tests          # WSL path, written by 35-evq-capture.sh (guest-tests/{procoracle,tbound-cell-entrypoint}.test)
@@ -130,7 +130,7 @@ for K in "$@"; do
   case $K in
     status)
       echo "service running: $(service_running && echo yes || echo no)"
-      for f in provider capability procoracle landlock-connect netsink route-bash-view route-direct-runtime; do
+      for f in provider capability procoracle landlock-connect netsink route-bash-view route-direct-runtime v-stub; do
         if hf_has "$EV/$f.json"; then ge_check_commit "$HF/$EV/$f.json"; echo "fetched: $f.json (commit $FREEZE_COMMIT)"
         else echo "not yet: $f.json"; fi
       done
@@ -153,6 +153,11 @@ for K in "$@"; do
     route-direct-runtime)
       if hf_has dr/RUNID && hf_has dr/CHECKS_OK; then stage_tbp; stage_run; ge_run route-direct-runtime route-direct-runtime.json "$(hf_get dr/RUNID)"
       else skip $K "32-reg-dr.sh not complete ($HF/dr/RUNID, CHECKS_OK)"; fi;;
+    v-stub)
+      if hf_has vs/CHECKS_OK && hf_has vs/DELETED && hf_has vs/record.json; then
+        hf_has "$EV/v-stub.json" || { WX cat "$HF/vs/record.json" | hf_save "$EV/v-stub.json"; hf_commit "$EV/v-stub.json"; }
+        ge_done v-stub v-stub.json
+      else skip $K "34-v-stub-probe.sh not complete ($HF/vs/CHECKS_OK, DELETED, record.json)"; fi;;
     *) die "unknown KIND '$K'";;
   esac
 done

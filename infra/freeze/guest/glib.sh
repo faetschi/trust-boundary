@@ -123,7 +123,7 @@ if [ ${#WXP[@]} -gt 0 ]; then
   linux_safe "${TBOUND_WGA:-}" && [[ $TBOUND_WGA == */infra/freeze/guest ]] ||
     die "set TBOUND_WGA to <Linux checkout of this kit>/infra/freeze/guest (plain absolute path, outside /mnt)"
   WGA=$TBOUND_WGA
-  WGA_FILES=(guest/jget.py guest/reqstate.py guest/fill-template.py guest/mk-svc-config.py guest/mk-dr-config.py guest/sign-g1.sh guest/sign-run.sh guest/carrier-check.sh
+  WGA_FILES=(guest/jget.py guest/reqstate.py guest/fill-template.py guest/mk-svc-config.py guest/mk-dr-config.py guest/vs-check.py guest/sign-g1.sh guest/sign-run.sh guest/carrier-check.sh
     lib.sh paths.sh freeze-guard.sh "freezes/$KIT_FREEZE.env")
   [ "$(cd "$A" && sha256sum "${WGA_FILES[@]}" | cut -c1-64)" = "$(WX bash -c 'cd "$1/.." && shift && sha256sum "$@" | cut -c1-64' _ "$WGA" "${WGA_FILES[@]}")" ] ||
     die "TBOUND_WGA=$WGA differs from this kit (helpers, lib or freezes/$KIT_FREEZE.env): refresh the Linux checkout"
