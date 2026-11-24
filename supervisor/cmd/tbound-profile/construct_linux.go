@@ -33,7 +33,7 @@ func runCorpusCheck(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("tbound-profile corpus-check", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	manifest := flags.String("manifest", "", "corpus manifest; sources.json, licenses/, notices and artifacts/ must be beside it")
-	profile := flags.String("quota-profile", "thesis", "registered quotas: thesis or pilot")
+	profile := flags.String("quota-profile", "thesis", "registered quotas: thesis, pilot or screening")
 	other := flags.String("other-manifest", "", "optional manifest whose roots must be disjoint")
 	node := flags.String("node", "", "local node binary, as in corpus-digest; runs trusted corpus fixtures/references only")
 	out := flags.String("out", "", "new directory for report.json and report.md (existing directory refused)")

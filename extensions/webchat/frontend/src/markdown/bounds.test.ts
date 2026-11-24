@@ -1,6 +1,4 @@
-// Ported from the bounds group of internal/webchat/jstest/markdown.test.mjs, plus the
-// nesting-depth and limits checks the parity plan calls for. The bounds are the
-// legacy values: 64 KiB of source, 512 top-level blocks, depth 4.
+// The bounds: 64 KiB of source, 512 top-level blocks, depth 4.
 
 import { describe, expect, it } from "vitest";
 import type { Block } from "./ast";

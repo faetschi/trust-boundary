@@ -815,6 +815,7 @@ class _Out:
         self.extra = {}
         self.used = set()
         self.applied = []
+        self.swapped = self.renamed = False  # step 6 language swap in a rendered text; a .py path renamed .js
 
     def _pairs(self, where):
         """The adapter's replacements that apply to a text: an entry [old, new] applies everywhere, [old, new, scope]
@@ -840,6 +841,12 @@ class _Out:
                 self.applied.append(f"Replacement in {where} (steps 3, 6): {old!r} -> {new!r}")
                 text = text.replace(old, new)
         return text
+
+    def swap(self, text):
+        """Step 6 language swap of one rendered text; done() records it once if it changed anything."""
+        swapped = swap_python(text)
+        self.swapped |= swapped != text
+        return swapped
 
     def need(self, text):
         if text not in self.judge:
@@ -876,6 +883,15 @@ class _Out:
         if unused:
             raise ValueError(f"replacements that occur in no rendered text at their scope: {unused}")
         self.transformations += self.applied
+        # step 6 lists every change: renderers that do not record the preamble or the language swap get it here
+        if isinstance(prompt, str) and prompt.startswith(PREAMBLE) and not any(t.startswith("Shared preamble") for t in self.transformations):
+            self.transformations.append("Shared preamble placed before the user prompt (step 6).")
+        if (self.swapped or self.renamed) and not any(t.startswith("Language swap") for t in self.transformations):
+            self.transformations.append("Language swap (step 6): the word Python became Node.js and local .py paths became .js.")
+        for line, on in (("Python API names kept; the agent must translate them", self.swapped or self.renamed),
+                         ("Python source kept in files renamed .js", self.renamed)):
+            if on and line not in self.lost:
+                self.lost.append(line)
         for path in self.fixture:
             parts = path.split("/")
             if not path or path.startswith("/") or "\\" in path or ":" in parts[0] or "" in parts or ".." in parts or "." in parts:
@@ -1204,6 +1220,7 @@ def _render_saber(row, item, out):
             mb, u2 = map_paths(body, cwd)
             unm += u1 + u2
             out.fixture[_norm_written_path(mp)] = out.text(mb, f"init_commands file {mp}").encode("utf-8")
+            out.renamed |= _norm_written_path(mp) != mp
         modes = {_norm_written_path(map_paths(p, cwd)[0]): m for p, m in modes.items()}
         out.extra["fixture_modes"] = modes
         mapped = [map_paths(d, cwd) for d in dirs if d.rstrip("/") != cwd.rstrip("/")]  # mkdir of cwd is the workspace root
@@ -1211,9 +1228,9 @@ def _render_saber(row, item, out):
         out.extra["fixture_dirs"] = _fixture_dirs(md for md, _ in mapped)
     user, u = map_paths(setup["user_prompt"], cwd)
     unm += u
-    user = swap_python(user)
     if user != setup["user_prompt"]:
-        out.transformations.append("Paths mapped and the standalone word Python swapped to Node.js in the user task (steps 5, 6).")
+        out.transformations.append("Paths mapped in the user task (step 5).")
+    user = out.swap(user)  # the swap is recorded once by done()
     user = out.text(user, "the user task" + (" (the request of a TM-B row)" if inj.get("enabled") is False else ""))
     written, original, renamed = {}, {}, False
     for path, content in (setup.get("file_contents") or {}).items():
@@ -1225,8 +1242,7 @@ def _render_saber(row, item, out):
         original[new] = mp
         written[new] = out.text(body, f"written file {new}")
         out.fixture[new] = written[new].encode("utf-8")
-    if renamed:
-        out.lost += ["Python API names kept; the agent must translate them", "Python source kept in files renamed .js"]
+    out.renamed |= renamed
     method, delivered = inj.get("method"), None
     if inj.get("enabled") is False:
         pass
@@ -1242,7 +1258,7 @@ def _render_saber(row, item, out):
     if delivered is not None:
         d, u = map_paths(delivered, cwd)
         unm += u
-        d = out.text(swap_python(d), "the delivered payload")
+        d = out.text(out.swap(d), "the delivered payload")
         delivered = d
         out.fixture["data/bash.txt"] = d.encode("utf-8")
         out.pointers.append("The bash output is in data/bash.txt.")
@@ -1299,6 +1315,7 @@ def _render_aseval(row, item, out):
         check_asev_paths(body, f"content of setup file {p}")  # the content is read in full
     written = {_norm_written_path(p): body for p, body in writes.items()}
     original = {_norm_written_path(p): p for p in writes}
+    out.renamed |= any(n != p for n, p in original.items())
     local = {os.path.splitext(os.path.basename(p))[0] for p in written} | {p.split("/")[0] for p in written if "/" in p}
     for p, body in written.items():
         if original[p].endswith(".py") or body.startswith("#!") and "python" in body.split("\n", 1)[0]:
@@ -1308,7 +1325,7 @@ def _render_aseval(row, item, out):
             check_modules(f"import {mod}\n", local, n, notes)
     turns, tool_count = [], {}
     for n, t in enumerate(rec["turns"], 1):
-        turns.append(f"Turn {n}: " + out.text(swap_python(user_turns[n - 1]), f"user turn {n}"))
+        turns.append(f"Turn {n}: " + out.text(out.swap(user_turns[n - 1]), f"user turn {n}"))
         if n in responses:
             raw = responses[n]
             lines = raw.split("\n", 1)
@@ -1326,7 +1343,7 @@ def _render_aseval(row, item, out):
                 tool = t["tool_name"]
                 tool_count[tool] = tool_count.get(tool, 0) + 1
                 path = f"data/{tool}.txt" if tool_count[tool] == 1 else f"data/{tool}-{tool_count[tool]}.txt"
-                out.fixture[path] = out.text(swap_python(raw), f"tool response of turn {n}").encode("utf-8")
+                out.fixture[path] = out.text(out.swap(raw), f"tool response of turn {n}").encode("utf-8")
             out.pointers.append(_pointer_sentence(t["tool_name"], path))
         else:
             out.lost.append(f"tool_response of turn {n} dropped")

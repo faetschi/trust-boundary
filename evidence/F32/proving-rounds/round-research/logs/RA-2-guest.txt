@@ -1,0 +1,6 @@
+3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357  /etc/tbound/provider/research-profile.json
+db706cd720060b6bab6522c939f757fd6c7450ea31d5d4c2f270e0fa2b3e7984  /etc/tbound/provider/research-ledger.json
+total 12
+-r-------- 1 tbound-pi tbound-pi  51 Oct 20 16:57 opencode-go.key
+-rw-r--r-- 1 root      root      168 Nov 21 13:35 research-ledger.json
+-rw-r--r-- 1 root      root      890 Nov 21 13:35 research-profile.json

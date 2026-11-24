@@ -1,0 +1,20 @@
+Counts read from the three raw root-watcher files in this folder (script: regex over "== capture", "levels_below_init=", "-- conmon", "== leftover-check" blocks). Guest and host clocks are UTC.
+The watcher does not capture every cell (the capture count is capped per run of the watcher), so a capture count is not a unit count.
+
+cell-watch.chain1.txt
+  first line: watch start 2026-11-20T21:21:17Z; last capture 2026-11-20T22:15:49.457524168Z; last leftover check 2026-11-20T22:25:51.163635430Z
+  captures 12; levels_below_init {'2': 11, '0': 1}; levels 0 = ['/system.slice/tbound-pi.service/cells/net-sink']
+  conmon cgroup {'/system.slice/tbound-pi.service/runner': 11}
+  leftover checks 18 (svc-start 6); podman rc != 0: 0; lines histogram {'0': 13, '3': 5} (3 = podman stderr warnings only); lines naming a tbound-accept-/tbound-v- container: 0
+
+cell-watch.chain2-to-0057Z.txt
+  first line: watch start 2026-11-20T22:57:34Z; last capture 2026-11-21T01:00:05.690045701Z; last leftover check 2026-11-21T01:30:03.441328692Z
+  captures 60; levels_below_init {'2': 59, '0': 1}; levels 0 = ['/system.slice/tbound-pi.service/cells/net-sink']
+  conmon cgroup {'/system.slice/tbound-pi.service/runner': 59}
+  leftover checks 67 (svc-start 7); podman rc != 0: 0; lines histogram {'0': 61, '3': 6} (3 = podman stderr warnings only); lines naming a tbound-accept-/tbound-v- container: 0
+
+cell-watch.txt
+  first line: watch start 2026-11-21T00:58:06Z; last capture 2026-11-21T02:31:15.097218860Z; last leftover check 2026-11-21T02:31:27.987945338Z
+  captures 62; levels_below_init {'2': 62}; levels 0 = none
+  conmon cgroup {'/system.slice/tbound-pi.service/runner': 62}
+  leftover checks 64 (svc-start 2); podman rc != 0: 0; lines histogram {'0': 63, '3': 1} (3 = podman stderr warnings only); lines naming a tbound-accept-/tbound-v- container: 0

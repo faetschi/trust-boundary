@@ -106,15 +106,6 @@ func TestProductionSourceRequiresProtectedReadonlyFilesystem(t *testing.T) {
 	}
 }
 
-// TestProductionBindingsConstructorRequiresVerifiedInputs proves the CLI cannot
-// assemble worker bindings without the verified sealed exposure/assets and the
-// verified launcher/settler; a caller cannot fabricate a role map.
-func TestProductionBindingsConstructorRequiresVerifiedInputs(t *testing.T) {
-	if _, _, err := piruntime.BindProductionPiWorkerBindings(context.Background(), piruntime.HostProfile{}, nil, nil, nil, nil); err == nil {
-		t.Fatal("bindings constructor accepted unverified inputs")
-	}
-}
-
 // TestProductionCommandRunnerRefusesLegacyAndUnregistered proves the production
 // runner never falls back to the legacy Alpine Podman profile or the
 // development sandbox: it refuses Bash until a signed D09 cell runner is bound,

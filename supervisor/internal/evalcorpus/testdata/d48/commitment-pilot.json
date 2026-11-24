@@ -1,6 +1,6 @@
 {
  "adaptation_rule_path": "corpus/sampling/adaptation-rule-v1.md",
- "adaptation_rule_sha256": "fc21ab1dbdaf1600dd59394ee3071eed498259f214dcf69c41400f2f6c205a08",
+ "adaptation_rule_sha256": "84485b95e039af9846e7f7d346fd68c7cae4b7835a06c7ea24814a2f65c56287",
  "agentdojo_vectors_path": "corpus/sampling/agentdojo-vectors-v1.json",
  "agentdojo_vectors_sha256": "5bbdd62e71f50407220e8453950ffbffde463e63101d7bce4a26e9c2309195a3",
  "asb_goal_class_path": "corpus/sampling/asb_goal_class.py",
@@ -26,12 +26,12 @@
  "script_path": "corpus/sampling/select.py",
  "script_sha256": "085c771f571062fdcaf17a7f166631d18f89fad85bf0a25af986ff6408d8a940",
  "signed_tag": {
-  "commit": "FILL: git rev-parse corpus-d48-ledger-v3^{commit}",
-  "name": "corpus-d48-ledger-v3",
-  "object": "FILL: git rev-parse corpus-d48-ledger-v3"
+  "commit": "FILL: git rev-parse h1-sampling-frame^{commit}",
+  "name": "h1-sampling-frame",
+  "object": "FILL: git rev-parse h1-sampling-frame"
  },
  "source_digests_path": "corpus/sampling/d48-source-digests-v3.json",
- "source_digests_sha256": "727bdf288550644b7daba594a412b07bef843ab131ad060c60aa6a17b75ae6cd",
+ "source_digests_sha256": "3f72d12a4d3636ddbc446ce9ffee7be54456e1a16b15c67a51666676d6fc655a",
  "unit_choices": {
   "ASB": "one attacker tool x its agent's first user task (task_num = 1)",
   "ASEval": "one injected conversation",

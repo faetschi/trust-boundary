@@ -68,10 +68,11 @@ type trialTaskEnv struct {
 	// preflight checks what podman needs on the guest before a work directory is made.
 	preflight func() error
 	podman    podmanRunner
-	// workRoot holds one private directory per run; runtimeBundle is the Pi runtime bundle
-	// and keyPath the provider key file, both mounted read-only into the container.
-	workRoot, runtimeBundle, keyPath string
-	now                              func() time.Time
+	// workRoot holds one private directory per run, runtimeBundle is the Pi runtime bundle,
+	// and forwarder starts the unit's forwarder in the research service (trial_vforward_linux.go).
+	workRoot, runtimeBundle string
+	forwarder               func(ctx context.Context, caseID, requestID string) (vForwarderHandle, error)
+	now                     func() time.Time
 	// token returns a random token that names a run's work directory and container.
 	token func() (string, error)
 	// deadline turns a case duration in seconds into the hard deadline of the container run
@@ -85,7 +86,7 @@ func productionTrialTaskEnv() trialTaskEnv {
 	return trialTaskEnv{
 		pinnedCase: trialPinnedCase, binaryDigest: trialBinaryDigest,
 		template: loadVTemplate, preflight: vPreflight, podman: productionPodmanRunner(),
-		workRoot: vWorkRoot, runtimeBundle: piruntime.PiCLIProductionRuntimeBundleRoot, keyPath: piruntime.D09ManagedPiProviderCredentialPath,
+		workRoot: vWorkRoot, runtimeBundle: piruntime.PiCLIProductionRuntimeBundleRoot, forwarder: startVForwarder,
 		now: time.Now, token: randomVToken,
 		deadline:  func(s uint64) time.Duration { return time.Duration(s) * time.Second },
 		killGrace: vKillGrace,

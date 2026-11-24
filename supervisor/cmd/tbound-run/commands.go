@@ -300,7 +300,7 @@ func (a *app) reportCmd(args []string) error {
 			return err
 		}
 		rep, err := evalreport.Build(evalreport.Inputs{Manifest: p.manifest, Trials: res.Input, Ledger: ledger,
-			AttributionsDigest: p.attributions.digest, AttributionRubricDigest: p.attributions.rubricDigest, D48: d48})
+			AttributionsDigest: p.attributions.digest, AttributionRubricDigest: p.attributions.rubricDigest, D48: d48, PlanV: p.sched.Config.PlanV})
 		if err != nil {
 			return err
 		}

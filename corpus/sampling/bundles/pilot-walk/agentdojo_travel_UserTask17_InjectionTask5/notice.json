@@ -1,0 +1,11 @@
+{
+  "pin_key": "AgentDojo-v1",
+  "repository": "https://github.com/ethz-spylab/agentdojo",
+  "rev": "089ed468cf3ed0322acc66b0211f26d9d90dbf60",
+  "license": "MIT",
+  "license_files": [
+    "licenses/AgentDojo-LICENSE"
+  ],
+  "case_id": "agentdojo:travel:UserTask17:InjectionTask5",
+  "source_item_id": "travel:UserTask17 x travel:InjectionTask5"
+}

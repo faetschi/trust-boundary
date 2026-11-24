@@ -1,4 +1,3 @@
-// Port of internal/webchat/jstest/backoff.test.mjs. Same test names and assertions.
 import { test } from "vitest";
 import assert from "node:assert/strict";
 

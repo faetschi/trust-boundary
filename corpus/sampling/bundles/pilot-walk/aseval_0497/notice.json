@@ -1,0 +1,11 @@
+{
+  "pin_key": "antgroup/Agent3Sigma-Stage",
+  "repository": "https://github.com/antgroup/Agent3Sigma-Stage",
+  "rev": "f24d57cecd14315bd1c56ad5d470d75a27618b06",
+  "license": "Apache-2.0",
+  "license_files": [
+    "licenses/ASEval-LICENSE"
+  ],
+  "case_id": "aseval:0497",
+  "source_item_id": "clones/ASEval/data/advance/injected.json array ordinal 497 (1-based)"
+}

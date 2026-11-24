@@ -1,5 +1,4 @@
-// Port of internal/webchat/jstest/api.test.mjs. Same test names and assertions. The browser's
-// fetch and EventSource are injected rather than stubbed on globalThis.
+// The browser's fetch and EventSource are injected rather than stubbed on globalThis.
 import { test } from "vitest";
 import assert from "node:assert/strict";
 

@@ -10,8 +10,9 @@ import (
 
 // The corpus quota profiles, as the service config and the tools name them.
 const (
-	ProfileThesis = "thesis"
-	ProfilePilot  = "pilot"
+	ProfileThesis    = "thesis"
+	ProfilePilot     = "pilot"
+	ProfileScreening = "screening"
 )
 
 // DrawArtifactName is the file name of the D48 draw output whose digest is digest: draw-<64 lowercase hex>.json.
@@ -70,6 +71,8 @@ func QuotasFor(profile string, m evalcorpus.Manifest, artifacts fs.FS) (evalcorp
 			return evalcorpus.Quotas{}, fmt.Errorf("pins.draw_digest: %w", err)
 		}
 		return evalcorpus.PilotQuotasFromDraw(d)
+	case ProfileScreening:
+		return evalcorpus.ScreeningQuotas(m)
 	}
-	return evalcorpus.Quotas{}, fmt.Errorf("unknown quota profile %q: use %q or %q", profile, ProfileThesis, ProfilePilot)
+	return evalcorpus.Quotas{}, fmt.Errorf("unknown quota profile %q: use %q, %q or %q", profile, ProfileThesis, ProfilePilot, ProfileScreening)
 }

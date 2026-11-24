@@ -335,7 +335,8 @@ func Build(in Inputs) (Report, error) {
 		H1:                     requireExactCoverage(sum.H1, cov.Exact),
 		Reruns:                 rerunCases(sum.Cases),
 		ProviderRetries:        providerRetries(in.Trials.ProviderRetries),
-		Spend:                  spendOf(in.Ledger, PlannedUnits(full.Manifest), plannedLedgerUnits(full.Manifest)),
+		Spend:                  spendOf(in.Ledger, PlannedUnits(full.Manifest, in.PlanV), plannedLedgerUnits(full.Manifest, in.PlanV)),
+		PlanV:                  in.PlanV,
 	}
 	if r.Separate, err = separateStrata(full, separate); err != nil {
 		return Report{}, err

@@ -71,6 +71,9 @@ func TestAutoTurnThatRemovesTooMuchAwaitsReview(t *testing.T) {
 			continue
 		}
 		if tc.review {
+			if catalog.review.Removed != tc.removed {
+				t.Errorf("%s: review recorded %d removals, want %d", tc.name, catalog.review.Removed, tc.removed)
+			}
 			if !catalog.reviewed || catalog.completed != nil || receipt.Outcome != "awaiting_review" {
 				t.Errorf("%s: reviewed=%v completed=%+v outcome=%q", tc.name, catalog.reviewed, catalog.completed, receipt.Outcome)
 			}

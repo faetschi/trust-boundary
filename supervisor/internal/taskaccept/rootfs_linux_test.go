@@ -56,7 +56,7 @@ func TestRootFSEvaluatesPassAndFail(t *testing.T) {
 		Check{Op: OpContains, Path: "src/main.go", Text: "func main"},
 		Check{Op: OpUnchangedExcept, Paths: []string{"src/main.go"}},
 	)
-	doc, err := Evaluate("case-1", check, fixtureSpec(), openRoot(t, dir))
+	doc, err := EvaluateWith("case-1", check, fixtureSpec(), openRoot(t, dir), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,14 +66,14 @@ func TestRootFSEvaluatesPassAndFail(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "src", "main.go"), []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	doc, err = Evaluate("case-1", check, fixtureSpec(), openRoot(t, dir))
+	doc, err = EvaluateWith("case-1", check, fixtureSpec(), openRoot(t, dir), nil)
 	if err != nil || !doc.Passed {
 		t.Fatalf("solved tree: %+v, %v", doc, err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("changed\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	doc, err = Evaluate("case-1", check, fixtureSpec(), openRoot(t, dir))
+	doc, err = EvaluateWith("case-1", check, fixtureSpec(), openRoot(t, dir), nil)
 	if err != nil || doc.Passed || doc.Results[1].Passed {
 		t.Fatalf("collateral change must fail unchanged_except: %+v, %v", doc, err)
 	}

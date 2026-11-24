@@ -1,0 +1,33 @@
+# Configuration V on the research route, planned in F33 (design)
+
+Status: design, 2026-11-24, revised after an independent review. Nothing here is built yet. Register: thesis D61 (V returns to RQ4 on the research route, planned in F33). D61 withdraws the D58 amendment ("V leaves the thesis") and D59's V-free planning. The build is F33, which is not yet built or qualified. These changes join its scope before its gate and guest qualification.
+
+## What the register asks
+
+V (plain Pi, no tbound) runs the 100 compliant tasks, paired with B and C, on the research provider with the same pinned model and D50 settings. RQ4 reports V to B (plumbing), B to C (governance) and V to C (total) as medians of per-task differences. V never runs an adversarial case, never affects H1 and has no rerun. No V unit runs on an H1 compliant task before `T2`. The owner decides V's spend after the research pilot. A no-go switches V off without a re-freeze.
+
+## F33 changes
+
+1. **Plan.** Bring back the six-order V/B/C compliant schedule that `042c7972` (#272) removed from `supervisor/internal/runner/plan.go`, behind one `runner.Config` field that is part of the plan digest. With the field off, the plan is today's V-free plan, step for step. With it on, the plan is F32's compliant shape. B precedes C in exactly 50 of 100 tasks (orders 0, 1 and 4 of the six, with 17, 17 and 16 tasks), and V precedes B in 49.
+2. **Counts and report.** `evalreport.PlannedUnits(m)` takes only the manifest today (`report.go:106`). Its callers are `runner/plan.go:212`, `evalreport/report.go:145`, `evalreport/build.go:338`, `tbound-profile/preregistration_linux.go:149` and `tbound-run/corpus.go:98`. Carry the field to it in the report inputs (3 or 2 compliant units per task, 1,935 or 1,835 in the legacy shape, headroom 97 or 92), so that `tbound-run`, `tbound-profile preregistration-record` and the registration record agree. `evalreport/markdown.go:85` prints "V: not planned (D58 amendment)" when the V task count equals the V missing count. Key that line on the field, so a planned V with every unit lost reads as lost. A compliant-screening plan stays B only.
+3. **V's provider route.** Today `supervisor/cmd/tbound/trial_vrun_linux.go:305` hands the OpenCode Go key file to the container, and Pi computes the cost from its own price table (`internal/vrun/usage.go`). The research ledger takes an exclusive flock that the research service holds for its whole life (`internal/usdledger/ledger.go:12`). So the forwarder runs inside the research service and uses that service's ledger handle. A forwarder in the `trial v-run` process would get `ErrLocked`. Per V unit:
+   - **Key.** No key in the container, its environment or its mounts.
+   - **Listener and credential.** The service opens a listener for this unit, which the container can reach, and a random credential that exists only for this unit. Pi gets the credential as its API key and the listener as its provider base URL. Both close when the unit ends.
+   - **Request shape.** The forwarder accepts one method and path, the research endpoint's chat-completions POST. It pins `model`, sets the registered `max_completion_tokens` and the frozen profile members, and drops client members and headers that change cost or routing (`models`, `provider`, `route`, `transforms`, `plugins`). The worst-case reservation then holds as an upper bound. Pi builds the messages and tools; `broker/openrouter` builds its own body (`BuildRequestForRoute`, `openrouter.go:186`), so the forwarder rewrites Pi's body to the profile and shares only the profile constants and the upstream transport.
+   - **Budget.** It reserves in `usdledger` before sending and settles after. It refuses the request after the profile's `max_requests_per_unit`, the allowance the workflow ledger enforces for B and C (`research_route_linux.go:34`).
+   - **Cost.** The unit's cost is the ledger's. Pi's own figures may stay in the V document as a cross-check and are not reported.
+   - **Stated limit.** During the unit, the agent can use the forwarder within these limits.
+4. **Timing.** RQ4 reads wall time per unit from the runner journal's `elapsed_ms` (set in `internal/runner/runner.go:312`) for V, B and C alike, not from `Metrics.LatencyMS`. Provider time is not split out; this is a documented limit (D61 item 5). No new timing field goes into the governed path.
+5. **Tests.**
+   - Plan: both field values, step counts, the 50/50 B-before-C split, and the off value equal to the current plan digest.
+   - Counts and report: `PlannedUnits` and the Markdown line for both values.
+   - Forwarder: no key in the container; a wrong path, method or model is refused; cost- and routing-changing members are dropped; the reservation is booked before the upstream call; the request after the cap is refused; the listener and credential are dead after the unit.
+6. **Guest qualification.** One V route probe on a development compliant task, next to G1, rp and dr, against a stub upstream. It books nothing in the research ledger, so the fresh genesis of D59 item 4 holds no reservation before the research pilot. The probe's service uses a throwaway test ledger at its own path, never the research ledger's path, and no research key (owner, 2026-11-24). The ledger is deleted after qualification, and the F33 evidence records the deletion. The real-exchange evidence for V is the research pilot's first V unit, run alone and inspected (D61 item 6).
+
+## Not changed
+
+Screening stays B only. No V on adversarial cases. The product's own V provider choice is a product question. A thesis plan runs V only on the research route.
+
+## Risk
+
+The forwarder is the only new key-bearing code in F33, and it lives in the research service that H1 uses. It needs its own independent review and the full race gate before F33 is qualified.

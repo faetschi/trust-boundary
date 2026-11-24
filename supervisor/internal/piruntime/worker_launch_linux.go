@@ -207,11 +207,6 @@ func (w *PiCLIWorker) D09LaunchProof() (D09TCBProof, bool) {
 	return proof, true
 }
 
-func LaunchPiCLIWorker(ctx context.Context, capability *AdmissionCapability, exposure VerifiedWorkerExposure, assets VerifiedWorkerRuntimeAssets, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiCLIWorker, error) {
-	return nil, errors.New("production Pi launch refused: admitted profiles must attest the official Pi CLI executable, RPC arguments, extension and transitive closure")
-
-}
-
 // LaunchD09PiCLIWorker launches from a source-stage binding. The Store-issued
 // capability and source evidence are revalidated without treating the host O_PATH
 // descriptor as a consumer view; StartVerified returns only after the trusted

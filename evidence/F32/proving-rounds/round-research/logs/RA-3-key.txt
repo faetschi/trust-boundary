@@ -1,0 +1,7 @@
+tbound-pi:tbound-pi 400 regular file 73
+f: /etc/tbound/provider/openrouter.key
+ drwxr-xr-x root      root      /
+ drwxr-xr-x root      root      etc
+ drwxr-xr-x root      root      tbound
+ drwxr-xr-x root      root      provider
+ -r-------- tbound-pi tbound-pi openrouter.key

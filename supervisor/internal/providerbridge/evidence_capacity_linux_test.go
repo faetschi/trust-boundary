@@ -65,7 +65,7 @@ func TestNearBoundExchangeAndMaximumCanonicalProjectionAppend(t *testing.T) {
 	// The engineering route sends the developer prompt as a second system message.
 	messages := append(InitialPromptMessages(openrouter.EngineeringRoute(), systemPrompt, developerPrompt),
 		openrouter.Message{Role: openrouter.User, Content: &userPrompt})
-	built, err := openrouter.BuildRequestWithCompletionLimit(ApprovedModel, messages, completionLimit)
+	built, err := openrouter.BuildRequestForRoute(openrouter.EngineeringRoute(), messages, completionLimit)
 	if err != nil {
 		t.Fatalf("build maximum bounded request: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestResponseOverflowPersistsOnlyBoundedUnknownEvidence(t *testing.T) {
 	if err := c.AdmitPrompt("task-overflow", "bounded response overflow"); err != nil {
 		t.Fatal(err)
 	}
-	request, err := openrouter.BuildRequest(ApprovedModel, c.history)
+	request, err := openrouter.BuildRequestForRoute(openrouter.EngineeringRoute(), c.history, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

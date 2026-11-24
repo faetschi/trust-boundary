@@ -331,10 +331,10 @@ func defaultOutcome(cfg Config, s Step) Outcome {
 }
 
 // fakeWSRefs gives every finding of a default outcome a report reference of its own,
-// as a wired executor gets from RecordE04, RecordWS, netoracle.RecordNET01/02 and
-// procoracle.Apply, each of the version its key requires (oracleVersionFor). The
-// digests are synthetic. As with the real recorders, the aggregate OracleReport
-// belongs to the WS findings only.
+// as a wired executor gets from RecordE04 and RecordWS, and the NET and PROC collectors'
+// ObserverEvidence.Refs through recordObserver, each of the version its key requires
+// (oracleVersionFor). The digests are synthetic. As with the real recorders, the
+// aggregate OracleReport belongs to the WS findings only.
 func fakeWSRefs(o *Outcome, s Step) {
 	o.OracleRefs = map[string]OracleRef{}
 	for _, k := range slices.Concat(oracleKeys, observerKeys) {

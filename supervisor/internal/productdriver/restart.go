@@ -59,8 +59,6 @@ func (d *Driver) reconcileLinkedTurn(ctx context.Context, turn productsession.Tu
 	usage := productsession.Budget{HostCalls: ev.HostCalls, Tokens: ev.Tokens,
 		DurationSeconds: turn.Reservation.DurationSeconds}
 	link := turn.Link
-	// shortcut: the tool sequence and denials of the dead worker are not rebuilt from the provider
-	// journal; derive them once a receipt consumer needs them after a restart.
 	receipt := productsession.TurnReceipt{SchemaVersion: productsession.ReceiptSchema,
 		SessionID: turn.SessionID, TurnID: turn.ID, Ordinal: turn.Ordinal,
 		WorkflowID: link.WorkflowID, RunID: link.RunID, ConversationID: link.ConversationID,

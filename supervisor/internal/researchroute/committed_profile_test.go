@@ -59,7 +59,7 @@ func TestCommittedResearchConfig(t *testing.T) {
 	if uint64(ledger.MinPerUnitWorstCaseMicroUSD) != unit {
 		t.Fatalf("min_per_unit_worst_case_micro_usd = %d, want %d (worst case of one full unit)", ledger.MinPerUnitWorstCaseMicroUSD, unit)
 	}
-	if ledger.CapMicroUSD != 5000000 || ledger.ReserveBasis != ReserveBasisRequest {
-		t.Fatalf("cap %d basis %q, want 5000000 and %q", ledger.CapMicroUSD, ledger.ReserveBasis, ReserveBasisRequest)
+	if ledger.CapMicroUSD != 10000000 || ledger.ReserveBasis != ReserveBasisRequest {
+		t.Fatalf("cap %d basis %q, want 10000000 and %q", ledger.CapMicroUSD, ledger.ReserveBasis, ReserveBasisRequest)
 	}
 }

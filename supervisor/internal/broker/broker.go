@@ -45,7 +45,7 @@ func DeclaredToolManifest() []string {
 }
 
 // Profile is trusted broker configuration, never populated from Pi IPC. The
-// endpoint and request schemas remain fixed by openrouter.BuildRequest.
+// endpoint and request schemas remain fixed by openrouter.BuildRequestForRoute.
 type Profile struct {
 	ID             string
 	ConversationID string

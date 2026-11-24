@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"slices"
 
-	"tbound/supervisor/internal/calibration"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
 )
@@ -26,7 +25,7 @@ var ErrRerunInconsistent = errors.New("runner: rerun whose original attempt is n
 // D30, and Export refuses an inconsistent rerun as before. A C-DH plan keeps its own export
 // check (exportCDH and evalreport), and a construct-witness plan is never exported.
 func rerunEligible(s Schedule, j *Journal, st Step, attr evalscore.Attribution) error {
-	if !rerunScope(st) || s.Config.CDH != nil || s.Config.Purpose == PurposeConstructWitness {
+	if !rerunScope(st) || s.Config.CDH != nil || s.Config.Purpose == PurposeConstructWitness || s.Config.Purpose == PurposeScreening {
 		return nil
 	}
 	caseID := st.CaseID
@@ -233,7 +232,7 @@ func anyTerminal(j *Journal, steps []Step) bool {
 // step that has not run (a missing C result would read as a failed task). A
 // rerun gives a second record with attempt 2 and keeps the original.
 func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
-	if s.Config.Purpose == PurposeConstructWitness {
+	if s.Config.Purpose == PurposeConstructWitness || s.Config.Purpose == PurposeScreening {
 		return ExportResult{}, ErrNonConfirmatoryPurpose
 	}
 	if s.Config.CDH != nil {
@@ -427,55 +426,6 @@ func evqPassed(s Schedule, j *Journal) bool {
 		}
 	}
 	return n > 0
-}
-
-// CaseCalibration is the calibration result of one adversarial case: the
-// pair that PrefixCurve consumes and its disposition.
-type CaseCalibration struct {
-	CaseID     string
-	Pair       calibration.Pair
-	Status     calibration.Status
-	Err        error
-	PCComplete bool
-}
-
-// Calibrations returns the calibration result of every adversarial case in the
-// schedule, in plan order, from the latest attempt of each replay. A case whose
-// replays have not run is not_run or invalid, never manifested.
-func Calibrations(s Schedule, j *Journal) ([]CaseCalibration, error) {
-	if s.Config.Purpose == PurposeConstructWitness {
-		return nil, ErrNonConfirmatoryPurpose
-	}
-	order, groups := caseGroups(s)
-	var out []CaseCalibration
-	for _, id := range order {
-		steps := groups[id]
-		if steps[0].Kind != evalcorpus.KindAdversarial {
-			continue
-		}
-		attempt := 1
-		if _, has := j.rerunOf(id); has {
-			attempt = 2
-		}
-		a := s.Config.AssembleAdversarial(advView(j, steps, attempt))
-		out = append(out, CaseCalibration{CaseID: id, Pair: a.Pair, Status: a.Status, Err: a.StatusErr, PCComplete: a.Record.PCEvidenceComplete})
-	}
-	if len(out) == 0 {
-		return nil, errors.New("runner: schedule has no adversarial cases")
-	}
-	return out, nil
-}
-
-// DryRunPassed is the G4 dry-run condition on a (subset) plan: every planned
-// case manifested with complete P/C evidence. Only the cases of the plan are
-// considered, so a plan restricted to the final-pilot cases needs only those.
-func DryRunPassed(cc []CaseCalibration) bool {
-	for _, c := range cc {
-		if c.Status != calibration.Manifested || c.Err != nil || !c.PCComplete {
-			return false
-		}
-	}
-	return len(cc) > 0
 }
 
 // EncodeTrials writes the evalscore-trials/v1 JSON for in. Empty record lists

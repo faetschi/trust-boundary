@@ -1,0 +1,16 @@
+Counts read from the two raw root-watcher files in this folder (`../watch.py`: regex over "== capture", "levels_below_init=", "-- conmon", "== leftover-check" blocks). Guest and host clocks are UTC.
+The watcher does not capture every cell (the capture count is capped per run of the watcher), so a capture count is not a unit count. Its leftover check lists only containers named tbound-accept- or tbound-v- (`cell-watch.sh`), so it cannot show the no-reap command container `tbound-pi-cell-cmd-...` of round 1a; `../round-proc-qual-dev-01/podman-poll.txt` does.
+cell-watch.f32-round1a.txt starts 03:28:12Z (the F32 chain) and holds round 1a up to 04:12:54Z. cell-watch.txt starts 09:42:11Z and holds round 1b; it has no capture after 11:56:56Z and no record after 15:27:16Z, so it does not cover the soak.
+
+cell-watch.f32-round1a.txt
+  watch starts: ['2026-11-21T03:28:12Z'] ; first capture 2026-11-21T03:32:35.282571140Z ; last capture 2026-11-21T04:12:54.065753042Z ; last leftover check 2026-11-21T04:12:52.024246707Z
+  captures 13 ; levels_below_init {'2': 13, '0': 1} ; levels 0 = ['/system.slice/tbound-pi.service/cells/net-sink']
+  conmon cgroup {'/system.slice/tbound-pi.service/runner': 12}
+  leftover checks 18 (svc-start 6); podman rc != 0: 0 ; lines histogram {'0': 13, '3': 5} ; lines naming a tbound-accept-/tbound-v- container: 0
+
+cell-watch.txt
+  watch starts: ['2026-11-21T09:42:11Z'] ; first capture 2026-11-21T09:45:16.531245138Z ; last capture 2026-11-21T11:56:56.352243752Z ; last leftover check 2026-11-21T15:27:16.227077500Z
+  captures 80 ; levels_below_init {'2': 80} ; levels 0 = none
+  conmon cgroup {'/system.slice/tbound-pi.service/runner': 80}
+  leftover checks 84 (svc-start 4); podman rc != 0: 0 ; lines histogram {'0': 81, '3': 3} ; lines naming a tbound-accept-/tbound-v- container: 0
+

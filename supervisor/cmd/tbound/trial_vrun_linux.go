@@ -16,10 +16,10 @@ import (
 	"syscall"
 	"time"
 
-	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/researchprofile"
 	"tbound/supervisor/internal/taskaccept"
 	"tbound/supervisor/internal/trialfix"
 	"tbound/supervisor/internal/vrun"
@@ -29,7 +29,7 @@ import (
 // native Pi, without the TBound extension, gate, service or oracles, once, on a fresh copy of
 // the case fixture, in a plain rootless Podman container of the pinned cell image. It is
 // descriptive: nothing here measures an effect. It prints one tbound-v-run/v1 document
-// (vrun.Doc) with the identities, the container's exit, Pi's own token and cost numbers and
+// (vrun.Doc) with the identities, the container's exit, the usage the forwarder recorded and
 // the acceptance result on the run's workspace.
 //
 //	work dir   <workRoot>/<random token>, root:root 0700 while root builds it, then given to
@@ -45,18 +45,18 @@ import (
 //	           template's pids, memory and cpu limits, the cell uid mapped alone. Pi is the
 //	           official CLI of the runtime bundle (mounted read-only at /runtime) run by the
 //	           image's Node with `--mode json` and the case's trial prompt; see vrun.PodmanArgs.
-//	provider   the OpenCode Go key file (the service's fixed key path) is mounted read-only at
-//	           /run/tbound/opencode-go.key; the launch script reads it into OPENCODE_API_KEY, the
-//	           variable Pi reads for its built-in opencode-go provider. The key is in no argument.
+//	provider   no provider key: the provider is reached through the unix socket of a forwarder
+//	           that the research service (it holds the USD ledger and the key) opens for this unit,
+//	           mounted read-only at /run/tbound/fwd with a per-unit credential; a relay joins Pi to it.
 //	deadline   the manifest's duration is a hard deadline twice over: podman's own --timeout in
 //	           the container and, a grace later, a SIGKILL to podman's process group followed by
 //	           `podman rm -f` of the named container. A run that hit it reports timed_out.
 //
-// Stated limits of V: the network is podman's default, so the container can reach any host, not
-// only the provider (no egress filter: a plain rootless container has no simple one); Pi and
-// its bash tool run as the cell uid with the image's tools and the default podman seccomp
-// profile, without Landlock or the cell entrypoint; the provider key is readable by the
-// agent in the container; token and cost are what Pi computes from its own price table.
+// Stated limits of V: the network is podman's default and V has no egress filter; the provider key is
+// replaced by a per-unit credential for the forwarder, which the agent can use within its request shape
+// and the request allowance; Pi and its bash tool run as the cell uid with the image's tools and the
+// default podman seccomp profile, without Landlock or the cell entrypoint; token and cost are the
+// ledger's, not Pi's price table; a unit is admitted once.
 const (
 	// vWorkRoot holds the per-run work directories.
 	vWorkRoot = "/var/lib/tbound/v-work"
@@ -178,8 +178,10 @@ type podmanRunner interface {
 // command prefix (setpriv in production, to set no_new_privs once the identity is dropped).
 type execPodmanRunner struct{ wrap []string }
 
+var noNewPrivsWrap = []string{"/usr/bin/setpriv", "--no-new-privs", "--"}
+
 func productionPodmanRunner() podmanRunner {
-	return execPodmanRunner{wrap: []string{"/usr/bin/setpriv", "--no-new-privs", "--"}}
+	return execPodmanRunner{wrap: noNewPrivsWrap}
 }
 
 func (r execPodmanRunner) Run(ctx context.Context, inv podmanInvocation) (int, error) {
@@ -274,9 +276,6 @@ func trialVRun(ctx context.Context, args []string, env trialEnv) (doc vrun.Doc, 
 	if err := task.preflight(); err != nil {
 		return vrun.Doc{}, err
 	}
-	if info, lerr := os.Lstat(task.keyPath); lerr != nil || !info.Mode().IsRegular() {
-		return vrun.Doc{}, fmt.Errorf("the provider key file %s is missing or not a regular file", task.keyPath)
-	}
 	token, err := task.token()
 	if err != nil {
 		return vrun.Doc{}, err
@@ -300,9 +299,17 @@ func trialVRun(ctx context.Context, args []string, env trialEnv) (doc vrun.Doc, 
 	defer tree.Close()
 
 	name := vCellPrefix + token
+	forwarder, err := task.forwarder(ctx, caseID, token)
+	if err != nil {
+		return vrun.Doc{}, err
+	}
+	defer forwarder.Abort()
+	if err := checkVForwarderDir(forwarder.Dir(), tmpl.HostUID); err != nil {
+		return vrun.Doc{}, err
+	}
 	podmanArgs, err := vrun.PodmanArgs(vrun.Spec{
 		Name: name, ImageRef: tmpl.ImageRef, CrunPath: tmpl.CrunPath, UID: int(tmpl.CellUID), GID: int(tmpl.CellGID),
-		Workspace: ws, RuntimeBundle: task.runtimeBundle, KeyFile: task.keyPath, Model: openrouter.ApprovedModel,
+		Workspace: ws, RuntimeBundle: task.runtimeBundle, Forwarder: forwarder.Dir(), Model: researchprofile.Model,
 		Prompt: c.Prompt, DurationSeconds: c.DurationSeconds, PidsMax: tmpl.PidsMax, MemoryMB: tmpl.MemoryMB, CPUs: tmpl.CPUs,
 	})
 	if err != nil {
@@ -343,10 +350,14 @@ func trialVRun(ctx context.Context, args []string, env trialEnv) (doc vrun.Doc, 
 		return vrun.Doc{}, fmt.Errorf("podman failed (exit %d): %s", exit, stderr.String())
 	}
 
-	u := usage.Usage()
+	totals, err := forwarder.Finish()
+	if err != nil {
+		return vrun.Doc{}, fmt.Errorf("the unit's forwarder records are not available, so its cost is unknown: %w", err)
+	}
 	doc = vrun.Doc{Schema: vrun.Schema, CaseID: caseID, ImageDigest: tmpl.ImageDigest, FixtureDigest: c.FixtureDigest,
-		Exit: exit, TimedOut: killed, TokensIn: u.TokensIn, TokensOut: u.TokensOut, CostMicroUSD: u.CostMicroUSD,
-		ToolCalls: u.ToolCalls, UsageEvents: u.Events, StartedNS: startedAt.UnixNano(), FinishedNS: finishedAt.UnixNano()}
+		Exit: exit, TimedOut: killed, TokensIn: totals.TokensIn, TokensOut: totals.TokensOut, CostMicroUSD: totals.CostMicroUSD,
+		ToolCalls: usage.Usage().ToolCalls, UsageEvents: totals.Settled, LedgerRecords: totals.Booked, UncertainUnits: totals.Uncertain, Overage: totals.Overage,
+		StartedNS: startedAt.UnixNano(), FinishedNS: finishedAt.UnixNano()}
 	if result, aerr := taskaccept.EvaluateWith(caseID, accept, fixture, tree, cellNodeRunner{ctx: ctx, task: task}); aerr != nil {
 		doc.AcceptError = aerr.Error()
 	} else {

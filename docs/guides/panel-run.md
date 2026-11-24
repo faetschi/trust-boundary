@@ -218,7 +218,7 @@ output directory. No such fields need to be populated for current policy.
 | `ratings.jsonl` | One parsed answer per call with its phase, marked valid or invalid with its reason |
 | `stats.md`, `stats.json` | JSON schema `tbound-panel-stats/v4`, `content_digest`, and `dry_run`. Before adjudication: Gwet's AC1, raw agreement, Fleiss' kappa, prevalence, and a 95% root-bootstrap interval of AC1 and of kappa per phase-2 checklist item and per phase-1 field, plus the phase-1 agreement with the claimed label per field |
 | `audit.md`, `audit.json` | Diagnostic selection list and legacy optional metadata fields. `audit.json` (schema `tbound-panel-audit/v4`) records `manifest_digest`, `content_digest`, `dry_run` and `receipt_digest`, the `sha256:` of the exact bytes of the `receipt.json` written just before it |
-| `audit-packets/` | The blinded packet of each audited case |
+| `audit-packets/` | The blinded packet of each audited case, named `<sha256 of the case id>.md` (case ids contain `:`, which Windows refuses in a filename). Its first line is the case id, and `audit.md` lists each case with its packet |
 
 Phase-1 effect ids are compared as a set: two answers agree only when they name
 exactly the same ids. The claim agreement rate counts every model's phase-1

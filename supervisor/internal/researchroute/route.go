@@ -1,6 +1,6 @@
 // Package researchroute is the host side of the research provider route: the
 // thesis's final runs use OpenRouter deepseek/deepseek-v4.1-flash under a hard
-// US$5 total cap. It loads the frozen research profile and the owner's ledger
+// US$10 total cap. It loads the frozen research profile and the owner's ledger
 // configuration from fixed root-owned files, builds the provider route (endpoint,
 // model and request members) from the profile, opens the durable USD ledger, and
 // accounts every provider request against it: reserve a worst case before the
@@ -361,7 +361,12 @@ func (b *Bundle) reserveAmount(completionLimit uint64) (int64, error) {
 // remaining cap (usdledger.ErrCapExceeded), when the host selected no completion
 // cap, or when the request was not built from this profile.
 func (b *Bundle) ReserveSpend(_ context.Context, reservation providerbridge.SpendReservation) (string, error) {
-	if reservation.CompletionLimit == 0 {
+	request := reservation.Request
+	return b.reserve(unitID(reservation), request.URL(), request.Body(), reservation.CompletionLimit)
+}
+
+func (b *Bundle) reserve(unit, url string, body []byte, completionLimit uint64) (string, error) {
+	if completionLimit == 0 {
 		return "", ErrNoCompletionCap
 	}
 	snapshot, err := b.ledger.Snapshot()
@@ -375,9 +380,7 @@ func (b *Bundle) ReserveSpend(_ context.Context, reservation providerbridge.Spen
 		return "", fmt.Errorf("%w (remaining %d micro-USD, threshold %d)", ErrStopRule,
 			snapshot.RemainingMicroUSD, snapshot.MinPerUnitWorstCaseMicroUSD)
 	}
-	request := reservation.Request
-	body := request.Body()
-	if request.URL() != b.route.Endpoint || !bytes.HasSuffix(body, []byte(","+b.route.Members()[1:])) {
+	if url != b.route.Endpoint || !bytes.HasSuffix(body, []byte(","+b.route.Members()[1:])) {
 		return "", ErrWrongRequest
 	}
 	// Input-token bound. The reservation prices max_input_tokens in full, so it is
@@ -407,11 +410,10 @@ func (b *Bundle) ReserveSpend(_ context.Context, reservation providerbridge.Spen
 		return "", fmt.Errorf("%w: the request body is %d bytes (an upper bound of its content tokens) plus a framing reserve of %d tokens, max_input_tokens is %d",
 			ErrInputOverBound, bound, reserve, limit)
 	}
-	amount, err := b.reserveAmount(reservation.CompletionLimit)
+	amount, err := b.reserveAmount(completionLimit)
 	if err != nil {
 		return "", err
 	}
-	unit := unitID(reservation)
 	if err := b.ledger.Reserve(unit, amount); err != nil {
 		return "", err
 	}

@@ -1397,7 +1397,7 @@
       "signature": "4095b8f4dbe7499e9a64a0c6deb585699b563877939d05819bcfe5d155d332254f005e0ae906d54b40f54d2e7499150e1d22d8dc3f19dac7cd5356b11f02ebb72e87555a0bc2912d06f240e0aa5253624e9399acc28dedc39ffa7cd4cf18852a"
     },
     "commitment": {
-      "bytes": 3798,
+      "bytes": 3789,
       "chain": {
         "genesis_time": 1595431050,
         "hash": "8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce",
@@ -1409,7 +1409,7 @@
       "ledger_sha256": "277fc72c16bbfc27bc90723202c190a57b44987950e93f266209b3118ce79004",
       "pilot_size": 11,
       "script_sha256": "085c771f571062fdcaf17a7f166631d18f89fad85bf0a25af986ff6408d8a940",
-      "sha256": "061ac0be668b4f9059306f1b56bacc66319df4f590dd95b4a397724c35079319"
+      "sha256": "21ce3e20a564fb1a9914f9d2da0751e2fa0dd4bd77758ff3f261a262fafe15cd"
     },
     "ledger": {
       "bytes": 3831463,

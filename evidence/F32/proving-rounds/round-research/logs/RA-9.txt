@@ -1,0 +1,21 @@
+D09 cell template canonical digest: sha256:82ae931664e9f73123e28cfdb9265c6544f9bb5aa3210abce8cdb64617fbc088
+D09 base template digest (registration digest emptied; run.json pins.base_template_digest): sha256:2dd3e3868148bf45d939eca077431538b92310ffa5f1a0a1ddc9e06ec0439395
+D09 command-cell delta net-sink/v1 template digest: sha256:bc85252d53b253f70fad125e4fb8a6307b8d229a2aa017818d62881177713ad8
+D09 command-cell delta no-reap/v1 template digest: sha256:8016d21db8052c9eb6fc30ebc1542008dd0f2083ca5a920fd0abc14f68f1f685
+wrote canonical unsigned host profile: /home/tbound/tbound-h/f32/rr/pi-host-profile.unsigned.json
+Digest is empty until signed. Placeholders left (sign refuses them): none
+Then:
+  tbound-profile sign --profile /home/tbound/tbound-h/f32/rr/pi-host-profile.unsigned.json --key <ed25519-private> --out-sig <new>.ed25519 --out-pub <new>.pub --out-profile <new>.signed.json
+signed host profile: /home/tbound/tbound-h/f32/rr/pi-host-profile.signed.json
+Digest: sha256:d9dc8dcef28f156b7b0ff4425293915cbfd7d2132daa2605f51afc0353bdf38b
+Public key (hex): 1fc6faa24be42d32c9e522947a392c19ceb454b4dddfe2e1c0c5d703b4ac079e
+Signature: /home/tbound/tbound-h/f32/rr/pi-host-profile.ed25519
+verified signed host profile pi-host-profile-rr-08f3c3ee4043 (digest sha256:d9dc8dcef28f156b7b0ff4425293915cbfd7d2132daa2605f51afc0353bdf38b, mode production)
+NAME=rr REG=sha256:be141d6cbf239e9848b4e41e5fc783f49568e2b91498b3117a1a4f936766edfc TD(installed template)=sha256:82ae931664e9f73123e28cfdb9265c6544f9bb5aa3210abce8cdb64617fbc088 PROFILE=sha256:d9dc8dcef28f156b7b0ff4425293915cbfd7d2132daa2605f51afc0353bdf38b
+39976123ece4e3dc0f6c976e66fd0e3b92fddb04910f6b2ee543cd2864d7cad4  /home/tbound/tbound-h/f32/rr/pi-host-profile.signed.json
+01b33feb95d48f82bbc3fd5c9377ecb3213fd9799a6851f908d035adb35c0be2  /home/tbound/tbound-h/f32/rr/pi-host-profile.ed25519
+82ae931664e9f73123e28cfdb9265c6544f9bb5aa3210abce8cdb64617fbc088  /home/tbound/tbound-h/f32/rr/d09-cell.json
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f32
+s4 rc=0
+sha256:82ae931664e9f73123e28cfdb9265c6544f9bb5aa3210abce8cdb64617fbc088
+sha256:d9dc8dcef28f156b7b0ff4425293915cbfd7d2132daa2605f51afc0353bdf38b

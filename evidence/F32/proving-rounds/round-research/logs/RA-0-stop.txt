@@ -1,0 +1,2 @@
+svc stop ok: service and socket inactive
+inactive inactive 

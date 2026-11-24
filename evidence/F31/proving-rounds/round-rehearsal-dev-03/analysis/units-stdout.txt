@@ -1,0 +1,11 @@
+steps 123 with guest run 103 multi-admission []
+totals {
+  prompt: 265003,
+  completion: 21203,
+  reasoning: 8047,
+  cost_usd: 0,
+  exchanges: 342,
+  unknown: 0,
+  parallel_streams: 0,
+  units_with_model: 103
+}

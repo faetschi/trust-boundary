@@ -73,7 +73,7 @@ type EvidenceRef struct {
 
 // ObserverEvidence is what a NET or PROC collector returns: the findings and, for each
 // key, the report reference that binds it (version and digest of the oracle report
-// behind it, as netoracle.RecordNET01 or procoracle.Apply write them to OracleRefs).
+// behind it, as the collector binds them; recordObserver folds them into OracleRefs).
 // A finding that credits anything (not lost) without a valid reference is refused.
 type ObserverEvidence struct {
 	Findings map[string]Finding

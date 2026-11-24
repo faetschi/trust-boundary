@@ -71,7 +71,7 @@ func validSpec() Spec {
 		Name: "tbound-v-0123456789abcdef", ImageRef: "localhost/tbound/pi-cell@sha256:" + strings.Repeat("ab", 32),
 		CrunPath: "/usr/bin/crun", UID: 995, GID: 986,
 		Workspace: "/var/lib/tbound/v-work/0123/ws", RuntimeBundle: "/var/lib/tbound/runtime",
-		KeyFile: "/etc/tbound/provider/opencode-go.key", Model: "deepseek-v4.1-flash",
+		Forwarder: "/run/tbound-pi/v-fwd/v-0123", Model: "deepseek/deepseek-v4.1-flash",
 		Prompt: "-- fix the bug; $(touch /pwned) `id` 'x'\n", DurationSeconds: 600,
 		PidsMax: 128, MemoryMB: 1024, CPUs: "1.5",
 	}
@@ -101,9 +101,9 @@ func TestPodmanArgsShape(t *testing.T) {
 	has("--pids-limit", "128", "--memory", "1024m", "--cpus", "1.5")
 	has("--mount", "type=bind,src=/var/lib/tbound/v-work/0123/ws,dst=/work,rw,bind-propagation=rprivate")
 	has("--mount", "type=bind,src=/var/lib/tbound/runtime,dst=/runtime,ro,bind-propagation=rprivate")
-	has("--mount", "type=bind,src=/etc/tbound/provider/opencode-go.key,dst=/run/tbound/opencode-go.key,ro,bind-propagation=rprivate")
+	has("--mount", "type=bind,src=/run/tbound-pi/v-fwd/v-0123,dst=/run/tbound/fwd,ro,bind-propagation=rprivate")
 	has("--entrypoint", "/bin/bash", spec.ImageRef)
-	if slices.Contains(args, "--network=none") || slices.Contains(args, "--privileged") {
+	if slices.Contains(args, "--privileged") || slices.Contains(args, "--network=host") || slices.Contains(args, "--network=none") || strings.Contains(strings.Join(args, " "), "allow_host_loopback") {
 		t.Errorf("unexpected network or privilege flag: %q", args)
 	}
 	// The image appears once, pinned by digest, and the command words follow it.
@@ -115,10 +115,10 @@ func TestPodmanArgsShape(t *testing.T) {
 	if cmd[0] != "-c" || cmd[2] != "pi-v" || cmd[3] != NodePath || cmd[4] != PiEntry || cmd[5] != spec.Model || cmd[6] != spec.Prompt || len(cmd) != 7 {
 		t.Fatalf("command words = %q", cmd)
 	}
-	// The key is read in the container from the mounted file and never put in an argument; the
-	// prompt reaches Pi as one argv word after --.
+	// Only the unit credential is read in the container, from the mounted forwarder directory; no provider key is in
+	// any argument, environment variable or mount, and the prompt reaches Pi as one argv word after --.
 	script := cmd[1]
-	for _, want := range []string{`OPENCODE_API_KEY="$(cat /run/tbound/opencode-go.key)"`, `--mode json`, `--no-extensions`, `--provider opencode-go`, `-- "$4"`} {
+	for _, want := range []string{`TBOUND_V_KEY="$(cat /run/tbound/fwd/token)"`, `"apiKey":"$TBOUND_V_KEY"`, `/run/tbound/fwd/fwd.sock`, `listen(18081,"127.0.0.1")`, `baseUrl":"http://127.0.0.1:18081/v1`, `--mode json`, `--no-extensions`, `--provider research`, `-- "$4"`} {
 		if !strings.Contains(script, want) {
 			t.Errorf("script lacks %q:\n%s", want, script)
 		}
@@ -129,7 +129,7 @@ func TestPodmanArgsShape(t *testing.T) {
 		}
 	}
 	for _, a := range args {
-		if strings.Contains(a, "sk-") || (a != cmd[1] && strings.Contains(a, "OPENCODE_API_KEY")) {
+		if strings.Contains(a, "sk-") || (a != cmd[1] && (strings.Contains(a, "API_KEY") || strings.Contains(a, "openrouter") || strings.Contains(a, "opencode") || strings.Contains(a, "provider/"))) {
 			t.Errorf("argument %q looks like a key", a)
 		}
 	}
@@ -143,7 +143,7 @@ func TestPodmanArgsRefusals(t *testing.T) {
 		"no gid":                 func(s *Spec) { s.GID = 0 },
 		"relative workspace":     func(s *Spec) { s.Workspace = "ws" },
 		"comma in a mount path":  func(s *Spec) { s.Workspace = "/a,b" },
-		"option in a mount path": func(s *Spec) { s.KeyFile = "/k,src=/etc/shadow" },
+		"option in a mount path": func(s *Spec) { s.Forwarder = "/k,src=/etc/shadow" },
 		"empty prompt":           func(s *Spec) { s.Prompt = "" },
 		"NUL prompt":             func(s *Spec) { s.Prompt = "a\x00b" },
 		"no deadline":            func(s *Spec) { s.DurationSeconds = 0 },
@@ -171,6 +171,12 @@ func TestParseDoc(t *testing.T) {
 	d, err := Parse(raw)
 	if err != nil || d.Accept == nil || !d.Accept.Passed || d.CaseID != "cmp-1" {
 		t.Fatalf("Parse = %+v, %v", d, err)
+	}
+	over := goodDoc()
+	over.Overage = true
+	raw, _ = json.Marshal(over)
+	if d, err := Parse(raw); err != nil || !d.Overage || !strings.Contains(string(raw), `"overage":true`) {
+		t.Fatalf("overage lost: %+v, %v, %s", d, err, raw)
 	}
 	null := goodDoc()
 	null.Accept, null.AcceptError = nil, "tree unreadable"

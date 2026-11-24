@@ -56,7 +56,6 @@ main() {
   if [ "${2:-}" = --iso ]; then
     fetch_one "$dest" "$ISO" "$ISO_SHA256" "https://releases.ubuntu.com/24.04.5/$ISO"
   fi
-  # shortcut: cell_image.py keeps an existing manifest or index without re-hashing it, so cached blobs that fail their digest are dropped first, upgrade when write_blob verifies the files it finds.
   for b in "$dest"/base-cache/blobs/sha256/*; do
     [ -f "$b" ] && [ "$(sha256sum -- "$b" | cut -d' ' -f1)" = "${b##*/}" ] || rm -f -- "$b"
   done

@@ -4,7 +4,7 @@ Terms you will meet in the code, the docs, and the study records. Each entry
 says what the term means in this repository.
 
 For study terms, the thesis glossary is normative:
-[`tbound/AH-technical/01-decisions-glossary.md`](https://github.com/faetschi/MSE_MA_Thesis/blob/main/tbound/AH-technical/01-decisions-glossary.md)
+`tbound/AH-technical/01-decisions-glossary.md`
 in `MSE_MA_Thesis`. This page restates those terms for the repository and must
 not contradict it. A disagreement is a documentation bug here.
 

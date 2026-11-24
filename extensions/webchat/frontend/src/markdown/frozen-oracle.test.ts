@@ -1,8 +1,6 @@
-// Frozen-oracle suite for the markdown parser. Until the legacy vanilla client was retired, the legacy
-// renderer (internal/webchat/assets/markdown.mjs, loaded unchanged) ran against the parser on the same
-// inputs. The legacy outputs are now frozen as rolling digests in test-support/legacy-oracle.json (see
-// test-support/frozen.ts) and the same seeded corpora run against the parser alone. What each check
-// freezes, per input:
+// Frozen-oracle suite for the markdown parser. The legacy outputs are frozen as rolling digests in
+// test-support/legacy-oracle.json (see test-support/frozen.ts) and the same seeded corpora run against
+// the parser alone. What each check freezes, per input:
 //   - the DOM fingerprint of the legacy output (tags, classes, attributes, text-node boundaries) and the
 //     look-ahead work counter, so the parser must take the same search path;
 //   - streams: the reuse and render counts of every update, and the final DOM;

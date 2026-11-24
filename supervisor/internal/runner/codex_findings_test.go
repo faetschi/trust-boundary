@@ -332,17 +332,17 @@ func TestFindingRerunHeadroomDefaultAndCeiling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if def.Config.RerunHeadroom != 97 {
-		t.Fatalf("default headroom %d, want 97", def.Config.RerunHeadroom)
+	if def.Config.RerunHeadroom != 92 {
+		t.Fatalf("default headroom %d, want 92", def.Config.RerunHeadroom)
 	}
-	max, err := plan(97)
+	max, err := plan(92)
 	if err != nil {
-		t.Fatalf("97 refused: %v", err)
+		t.Fatalf("92 refused: %v", err)
 	}
 	if max.Digest != def.Digest {
-		t.Fatal("explicit 97 and the default differ")
+		t.Fatal("explicit 92 and the default differ")
 	}
-	for _, h := range []int{98, 10000, -1} {
+	for _, h := range []int{93, 10000, -1} {
 		if _, err := plan(h); err == nil {
 			t.Errorf("headroom %d accepted", h)
 		}
@@ -354,8 +354,8 @@ func TestFindingRerunHeadroomDefaultAndCeiling(t *testing.T) {
 	if small.Digest == max.Digest {
 		t.Fatal("the plan digest does not bind the rerun headroom")
 	}
-	if RerunHeadroomFor(evalreport.LegacyPlannedUnits) != 97 {
-		t.Fatalf("RerunHeadroomFor(1935) %d, want the owner's 97", RerunHeadroomFor(evalreport.LegacyPlannedUnits))
+	if RerunHeadroomFor(evalreport.LegacyPlannedUnits) != 92 {
+		t.Fatalf("RerunHeadroomFor(1835) %d, want the owner's 92", RerunHeadroomFor(evalreport.LegacyPlannedUnits))
 	}
 
 	// The off switch is explicit, idempotent under normalize and bound into the digest.
@@ -386,7 +386,7 @@ func TestFindingRerunHeadroomDefaultAndCeiling(t *testing.T) {
 
 func TestFindingRerunCeilingLimitsAdmission(t *testing.T) {
 	// With the default headroom a rerun fits beyond the planned units, up to
-	// UnitCap+97; with the off switch it does not.
+	// UnitCap+92; with the off switch it does not.
 	for _, off := range []bool{false, true} {
 		cfg := smallConfig()
 		cfg.NoRerunHeadroom = off
@@ -419,7 +419,7 @@ func TestFindingSetupRefusalVoidsTheUnitButFailureAfterExecutionSpendsIt(t *test
 	}
 	j := openJournal(t, t.TempDir(), s)
 	rep, err := mustRunner(t, s, j, fake, Options{}).Run(context.Background())
-	if !errors.Is(err, ErrSetupRefused) || rep.UnitsUsed != 0 || j.UnitsUsed() != 0 || rep.Remaining != 89 || rep.Finished {
+	if !errors.Is(err, ErrSetupRefused) || rep.UnitsUsed != 0 || j.UnitsUsed() != 0 || rep.Remaining != 81 || rep.Finished {
 		t.Fatalf("refusal: %+v %v", rep, err)
 	}
 	_ = j.Close()
@@ -429,7 +429,7 @@ func TestFindingSetupRefusalVoidsTheUnitButFailureAfterExecutionSpendsIt(t *test
 	j = openJournal(t, t.TempDir(), s)
 	defer j.Close()
 	rep, err = mustRunner(t, s, j, ex, Options{}).Run(context.Background())
-	if err != nil || !rep.Finished || rep.UnitsUsed != 89 || rep.ExecFailures != 1 || rep.SetupFailures != 0 {
+	if err != nil || !rep.Finished || rep.UnitsUsed != 81 || rep.ExecFailures != 1 || rep.SetupFailures != 0 {
 		t.Fatalf("failure after execution: %+v %v", rep, err)
 	}
 	var done *Entry

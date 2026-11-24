@@ -1,13 +1,14 @@
 """Round planner for screening rounds (adaptation rule v1 section 7.1).
 
-    py -3 -I corpus/sampling/round_plan.py plan --output <select.py output JSON> --decisions <decision file> [--screened <file>]
+    py -3 -I corpus/sampling/round_plan.py plan --output <select.py output JSON> --decisions <decision file> [--screened <file>] [--ledger <ledger>]
 
 Prints `{"TM-A": [...], "TM-B": [...]}`: per stratum the next undecided, unscreened candidates in walk order, up to the
-carrier's slots (7 TM-A, 4 TM-B). It prints case ids only. It never reads the ledger and never opens a source.
+carrier's slots (7 TM-A, 4 TM-B). It prints case ids only and never opens a source.
 
 A draw output lists every capped candidate (the `cap` records) and the seed, so the `main` and `topup` orders beyond the
-case select.py names are recomputed with select.ranked. A pilot output records only the pending case per stratum, so a
-pilot plan holds only that case.
+case select.py names are recomputed with select.ranked. A pilot output records only the pending case per stratum, so the
+pilot order is recomputed with select.ranked over the candidates of `--ledger`, which must be the ledger the output was
+drawn from (its SHA-256).
 """
 import argparse
 import importlib.util
@@ -38,10 +39,34 @@ def _next(order, start, decisions, screened, limit):
     return [c for c in order[order.index(start):] if c not in decisions and c not in screened][:limit]
 
 
-def _plan_pilot(sel, out, decisions, screened):
-    # shortcut: a pilot output records only the pending case per stratum, so a 7/4 pilot round needs the seeded pilot
-    # order over the ledger; until that is built, refuse rather than print a plan that looks complete
-    raise Refused("a pilot output names one pending case per stratum, not a round; plan pilot rounds from the seeded pilot order (not built)")
+def _plan_pilot(sel, out, decisions, screened, ledger):
+    """The pilot walk of select.py (purpose `pilot`, one group per stratum), recomputed over the ledger's candidates."""
+    if ledger is None:
+        raise Refused("a pilot output needs --ledger: the pilot order is recomputed over the ledger's candidates")
+    try:
+        seed = bytes.fromhex(out["seed_hex"])
+        want = out["inputs"]["ledger"]["sha256"]
+        places = {h: out["pilot"][h]["n"] for h in STRATA}
+    except (KeyError, TypeError, ValueError):
+        raise Refused("the pilot output holds no seed, ledger digest or pilot allocation") from None
+    if sel.sha256_hex(ledger) != want:
+        raise Refused("--ledger is not the ledger the pilot output was drawn from (SHA-256 differs)")
+    if out.get("status") == "blocked" or any(out["pilot"][h].get("status") == "exhausted" for h in STRATA):
+        raise Refused("the pilot output is blocked: exhaustion never permits more screening (rule section 7.2)")
+    try:
+        rows = sel.parse_ledger(ledger)["rows"]
+    except sel.Refused as exc:
+        raise Refused(str(exc)) from None
+    unknown = sorted(set(decisions) - {r["case_id"] for r in rows})
+    if unknown:  # select.py refuses these too; a typo would leave a case undecided and plan it again
+        raise Refused(f"decisions name ids that are not ledger candidates: {', '.join(unknown[:5])}")
+    plan = {h: [] for h in STRATA}
+    for h in STRATA:
+        ordered = [c for _, c in sel.ranked(seed, "pilot", h, [r["case_id"] for r in rows if r["stratum"] == h])]
+        result = sel.walk(ordered, decisions, places[h])
+        if result["status"] == "pending":
+            plan[h] = _next(ordered, result["pending"], decisions, screened, SLOTS[h])
+    return plan
 
 
 def _plan_draw(sel, out, decisions, screened):
@@ -74,13 +99,14 @@ def _plan_draw(sel, out, decisions, screened):
     return {h: plan[h][:SLOTS[h]] for h in STRATA}
 
 
-def plan(out, decisions, screened=frozenset()):
-    """decisions: case_id -> (passed, reason), as select.walk reads them. Returns {stratum: [case_id, ...]}."""
+def plan(out, decisions, screened=frozenset(), ledger=None):
+    """decisions: case_id -> (passed, reason), as select.walk reads them; ledger: the ledger bytes (pilot outputs only).
+    Returns {stratum: [case_id, ...]}."""
     sel = _select()
     if not isinstance(out, dict):
         raise Refused("the output is not a JSON object")
     if out.get("schema") == sel.PILOT_SCHEMA:
-        return _plan_pilot(sel, out, decisions, screened)
+        return _plan_pilot(sel, out, decisions, screened, ledger)
     if out.get("schema") == sel.SCHEMA:
         return _plan_draw(sel, out, decisions, screened)
     raise Refused(f"schema {out.get('schema')!r} is not a select.py pilot or draw output")
@@ -117,16 +143,19 @@ def main(argv=None):
     p.add_argument("--output", required=True, help="select.py pilot or draw output JSON")
     p.add_argument("--decisions", required=True, help="the adaptation decision file")
     p.add_argument("--screened", help="file with one already-screened case_id per line")
+    p.add_argument("--ledger", help="the ledger the pilot output was drawn from (pilot outputs only)")
     a = ap.parse_args(argv)
     try:
         with open(a.output, encoding="utf-8") as fh:
             out = json.load(fh)
-        result = plan(out, read_decisions(a.decisions), read_screened(a.screened) if a.screened else frozenset())
+        ledger = None
+        if a.ledger:
+            with open(a.ledger, "rb") as fh:
+                ledger = fh.read()
+        result = plan(out, read_decisions(a.decisions), read_screened(a.screened) if a.screened else frozenset(), ledger)
     except (Refused, OSError, ValueError) as exc:
         print(f"round_plan: {exc}", file=sys.stderr)
         return 2
-    if out.get("schema") == "tbound-d48-pilot/v1":
-        print("round_plan: a pilot output records only the pending case per stratum, so no more is listed", file=sys.stderr)
     print(json.dumps(result, sort_keys=True))
     return 0
 

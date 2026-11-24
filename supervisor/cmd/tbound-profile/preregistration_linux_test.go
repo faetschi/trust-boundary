@@ -186,7 +186,7 @@ func TestPreregistrationRecordIsDeterministicAndBindsTheRegisteredFacts(t *testi
 		t.Fatal(err)
 	}
 	// A pre-D48 pilot manifest (no pinned draw) keeps the legacy totals, so its record and plan digest do not move.
-	if evalreport.LegacyPlannedUnits != 1935 || runner.RerunHeadroomFor(evalreport.LegacyPlannedUnits) != 97 {
+	if evalreport.LegacyPlannedUnits != 1835 || runner.RerunHeadroomFor(evalreport.LegacyPlannedUnits) != 92 {
 		t.Fatalf("registered constants drifted: %d units, headroom %d", evalreport.LegacyPlannedUnits, runner.RerunHeadroomFor(evalreport.LegacyPlannedUnits))
 	}
 	rubricSum := sha256.Sum256([]byte("# Attribution rubric\n"))
@@ -202,8 +202,8 @@ func TestPreregistrationRecordIsDeterministicAndBindsTheRegisteredFacts(t *testi
 	if rec.Domain != "tbound-preregistration/v2" || rec.FreezeCommit != commitA || rec.CorpusManifestDigest != m ||
 		rec.QuotaProfile != "pilot" || rec.EvalscoreSchema != evalscore.SchemaVersion ||
 		rec.PlannedUnits != evalreport.LegacyPlannedUnits ||
-		rec.RerunHeadroom != 97 ||
-		rec.PlanSteps != 123 || !strings.HasPrefix(rec.RunnerPlanDigest, "sha256:") ||
+		rec.RerunHeadroom != 92 ||
+		rec.PlanSteps != 103 || !strings.HasPrefix(rec.RunnerPlanDigest, "sha256:") ||
 		!strings.HasPrefix(rec.ResearchProfileDigest, "sha256:") || !strings.HasPrefix(rec.ResearchLedgerConfigDigest, "sha256:") {
 		t.Fatalf("record %+v", rec)
 	}
@@ -306,6 +306,8 @@ func TestPreregistrationRecordEveryInputChangesTheDigest(t *testing.T) {
 			f.SetInt(f.Int() + 1)
 		case reflect.Slice:
 			f.Set(reflect.Append(f, reflect.ValueOf("extra")))
+		case reflect.Bool:
+			f.SetBool(!f.Bool())
 		default:
 			t.Fatalf("field %s has kind %s", name, f.Kind())
 		}
@@ -351,7 +353,7 @@ func TestPreregistrationRecordRefusals(t *testing.T) {
 			p.config = writeFile(t, dir, "runner-bad.json", `{"freeze_commit":"`+commitA+`","surprise":1}`)
 		},
 		"runner config over the headroom": func(p *preregInputs) {
-			p.config = runnerConfigFile(t, dir, "runner-big.json", commitA, func(c *runner.Config) { c.RerunHeadroom = 98 })
+			p.config = runnerConfigFile(t, dir, "runner-big.json", commitA, func(c *runner.Config) { c.RerunHeadroom = 93 })
 		},
 		"unfrozen research profile":  func(p *preregInputs) { p.profile = unfrozen },
 		"bad ledger config":          func(p *preregInputs) { p.ledger = writeFile(t, dir, "ledger-bad.json", `{"schema_version":1}`) },
@@ -428,7 +430,7 @@ func TestPreregistrationRecordRefusals(t *testing.T) {
 }
 
 // D53 item 4: the thesis record's planned units are computed from the final counts of the D48 manifest (here the
-// main-draw test vector: 299 main and 5 top-up cases, 100 compliant, 2 ambiguous, 50 variance), not the fixed 1,935,
+// main-draw test vector: 299 main and 5 top-up cases, 100 compliant, 2 ambiguous, 50 variance), not the fixed 1,835,
 // and the rerun headroom is 5% of that total. A manifest without its draw file is refused.
 func TestPreregistrationRecordThesisPlanIsTheRegisteredUnits(t *testing.T) {
 	if testing.Short() {
@@ -451,7 +453,7 @@ func TestPreregistrationRecordThesisPlanIsTheRegisteredUnits(t *testing.T) {
 	if err := json.Unmarshal([]byte(preregOut(t, p)), &rec); err != nil {
 		t.Fatal(err)
 	}
-	want := 304*5 + 100*3 + 2*2 + 50*2
+	want := 304*5 + 100*2 + 2*2 + 50*2
 	if rec.PlanSteps != want || rec.PlannedUnits != want || rec.RerunHeadroom != runner.RerunHeadroomFor(want) || rec.QuotaProfile != "thesis" {
 		t.Fatalf("thesis record %+v, want %d units", rec, want)
 	}
@@ -582,5 +584,50 @@ func TestPreregistrationPlanTakesTheAttackerArtifactCaps(t *testing.T) {
 	p.config = runnerConfigFile(t, dir, "runner-other.json", commitA, nil)
 	if out, _, err := runCLI(p.args()...); err == nil || out != "" {
 		t.Fatalf("runner caps that differ from the artifact's were recorded: %q", out)
+	}
+}
+
+func TestPreregistrationRecordBindsTheScreeningRecord(t *testing.T) {
+	dir := t.TempDir()
+	p := basePrereg(t, dir)
+	screening := filepath.Join(dir, "screening.json")
+	if err := os.WriteFile(screening, []byte(`{"rounds":[]}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p.panel = append(p.panel, "--screening-record", screening)
+	var rec evalreport.Registration
+	if err := json.Unmarshal([]byte(preregOut(t, p)), &rec); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(`{"rounds":[]}` + "\n"))
+	if rec.ScreeningRecordDigest != "sha256:"+hex.EncodeToString(sum[:]) {
+		t.Fatalf("screening_record_digest %q, want the sha256 of the file", rec.ScreeningRecordDigest)
+	}
+}
+
+func TestPreregistrationRecordCarriesPlanVWhenOn(t *testing.T) {
+	dir := t.TempDir()
+	off := basePrereg(t, dir)
+	offOut := preregOut(t, off)
+	if strings.Contains(offOut, "plan_v") {
+		t.Fatalf("a V-free record names plan_v: %s", offOut)
+	}
+	on := off
+	on.config = runnerConfigFile(t, dir, "runner-v.json", commitA, func(c *runner.Config) { c.PlanV = true })
+	var recOff, recOn evalreport.Registration
+	if err := json.Unmarshal([]byte(offOut), &recOff); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(preregOut(t, on)), &recOn); err != nil {
+		t.Fatal(err)
+	}
+	compliant := 0
+	for _, n := range evalcorpus.PilotQuotas().Compliant {
+		compliant += n
+	}
+	if recOff.PlanV || !recOn.PlanV || recOn.PlanSteps-recOff.PlanSteps != compliant ||
+		recOff.PlannedUnits != evalreport.LegacyPlannedUnits || recOn.PlannedUnits != evalreport.LegacyPlannedUnitsWithV ||
+		recOn.RerunHeadroom != runner.RerunHeadroomFor(evalreport.LegacyPlannedUnitsWithV) || recOn.RunnerPlanDigest == recOff.RunnerPlanDigest {
+		t.Fatalf("off %+v\non %+v", recOff, recOn)
 	}
 }

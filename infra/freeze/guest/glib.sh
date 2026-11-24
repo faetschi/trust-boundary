@@ -123,7 +123,7 @@ if [ ${#WXP[@]} -gt 0 ]; then
   linux_safe "${TBOUND_WGA:-}" && [[ $TBOUND_WGA == */infra/freeze/guest ]] ||
     die "set TBOUND_WGA to <Linux checkout of this kit>/infra/freeze/guest (plain absolute path, outside /mnt)"
   WGA=$TBOUND_WGA
-  WGA_FILES=(guest/jget.py guest/reqstate.py guest/fill-template.py guest/mk-svc-config.py guest/mk-dr-config.py guest/sign-g1.sh guest/sign-run.sh guest/carrier-check.sh
+  WGA_FILES=(guest/jget.py guest/reqstate.py guest/fill-template.py guest/mk-svc-config.py guest/mk-dr-config.py guest/vs-check.py guest/sign-g1.sh guest/sign-run.sh guest/carrier-check.sh
     lib.sh paths.sh freeze-guard.sh "freezes/$KIT_FREEZE.env")
   [ "$(cd "$A" && sha256sum "${WGA_FILES[@]}" | cut -c1-64)" = "$(WX bash -c 'cd "$1/.." && shift && sha256sum "$@" | cut -c1-64' _ "$WGA" "${WGA_FILES[@]}")" ] ||
     die "TBOUND_WGA=$WGA differs from this kit (helpers, lib or freezes/$KIT_FREEZE.env): refresh the Linux checkout"
@@ -399,5 +399,36 @@ for line in open(sys.argv[1]):
     if kind=="pi_workflow_admission_reserved" and data["entry"]["host_admission_id"]==adm: admission_hash=data["admission_hash"]
     if kind=="pi_workflow_terminal": terminal[data["admission_hash"]]=data.get("outcome") or "completed"
 print("absent" if admission_hash is None else ("terminal:"+terminal[admission_hash] if admission_hash in terminal else "open"))' "$1" "$2" | tr -d '\r\n'
+}
+
+L2_ROOT_DIGEST=""
+l2_fail() { echo "l2_check: line $((i + 1)) of the diag l2 text does not match: '${L[i]:-<end of text>}'" >&2; }
+l2_check() {
+  local -a L=(); local line i=0 n t opts dirs="" re_stat re_digest
+  re_stat='^[^[:space:]]+:[^[:space:]]+ [0-7]+$'
+  re_digest='^-- cgroup-root-digest \(profile: (sha256:[0-9a-f]{64})\)$'
+  while IFS= read -r line; do L+=("${line%$'\r'}"); done <<<"$1"
+  n=${#L[@]}
+  while [ "$n" -gt 0 ] && [ -z "${L[n-1]}" ]; do n=$((n - 1)); done
+  [ "${L[i]:-}" = "== service cgroup" ] || { l2_fail; return 1; }; i=$((i + 1))
+  while [ "$i" -lt "$n" ] && ! [[ ${L[i]} =~ $re_stat ]]; do dirs="$dirs${L[i]}"$'\n'; i=$((i + 1)); done
+  [ "$(printf '%s' "$dirs" | LC_ALL=C sort | tr '\n' ' ')" = "cells runner " ] || { l2_fail; return 1; }
+  [ "${L[i]:-}" = "tbound-pi:tbound-pi 755" ] || { l2_fail; return 1; }; i=$((i + 1))
+  [ "${L[i]:-}" = domain ] || { l2_fail; return 1; }; i=$((i + 1))
+  [ "${L[i]:-}" = "cpu memory pids" ] || { l2_fail; return 1; }; i=$((i + 1))
+  [ "${L[i]:-}" = "-- runner procs" ] || { l2_fail; return 1; }; i=$((i + 1))
+  [[ ${L[i]:-} =~ ^[0-9]+$ ]] || { l2_fail; return 1; }; i=$((i + 1))
+  [[ ${L[i]:-} =~ $re_digest ]] || { l2_fail; return 1; }; L2_ROOT_DIGEST=${BASH_REMATCH[1]}; i=$((i + 1))
+  [ "${L[i]:-}" = "$L2_ROOT_DIGEST" ] || { l2_fail; return 1; }; i=$((i + 1))
+  [ "${L[i]:-}" = "== mounts" ] || { l2_fail; return 1; }; i=$((i + 1))
+  for t in /usr/local/bin/tbound /usr/local/bin/node /usr/bin/podman /usr/bin/crun /opt/tbound/cell /var/lib/tbound/runtime; do
+    line=${L[i]:-}; [ "${line%% *}" = "$t" ] || { l2_fail; return 1; }
+    opts=",${line#* },"
+    [[ $opts == *,ro,* && $opts == *,nosuid,* && $opts == *,nodev,* ]] || { l2_fail; return 1; }
+    i=$((i + 1))
+  done
+  [ "${L[i]:-}" = "== maintenance lock" ] || { l2_fail; return 1; }; i=$((i + 1))
+  [ "${L[i]:-}" = lock-free ] || { l2_fail; return 1; }; i=$((i + 1))
+  [ "$i" -eq "$n" ] || { l2_fail; return 1; }
 }
 

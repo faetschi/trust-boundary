@@ -1,0 +1,7 @@
+connect attempt host=2026-11-24T07:29:44.688442500Z
+host=1795505385.122 guest=1795505385.125 offset_guest_minus_host=+0.004 guest_uptime=625308.28
+host=1795505386.123 guest=1795505386.128 offset_guest_minus_host=+0.005 guest_uptime=625309.28
+host=1795505387.125 guest=1795505387.131 offset_guest_minus_host=+0.006 guest_uptime=625310.28
+host=1795505388.129 guest=1795505388.134 offset_guest_minus_host=+0.005 guest_uptime=625311.28
+host=1795505389.132 guest=1795505389.137 offset_guest_minus_host=+0.006 guest_uptime=625312.29
+host=1795505390.135 guest=1795505390.140 offset_guest_minus_host=+0.005 guest_uptime=625313.29

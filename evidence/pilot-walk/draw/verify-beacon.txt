@@ -1,0 +1,3 @@
+round 6667847 matches the commitment (scheduled 2026-11-23T20:40:30Z)
+randomness 748a1f369c03425a20097bfa8ed0444b352d3789d7fcd2ba9fa61c8b17aab5be equals SHA-256 of the signature
+BLS signature: NOT VERIFIED by select.py. Verify it with an independent drand verifier against the committed chain public key and record the result before the draw.
