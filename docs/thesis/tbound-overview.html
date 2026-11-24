@@ -106,7 +106,7 @@
 
 <h3>Who covers which safeguard?</h3>
 <p>This table compares the closest existing approaches. Each row shows which of the five safeguards it provides. Tool names link to the project pages.</p>
-<svg id="fig-comparison" viewBox="0 0 720 432" role="img" aria-label="Comparison table: eight existing approaches against the five safeguards. Several cover two or three, none covers all five. The tbound design targets all five.">
+<svg id="fig-comparison" viewBox="0 0 720 432" role="img" aria-label="Comparison table: eight existing approaches against the five safeguards. Several cover two or three. The closest, governator, provides three and partly covers the other two. None provides all five. The tbound design targets all five.">
   <rect x="524" y="78" width="96" height="342" rx="6" fill="none" stroke="var(--accent,#3b6fd4)" stroke-dasharray="5 4"/>
   <rect x="0" y="386" width="720" height="38" fill="var(--accent,#3b6fd4)" fill-opacity="0.1"/>
   <g font-size="11" font-weight="700" text-anchor="middle">
@@ -134,9 +134,9 @@
   <text x="6" y="250" font-size="12" font-weight="700"><a href="https://github.com/multikernel/sandlock"><tspan text-decoration="underline">Sandlock</tspan></a></text>
   <text x="6" y="264" font-size="10.5" style="fill:var(--muted-foreground,#666)">Linux file locks + staged commit</text>
   <g stroke-width="1.5"><circle cx="284" cy="253" r="9" fill="none" stroke="var(--border,#cfcfcf)"/><circle cx="380" cy="253" r="9" fill="none" stroke="var(--warning,#b7791f)"/><path d="M380,244 A9,9 0 0 0 380,262 Z" fill="var(--warning,#b7791f)"/><circle cx="476" cy="253" r="9" fill="none" stroke="var(--warning,#b7791f)"/><path d="M476,244 A9,9 0 0 0 476,262 Z" fill="var(--warning,#b7791f)"/><circle cx="572" cy="253" r="9" fill="var(--success,#2e7d32)" stroke="var(--success,#2e7d32)"/><circle cx="668" cy="253" r="9" fill="none" stroke="var(--border,#cfcfcf)"/></g>
-  <text x="6" y="288" font-size="12" font-weight="700"><a href="https://github.com/cmtonkinson/governator"><tspan text-decoration="underline">governator</tspan></a></text>
-  <text x="6" y="302" font-size="10.5" style="fill:var(--muted-foreground,#666)">supervisor, separate commit, record</text>
-  <g stroke-width="1.5"><circle cx="284" cy="291" r="9" fill="none" stroke="var(--border,#cfcfcf)"/><circle cx="380" cy="291" r="9" fill="none" stroke="var(--border,#cfcfcf)"/><circle cx="476" cy="291" r="9" fill="none" stroke="var(--warning,#b7791f)"/><path d="M476,282 A9,9 0 0 0 476,300 Z" fill="var(--warning,#b7791f)"/><circle cx="572" cy="291" r="9" fill="none" stroke="var(--warning,#b7791f)"/><path d="M572,282 A9,9 0 0 0 572,300 Z" fill="var(--warning,#b7791f)"/><circle cx="668" cy="291" r="9" fill="none" stroke="var(--border,#cfcfcf)"/></g>
+  <text x="6" y="288" font-size="12" font-weight="700"><a href="https://github.com/cousingary/governator"><tspan text-decoration="underline">governator (cousingary)</tspan></a></text>
+  <text x="6" y="302" font-size="10.5" style="fill:var(--muted-foreground,#666)">contract supervisor, v1.0.2 (Aug 2026)</text>
+  <g stroke-width="1.5"><circle cx="284" cy="291" r="9" fill="none" stroke="var(--warning,#b7791f)"/><path d="M284,282 A9,9 0 0 0 284,300 Z" fill="var(--warning,#b7791f)"/><circle cx="380" cy="291" r="9" fill="none" stroke="var(--warning,#b7791f)"/><path d="M380,282 A9,9 0 0 0 380,300 Z" fill="var(--warning,#b7791f)"/><circle cx="476" cy="291" r="9" fill="var(--success,#2e7d32)" stroke="var(--success,#2e7d32)"/><circle cx="572" cy="291" r="9" fill="var(--success,#2e7d32)" stroke="var(--success,#2e7d32)"/><circle cx="668" cy="291" r="9" fill="var(--success,#2e7d32)" stroke="var(--success,#2e7d32)"/></g>
   <text x="6" y="326" font-size="12" font-weight="700"><a href="https://yolofs.github.io/"><tspan text-decoration="underline">YoloFS</tspan></a></text>
   <text x="6" y="340" font-size="10.5" style="fill:var(--muted-foreground,#666)">file system with staged commits</text>
   <g stroke-width="1.5"><circle cx="284" cy="329" r="9" fill="none" stroke="var(--border,#cfcfcf)"/><circle cx="380" cy="329" r="9" fill="none" stroke="var(--border,#cfcfcf)"/><circle cx="476" cy="329" r="9" fill="var(--success,#2e7d32)" stroke="var(--success,#2e7d32)"/><circle cx="572" cy="329" r="9" fill="none" stroke="var(--border,#cfcfcf)"/><circle cx="668" cy="329" r="9" fill="none" stroke="var(--border,#cfcfcf)"/></g>
@@ -148,7 +148,7 @@
 </svg>
 <p class="legend"><span class="item"><span class="dot full"></span>provided</span> <span class="item"><span class="dot half"></span>partly (e.g. only inside the agent harness)</span> <span class="item"><span class="dot"></span>not established</span><br><span class="item"><span class="dot me"></span>in the tbound design</span></p>
 <p class="small">This is a simplified reading of the thesis's own comparison table, not a full survey. An empty cell means the thesis does not claim that safeguard for the tool. It does not mean the tool lacks it.</p>
-<p>No single approach in the table covers all five. The thesis does not claim any single safeguard as new. Its proposed contribution is the integration of all five behind one external, deterministic enforcement point: A program outside the agent loop, and it gives the same verdict for the same request under the same rules.</p>
+<p>No approach in the table provides all five. The closest, governator, provides three of them. It covers the fixed tool list and the outside rule check only partly, through each agent harness's own settings and hooks. The thesis does not claim any single safeguard as new. Its proposed contribution is the integration of all five behind one external, deterministic enforcement point that every tool call must pass: A program outside the agent loop, and it gives the same verdict for the same request under the same rules.</p>
 <p>The thesis treats this gap as provisional. It holds only for the sources that the documented literature search found. Other systems may do more than this table shows.</p>
 <h3>Why the usual protections fall short</h3>
 <div class="gaps">
