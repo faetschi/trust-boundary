@@ -1,6 +1,6 @@
 # trust-boundary (tbound)
 
-![trust-boundary: a shield with a red stepped path](assets/trust-boundary-banner.png)
+![tbound: a hand-drawn shield with steps inside; a red line leaves through a gate in the shield and underlines the name](assets/trust-boundary-banner.png)
 
 [![status: research prototype](https://img.shields.io/badge/status-research%20prototype-orange)](#current-status)
 [![Go 1.26+](https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go&logoColor=white)](docs/guides/setup.md)
