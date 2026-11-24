@@ -108,6 +108,7 @@ recover.sh picks and the runner's arguments, with synthetic files and no guest c
       `TBOUND_TRIAL_KEY=<trial key path>` adds the netsink step): `33-corpus-pilot.sh` (abandon the dr request, D1 manifest, 76 T5 artifacts,
       the RG cycle for `pilot`, optional `trial reset` and `40-guest-evidence.sh netsink`); `tools/guest-chain.sh` runs it with `CORPUS_PILOT=1`.
 - [ ] `33-corpus-pilot.sh` ran to "DONE" (`$HF/pilot/CYCLE_OK`; with the trial key also `$HF/evq/netsink.json`), the session sudo is closed again.
+- [ ] V route probe (D61 item 8; owner approval, `TBA_PW` and `TBOUND_TRIAL_KEY`): `34-v-stub-probe.sh` after `33` (or `CORPUS_PILOT=1 V_STUB_PROBE=1 tools/guest-chain.sh`), then `40-guest-evidence.sh v-stub`. It ran to "DONE" (`$HF/vs/CHECKS_OK`, `DELETED`, `record.json`), the research ledger is unchanged, the throwaway files are deleted and the pilot chain runs again (`PROVISIONING-SIGNING.md`, "V route probe against a stub upstream").
 - [ ] `27` archived the previous freeze's G1/rp/dr state and exports; it archives the pilot items too, and `33` resets a pilot install left by an earlier freeze (`pilot-reset` phase); its dr request ended UNKNOWN BY DESIGN and
       the stale-evidence commit check in `40-guest-evidence.sh` passed for this freeze.
 - [ ] Before every `tbound-run run` block (and after a host restart or sleep): `w32tm /resync /force` on the Windows host and `chronyc makestep` on the guest
