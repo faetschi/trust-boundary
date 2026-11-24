@@ -161,7 +161,12 @@ class RealInputs(Fixture):
             added = {r["case_id"] for r in json.load(fh)["rows"]}
         development = {c for c, s in rows.items() if s == "development"}
         self.assertEqual(len(development), 149)
-        self.assertEqual(ids - {c for c in ids if c not in rows}, in_ledger | added | development)
+        walk = set()  # the D48 pilot walk's screened cases (D51 item 22)
+        for name in ("pilot-r01", "pilot-r02"):
+            with open(os.path.join(CARRIERS, name, "manifest.draft.json"), encoding="utf-8") as fh:
+                walk |= {c["case_id"] for c in json.load(fh)["cases"] if c["case_id"] in rows}
+        self.assertEqual(len(walk), 15)
+        self.assertEqual(ids - {c for c in ids if c not in rows}, in_ledger | added | development | walk)
         self.assertIn("PILOT-ADV-A-01", ids)  # T5 ids outside the ledger are kept
         self.assertNotIn("agentdojo:", printed)
 
