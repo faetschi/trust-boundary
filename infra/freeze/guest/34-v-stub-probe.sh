@@ -110,8 +110,7 @@ v_leftovers() {
   printf '%s\n%s\n' "$(grep '^tbound-v-' <<<"$ps" || true)" "$dirs" | grep . || true
 }
 td_job() { if [ -n "$VJOB" ] && kill -0 "$VJOB" 2>/dev/null; then kill "$VJOB" || true; fi; }
-td_vrun() {
-  local names n left
+td_vkill() {
   GI 'sudo -n bash -s' <<'EOS' || die "a trial v-run process is still running on the guest after SIGKILL"
 set -u
 P='[t]bound trial ssh-original-command'
@@ -121,6 +120,9 @@ pkill -KILL -u 0 -f "$P" || true
 sleep 2
 ! pgrep -u 0 -f "$P" > /dev/null
 EOS
+}
+td_vclean() {
+  local names n left
   names=$(podsvc "ps -a --format '{{.Names}}'" | tr -d '\r') || die "podman ps as the service failed: a tbound-v- container may be left"
   for n in $(grep '^tbound-v-' <<<"$names" || true); do
     [[ $n =~ ^tbound-v-[0-9a-f]+$ ]] || die "unexpected container name '$n'"
@@ -129,7 +131,7 @@ EOS
   G "sudo -n sh -c 'if test -d $VWORK; then find $VWORK -mindepth 1 -maxdepth 1 -exec rm -rf {} +; fi'" || die "cannot clear $VWORK"
   left=$(v_leftovers) || die "cannot look for a V container or work directory"
   [ -z "$left" ] || die "a V container or work directory is still on the guest: $left"
-  ok "no trial v-run process, no tbound-v- container, no work directory under $VWORK"
+  ok "no tbound-v- container, no work directory under $VWORK"
 }
 td_stub() {
   if ! hf_has vs/stub.log && G "test -s $STUB_DIR/stub.log"; then G "cat $STUB_DIR/stub.log" | tr -d '\r' | save vs/stub.log; fi
@@ -186,7 +188,7 @@ vs_teardown() {
   TD_RC=0
   say "teardown: stub, v-stub service, throwaway files, pilot chain"
   tstep td_job
-  if [ "$VRUN" = 1 ]; then tstep td_vrun && VRUN=0; fi
+  if [ "$VRUN" = 1 ]; then tstep td_vkill || return 1; tstep td_vclean && VRUN=0; fi
   if [ "$STUB_UP" = 1 ]; then tstep td_stub && STUB_UP=0; fi
   if [ "$SWAPPED" = 1 ]; then tstep td_stop_service; fi
   if [ "$THROWAWAY" = 1 ]; then tstep td_delete && THROWAWAY=0; fi
