@@ -35,6 +35,21 @@ func TestForwardedRequestDropsEveryNonAllowlistedMember(t *testing.T) {
 	}
 }
 
+func TestForwardedRequestRefusesARebuiltBodyOverTheSizeLimit(t *testing.T) {
+	route := researchTestRoute(t)
+	body := func(c string) []byte {
+		return []byte(`{"model":"deepseek/deepseek-v4.1-flash","stream":true,"messages":[{"role":"user","content":"` + strings.Repeat(c, 3<<18) + `"}]}`)
+	}
+	if raw := body("<"); len(raw) > MaxRequestBytes {
+		t.Fatalf("the raw body (%d bytes) is already over the limit", len(raw))
+	} else if _, err := BuildForwardedRequest(route, raw, 4096); !errors.Is(err, ErrForwardedRequest) {
+		t.Fatalf("a body whose rebuilt form is over MaxRequestBytes: %v", err)
+	}
+	if _, err := BuildForwardedRequest(route, body("a"), 4096); err != nil {
+		t.Fatalf("the same size without escaping: %v", err)
+	}
+}
+
 func TestForwardedRequestRefusals(t *testing.T) {
 	route := researchTestRoute(t)
 	tooLarge := `{"model":"deepseek/deepseek-v4.1-flash","stream":true,"messages":[{"role":"user","content":"` + strings.Repeat("a", MaxRequestBytes) + `"}]}`
