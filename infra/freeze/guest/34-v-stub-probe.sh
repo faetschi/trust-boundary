@@ -24,8 +24,9 @@ readonly LEDGER_ID=tbound-v-stub-probe
 readonly FROZEN_AT=2026-11-21T13:35:13Z
 readonly FROZEN_PROFILE_SHA=sha256:3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357
 readonly VWORK=/var/lib/tbound/v-work
+readonly OUT=/var/tmp/tbound-op
 readonly THROWAWAY_PATHS="$VS $VS_LEDGER $VS_ADMISSIONS $VS_SCRATCH $STUB_DIR"
-SESSION_OPEN=0 SWAPPED=0 THROWAWAY=0 STUB_UP=0 VRUN=0 TORN_DOWN=0 TD_RC=0 VJOB="" VWORK_PRE="" VWORK_DEL="" DEL_PATHS=""
+SESSION_OPEN=0 SWAPPED=0 THROWAWAY=0 STUB_UP=0 VRUN=0 VERIFY=0 TORN_DOWN=0 TD_RC=0 VJOB="" VWORK_PRE="" VWORK_DEL="" DEL_PATHS="" CAT_BEFORE=""
 VS_CASE="" VS_KEY="" PILOT_FILES="serve-pi-service.json:serve-pi-service.json managed-live-root.json:managed-live-root.json managed-live-root.ed25519:managed-live-root.ed25519 pi-host-profile.signed.json:pi-host-profile.json pi-host-profile.ed25519:pi-host-profile.ed25519 d09-cell.json:d09-cell.json"
 
 session_close() {
@@ -37,6 +38,21 @@ session_close() {
 }
 
 pilot_status() { G "$OP status pilot" | tr -d '\r'; }
+catalog_sha() {
+  local h
+  op "collect catalog" > /dev/null || die "tbound-op collect catalog failed"
+  h=$(G "sha256sum $OUT/_/catalog.jsonl" | cut -d' ' -f1 | tr -d '\r')
+  [[ $h =~ ^[0-9a-f]{64}$ ]] || die "no sha256 of the collected catalog: '$h'"
+  printf '%s' "$h"
+}
+pilot_installed() {
+  local s pair
+  s=$(pilot_status)
+  [[ $s == *"installed config matches state of: pilot"* && $s == *"service=active socket=active"* ]] || die "the pilot chain is not installed and running (tbound-op status pilot): $s"
+  for pair in $PILOT_FILES; do
+    eq "installed /etc/tbound/${pair##*:} == pilot/${pair%%:*}" "$(gsha "/etc/tbound/${pair##*:}")" "$(wd "$HF/pilot/${pair%%:*}")"
+  done
+}
 trial() { GSSH_IDENTITY=$TBOUND_TRIAL_KEY GSSH_USER=root sh "$GSSH_SH" "/usr/local/bin/tbound trial $1" </dev/null; }
 first_compliant_case() {
   local c
@@ -90,7 +106,7 @@ v_leftovers() {
 td_job() { if [ -n "$VJOB" ] && kill -0 "$VJOB" 2>/dev/null; then kill "$VJOB" || true; fi; }
 td_vrun() {
   local names n left
-  GI 'sudo -n bash -s' <<'EOS'
+  GI 'sudo -n bash -s' <<'EOS' || die "a trial v-run process is still running on the guest after SIGKILL"
 set -u
 P='[t]bound trial ssh-original-command'
 pkill -TERM -u 0 -f "$P" || true
@@ -102,9 +118,9 @@ EOS
   names=$(podsvc "ps -a --format '{{.Names}}'" | tr -d '\r') || die "podman ps as the service failed: a tbound-v- container may be left"
   for n in $(grep '^tbound-v-' <<<"$names" || true); do
     [[ $n =~ ^tbound-v-[0-9a-f]+$ ]] || die "unexpected container name '$n'"
-    podsvc "rm -f --time 0 --ignore $n" > /dev/null
+    podsvc "rm -f --time 0 --ignore $n" > /dev/null || die "podman rm -f of $n failed"
   done
-  G "sudo -n sh -c 'if test -d $VWORK; then find $VWORK -mindepth 1 -maxdepth 1 -exec rm -rf {} +; fi'"
+  G "sudo -n sh -c 'if test -d $VWORK; then find $VWORK -mindepth 1 -maxdepth 1 -exec rm -rf {} +; fi'" || die "cannot clear $VWORK"
   left=$(v_leftovers) || die "cannot look for a V container or work directory"
   [ -z "$left" ] || die "a V container or work directory is still on the guest: $left"
   ok "no trial v-run process, no tbound-v- container, no work directory under $VWORK"
@@ -134,12 +150,24 @@ td_delete() {
 td_restore() {
   local pair
   for pair in $PILOT_FILES; do gput 0644 root:root "$HF/pilot/${pair%%:*}" "/etc/tbound/${pair##*:}"; done
-  op "svc start"
+  op "svc start" || die "tbound-op svc start failed"
   local s; s=$(pilot_status)
   [[ $s == *"installed config matches state of: pilot"* ]] || die "after the restore the installed chain does not match the pilot state (tbound-op status pilot)"
   [[ $s == *"service=active socket=active"* ]] || die "the pilot service is not active after the restore"
   ok "pilot chain restored from $HF/pilot and started: installed config matches state of pilot, service and socket active"
-  op "diag l2" | save "vs/diag-l2-restored.txt"
+}
+td_verify() {
+  local l2 csha chk
+  l2=$(op "diag l2" 2>&1 | tr -d '\r') || die "diag l2 failed: $l2"
+  printf '%s\n' "$l2" | head -40
+  l2_check "$l2" || die "diag l2 does not show the expected L2 state after the restore (see above; PROVISIONING-SIGNING.md L2)"
+  eq "live cgroup-root digest (diag l2) == recorded CGROUP_ROOT_DIGEST" "$L2_ROOT_DIGEST" "$(hf_get CGROUP_ROOT_DIGEST)"
+  hf_has vs/diag-l2-restored.txt || printf '%s\n' "$l2" | save vs/diag-l2-restored.txt
+  csha=$(catalog_sha) || die "cannot hash the workflow catalog after the restore"
+  eq "workflow catalog sha256 after the probe == before" "$csha" "$CAT_BEFORE"
+  chk=$(trial "reset $VS_CASE --check" | tr -d '\r') || die "trial reset $VS_CASE --check refused after the restore: $chk"
+  [[ $chk == *tbound-trial-reset/v1* && $chk == *'"check":true'* ]] || die "trial reset --check did not print a check document after the restore: $chk"
+  ok "pilot chain verified after the restore: diag l2 as the pilot cycle left it, catalog unchanged, trial reset --check answers"
 }
 tstep() {
   if ( "$@" ); then return 0; fi
@@ -156,7 +184,8 @@ vs_teardown() {
   if [ "$STUB_UP" = 1 ]; then tstep td_stub && STUB_UP=0; fi
   if [ "$SWAPPED" = 1 ]; then tstep td_stop_service; fi
   if [ "$THROWAWAY" = 1 ]; then tstep td_delete && THROWAWAY=0; fi
-  if [ "$SWAPPED" = 1 ]; then tstep td_restore && SWAPPED=0; fi
+  if [ "$SWAPPED" = 1 ]; then tstep td_restore && SWAPPED=0 && VERIFY=1; fi
+  if [ "$VERIFY" = 1 ]; then tstep td_verify && VERIFY=0; fi
   [ "$TD_RC" != 0 ] || TORN_DOWN=1
   return "$TD_RC"
 }
@@ -172,6 +201,7 @@ VS_CASE=$(first_compliant_case "$HF/pilot/manifest.json")
 [[ $VS_CASE =~ ^PILOT-CMP-[A-Za-z0-9._-]+$ ]] || die "the first compliant case of the installed manifest is '$VS_CASE', not a PILOT-CMP development case: a V unit never runs on an H1 task before T2"
 CORPUS_DIGEST=$(hf_get pilot/CORPUS_DIGEST); need_dig CORPUS_DIGEST "$CORPUS_DIGEST"
 CAL_RW_DIGEST=$(hf_get CAL_RW_DIGEST); need_dig CAL_RW_DIGEST "$CAL_RW_DIGEST"
+need_dig CGROUP_ROOT_DIGEST "$(hf_get CGROUP_ROOT_DIGEST)"
 CD=$(G 'sha256sum /etc/tbound/podman-config/containers.conf' | cut -d' ' -f1 | sed 's/^/sha256:/')
 SD=$(G 'sha256sum /etc/tbound/podman-config/storage.conf' | cut -d' ' -f1 | sed 's/^/sha256:/')
 eq "measured CD == recorded CONTAINERS_CONF_DIGEST" "$CD" "$(hf_get CONTAINERS_CONF_DIGEST)"
@@ -217,6 +247,9 @@ eq "config differs from the pilot config in provider_route only" \
   "$(printf '%s\n%s' '<   "provider_route": "engineering",' '>   "provider_route": "v-stub",')"
 
 say "3. stop the pilot service, install the v-stub config and measure the registration (RA-5, RA-6)"
+pilot_installed
+CAT_BEFORE=$(catalog_sha)
+printf '%s\n' "$CAT_BEFORE" | save vs/catalog-before.sha256
 THROWAWAY=1
 SWAPPED=1
 op "svc stop"

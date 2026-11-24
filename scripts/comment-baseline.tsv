@@ -263,7 +263,7 @@ infra/freeze/guest/29-g1-recover.sh	57
 infra/freeze/guest/30-reg-g1.sh	43
 infra/freeze/guest/31-reg-rp.sh	24
 infra/freeze/guest/32-reg-dr.sh	25
-infra/freeze/guest/33-corpus-pilot.sh	86
+infra/freeze/guest/33-corpus-pilot.sh	82
 infra/freeze/guest/40-guest-evidence.sh	33
 infra/freeze/guest/50-i1-i2.sh	21
 infra/freeze/guest/carrier-check.sh	7

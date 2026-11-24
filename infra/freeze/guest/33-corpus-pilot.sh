@@ -462,41 +462,6 @@ phase_cycle() {
   hf_put pilot/CYCLE_OK ok
 }
 
-# l2_check <diag l2 text>: the L2 block of PROVISIONING-SIGNING.md as tbound-op's `diag l2` prints it (the verb itself always exits 0), parsed line by line
-# against the expected values, nothing else allowed: child cgroups exactly {cells, runner}; the cells cgroup owned by tbound-pi:tbound-pi mode 755; type
-# domain; controllers `cpu memory pids`; no process in cells; exactly one runner pid; the cgroup-root digest the tool measures live; the six mounts (tbound,
-# node, podman, crun, cell, runtime) each with the options ro, nosuid, nodev; the maintenance lock free. Sets L2_ROOT_DIGEST for the caller.
-L2_ROOT_DIGEST=""
-l2_fail() { echo "l2_check: line $((i + 1)) of the diag l2 text does not match: '${L[i]:-<end of text>}'" >&2; }
-l2_check() {
-  local -a L=(); local line i=0 n t opts dirs="" re_stat re_digest
-  re_stat='^[^[:space:]]+:[^[:space:]]+ [0-7]+$'
-  re_digest='^-- cgroup-root-digest \(profile: (sha256:[0-9a-f]{64})\)$'
-  while IFS= read -r line; do L+=("${line%$'\r'}"); done <<<"$1"
-  n=${#L[@]}
-  while [ "$n" -gt 0 ] && [ -z "${L[n-1]}" ]; do n=$((n - 1)); done
-  [ "${L[i]:-}" = "== service cgroup" ] || { l2_fail; return 1; }; i=$((i + 1))
-  while [ "$i" -lt "$n" ] && ! [[ ${L[i]} =~ $re_stat ]]; do dirs="$dirs${L[i]}"$'\n'; i=$((i + 1)); done
-  [ "$(printf '%s' "$dirs" | LC_ALL=C sort | tr '\n' ' ')" = "cells runner " ] || { l2_fail; return 1; }
-  [ "${L[i]:-}" = "tbound-pi:tbound-pi 755" ] || { l2_fail; return 1; }; i=$((i + 1))
-  [ "${L[i]:-}" = domain ] || { l2_fail; return 1; }; i=$((i + 1))
-  [ "${L[i]:-}" = "cpu memory pids" ] || { l2_fail; return 1; }; i=$((i + 1))
-  [ "${L[i]:-}" = "-- runner procs" ] || { l2_fail; return 1; }; i=$((i + 1))   # cells/cgroup.procs printed nothing: no process in cells
-  [[ ${L[i]:-} =~ ^[0-9]+$ ]] || { l2_fail; return 1; }; i=$((i + 1))   # exactly one runner pid: the service main process
-  [[ ${L[i]:-} =~ $re_digest ]] || { l2_fail; return 1; }; L2_ROOT_DIGEST=${BASH_REMATCH[1]}; i=$((i + 1))
-  [ "${L[i]:-}" = "$L2_ROOT_DIGEST" ] || { l2_fail; return 1; }; i=$((i + 1))
-  [ "${L[i]:-}" = "== mounts" ] || { l2_fail; return 1; }; i=$((i + 1))
-  for t in /usr/local/bin/tbound /usr/local/bin/node /usr/bin/podman /usr/bin/crun /opt/tbound/cell /var/lib/tbound/runtime; do
-    line=${L[i]:-}; [ "${line%% *}" = "$t" ] || { l2_fail; return 1; }
-    opts=",${line#* },"
-    [[ $opts == *,ro,* && $opts == *,nosuid,* && $opts == *,nodev,* ]] || { l2_fail; return 1; }
-    i=$((i + 1))
-  done
-  [ "${L[i]:-}" = "== maintenance lock" ] || { l2_fail; return 1; }; i=$((i + 1))
-  [ "${L[i]:-}" = lock-free ] || { l2_fail; return 1; }; i=$((i + 1))
-  [ "$i" -eq "$n" ] || { l2_fail; return 1; }
-}
-
 # ---- 5 netsink (Spike B step 1, then the netsink producer) ---------------------------------------------------------------------------------------
 trial() { GSSH_IDENTITY=$TBOUND_TRIAL_KEY GSSH_USER=root sh "$GSSH_SH" "/usr/local/bin/tbound trial $1" </dev/null; }   # the forced-command key, by path
 
