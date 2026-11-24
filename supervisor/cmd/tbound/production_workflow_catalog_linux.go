@@ -2051,7 +2051,8 @@ func validCatalogCorpusQuotaProfile(entry piServiceWorkflowEntry) bool {
 		return entry.CorpusQuotaProfile == ""
 	}
 	return entry.CorpusQuotaProfile == piruntime.D09ManagedPiCorpusQuotaProfileThesis ||
-		entry.CorpusQuotaProfile == piruntime.D09ManagedPiCorpusQuotaProfilePilot
+		entry.CorpusQuotaProfile == piruntime.D09ManagedPiCorpusQuotaProfilePilot ||
+		entry.CorpusQuotaProfile == piruntime.D09ManagedPiCorpusQuotaProfileScreening
 }
 
 func workflowEnvelopeMatchesRequest(config piServiceConfig, request piServiceRequest) bool {

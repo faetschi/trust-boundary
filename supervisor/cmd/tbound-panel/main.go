@@ -127,7 +127,6 @@ func (a *app) runCtx(ctx context.Context, args []string) error {
 }
 
 // expectedCompletionTokens is the typical answer size used for the expected (not worst) cost.
-// shortcut: a guess for six short reasons or one classification; replace with the dry-run mean once a live pilot exists.
 const expectedCompletionTokens = 800
 
 func (a *app) estimate(cfg panelConfig, c corpus) error {

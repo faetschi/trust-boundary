@@ -27,7 +27,7 @@ pins and measured results below remain historical evidence of their own freeze.
 2. Passwordless sudo is replaced at Z1' (decision 2026-10-21), after provisioning and before the first cell launch, and is never restored: `tboundadmin` stays in `%sudo` (password, owner-only at the console), loses the NOPASSWD drop-in `90-tbound-tboundadmin` and the `lxd` group, and keeps one NOPASSWD rule, for the operator dispatcher `/opt/tbound/operator/tbound-op` (`infra/guest/operator/`). Nothing after Z1' uses passwordless sudo except that dispatcher. From Z1' on, a `[PRIVILEGED WRITE]` that a `tbound-op` verb covers runs through the verb; every other one runs in `ROOTCON`, the owner's console root shell (the owner-only exceptions of `infra/guest/operator/README.md`); "root console" in this text means `ROOTCON`.
 3. Part L (first launch) is a separate approval.
 4. Signature output paths are new absolute canonical paths, and the tools refuse anything else: `tbound-profile sign` creates its three outputs with `O_EXCL`, refuses an existing path, refuses to write over its input profile and has no in-place default; `xattr-calibration-sign` and `managed-root-sign` refuse an existing output unless `--force` is given, and this runbook never gives `--force`. A second signing of the same kind (D4, D6, RG) goes to a new directory (`$H/<name>/`), so the files of the earlier signing, which are the rollback copies, are never touched.
-5. The frozen commit `F` (F0) is the only source. Any change to a build input after F0 voids every binary, digest, image and signature below; start again from F0. This includes any code fix the Blockers or Spike B force. Nothing measured at an earlier commit (binaries, image, bundle, corpus digest, EVQ capture, guest artifacts) is valid at a new `F`: the merge at `2c31881` changed the oracle constants and the capture format, so none is reused. The build inputs are the paths of the F0 check (`supervisor adapter scripts packaging infra corpus`); the one file added after `F` on purpose is the reviewed manifest `corpus/pilot/manifest.json` (D1), which `CORPUS_DIGEST` then pins. `corpus` is otherwise frozen with `F`, `corpus/g1/` included: the owner approval of the G1 case is recorded before F0 (G1-0), by committing the status change in `corpus/g1/`, and `corpus/g1/` is not edited after F0.
+5. The frozen commit `F` (F0) is the only source. Any change to a build input after F0 voids every binary, digest, image and signature below; start again from F0. This includes any code fix the Blockers or Spike B force. Nothing measured at an earlier commit (binaries, image, bundle, corpus digest, EVQ capture, guest artifacts) is valid at a new `F`: the merge at `2c31881` changed the oracle constants and the capture format, so none is reused. The build inputs are the paths of the F0 check (`supervisor adapter scripts packaging infra corpus`); one file added after `F` on purpose is the reviewed manifest `corpus/pilot/manifest.json` (D1), which `CORPUS_DIGEST` then pins. `corpus` is otherwise frozen with `F`, `corpus/g1/` included: the owner approval of the G1 case is recorded before F0 (G1-0), by committing the status change in `corpus/g1/`, and `corpus/g1/` is not edited after F0. The second exception is the confirmatory corpus `corpus/third/` (register D39): it is not in `F`. It is committed on top of `F` in a corpus-only commit with its own signed tag (the corpus tag; the build tag names `F`), and it is installed by digest (P13.3, P13.4). `git diff --no-renames --name-only <build tag> <corpus tag>` must print only paths under `corpus/third/`. Build identity (`SRC_DIGEST`, the EVQ capture, `frozen_source_digest`) keeps identifying `F`; the signed registration and the witnesses identify the final corpus manifest digest. A change under `corpus/third/` needs no new `F`, but the witnesses bind the whole manifest digest, so any manifest change means collecting all witnesses again.
 6. Prototyping uses the engineering route (OpenCode Go, `provider_route: "engineering"`) only. Research-route steps (OpenRouter, USD ledger) are "NOT NOW" until the owner switches.
 7. Private keys on the owner machine (the admin and cosign keys, and the three forced-command SSH keys of Part K) live in `$H` with mode 0600. The forced-command keys have no passphrase by necessity (the runner uses them unattended). An agent never reads, copies, prints or lists the content of any of them, and never runs a command that would; the runner is only told their paths. The runner uses Git Bash `ssh` on Windows (WSL cannot reach the guest network), so the owner also keeps a byte-identical copy of the three forced-command keys in the user-only Windows directory `.local\secrets\abi8-forced` (SSH-1); `run.json` names those copies.
 8. `tbound-pi.service` is socket-activated (`tbound-pi.socket` owns `/run/tbound/serve-pi.sock`). Never leave `tbound-pi.socket` stopped while the service should serve: a direct start of the service without the socket fails with "registered local Pi service is unavailable". Start the socket first (or both, `tbound-op svc start`), stop both together, and after any step that stops the pair (L-stop, the `abandon-unknown` step, G1-6) start the socket again before the next client request.
@@ -125,12 +125,12 @@ umask 077
 D() { echo "sha256:$(sha256sum "$1" | cut -d' ' -f1)"; }     # digest helper (Placeholders)
 REPO=$(git rev-parse --show-toplevel)
 W=$(mktemp -d -p $HOME tbound-w.XXXXXX); B=$(mktemp -d -p $HOME tbound-b.XXXXXX); H=$(mktemp -d -p $HOME tbound-h.XXXXXX)   # WSL ext4, mode 0700, unique
-stat -c '%a %U %n' $W $B $H; stat -f -c '%T' $H                    # 700 jeli2k ... ; ext2/ext3 (what ext4 reports), never 9p/drvfs
+stat -c '%a %U %n' $W $B $H; stat -f -c '%T' $H                    # 700 <user> ... ; ext2/ext3 (what ext4 reports), never 9p/drvfs
 git status --porcelain -- supervisor adapter scripts packaging infra corpus        # must print nothing
 F=$(git rev-parse --verify 'HEAD^{commit}'); echo $F > $H/FROZEN-COMMIT       # owner records it
 ```
 
-Use `$F`, never `HEAD`. Before each later part run `git diff --quiet $F HEAD -- supervisor adapter scripts packaging infra corpus ':!corpus/pilot/manifest.json'`; any difference voids the run (`corpus/pilot/manifest.json`, the reviewed manifest of D1, is the one file allowed to appear after `F`). Every `git archive` uses `-c core.autocrlf=false -c core.eol=lf`. Commit this runbook, the corpus-pilot template and the code changes of the `d019e94` review first (needs owner approval), and, if the owner approves the G1 case, the status change of `corpus/g1/` (G1-0): it is the only owner decision that lives in `corpus`, so it is part of `F`. `$W`, `$B` and `$H` are paths of the owner's WSL ext4 disk: K0 refuses to run if `$H` is not.
+Use `$F`, never `HEAD`. Before each later part run `git diff --quiet $F HEAD -- supervisor adapter scripts packaging infra corpus ':!corpus/pilot/manifest.json' ':!corpus/third'`; any difference voids the run (`corpus/pilot/manifest.json`, the reviewed manifest of D1, and the confirmatory corpus `corpus/third/` of rule 5 are the only paths allowed to change after `F`). Once the corpus tag exists, also check both tags before the corpus install: `git verify-tag <build tag>` and `git verify-tag <corpus tag>` pass (the owner signs with an SSH key, so `gpg.ssh.allowedSignersFile` names that key), `git rev-parse '<build tag>^{commit}'` prints `$F`, and `git diff --no-renames --name-only <build tag> <corpus tag> | grep -v '^corpus/third/'` prints nothing. Every `git archive` uses `-c core.autocrlf=false -c core.eol=lf`. Commit this runbook, the corpus-pilot template and the code changes of the `d019e94` review first (needs owner approval), and, if the owner approves the G1 case, the status change of `corpus/g1/` (G1-0): it is the only owner decision that lives in `corpus`, so it is part of `F`. `$W`, `$B` and `$H` are paths of the owner's WSL ext4 disk: K0 refuses to run if `$H` is not.
 
 ## Part P: preparation (owner machine)
 
@@ -153,7 +153,7 @@ SRC_DIGEST=$(tbound-run source-digest --repo $REPO --commit $F | sed -n 's/^sour
 
 ### P2 [READ-ONLY] rebuild the runtime bundle from F (LF)
 
-Scripts in `BR` (`10-setup.sh`, `20-bundle.sh`, `40-go-and-digest.sh`, `50-package.sh`, `99-cleanup.sh`) run in WSL as jeli2k, offline, with Node v24.21.0 (sha256 `7fde7b8a...df4c`) and `scripts/prepare_official_pi_runtime.py`. Regenerate `inputs/head-src.tar` from `$F` with the LF archive command of P1, rename the output tar for `$F`, build twice (byte-identical), measure with the real `tbound-profile runtime-bundle-digest` under a read-only bind. Dirs 0555, files 0555/0444, deterministic tar (`--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner`). Record `BUNDLE_DIGEST` and the tar sha256 (both measured at F0; there is no expected value, the measured one is the pin). The installed bundle (`sha256:d7367e1b...6884`) is replaced in P11.
+Scripts in `BR` (`10-setup.sh`, `20-bundle.sh`, `40-go-and-digest.sh`, `50-package.sh`, `99-cleanup.sh`) run in WSL as the operator user, offline, with Node v24.21.0 (sha256 `7fde7b8a...df4c`) and `scripts/prepare_official_pi_runtime.py`. Regenerate `inputs/head-src.tar` from `$F` with the LF archive command of P1, rename the output tar for `$F`, build twice (byte-identical), measure with the real `tbound-profile runtime-bundle-digest` under a read-only bind. Dirs 0555, files 0555/0444, deterministic tar (`--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner`). Record `BUNDLE_DIGEST` and the tar sha256 (both measured at F0; there is no expected value, the measured one is the pin). The installed bundle (`sha256:d7367e1b...6884`) is replaced in P11.
 
 ### P3 [READ-ONLY] build the cell image from F (offline; rebuilt because the entrypoint changed)
 
@@ -323,7 +323,7 @@ Check before L3: the one-use admission is reserved before the provider conversat
 
 ### P13 [PRIVILEGED WRITE, needs owner approval] B2 and pilot files
 
-Six independent installs; none is signed. All from `$W/src` (the F archive).
+Six independent installs; none is signed. All from `$W/src` (the F archive), except the confirmatory corpus (item 3).
 
 1. Maintenance lock (REQUIRED FOR THE SMOKE): the service takes `/run/tbound/maintenance.lock` when it admits any workflow, in every mode, and refuses with `maintenance-lock-unavailable` if the file is absent, not regular, not root-owned or writable by group/others (`serviceMaintenanceLock`). `tbound trial reset` takes the same lock (`flock`, never waits).
    ```
@@ -337,14 +337,16 @@ Six independent installs; none is signed. All from `$W/src` (the F archive).
    GSSH 'sha256sum /etc/tbound/net-sink.nft; ls -l /usr/sbin/nft; sudo -n /usr/sbin/nft -c -f /etc/tbound/net-sink.nft && echo syntax-ok'        # [READ-ONLY] digest as above; the binary exists; syntax-ok (nft may complain that the cgroup path does not exist yet, which is expected before the first reset; only a syntax error counts; unmeasured)
    ```
    Rollback: `sudo rm /etc/tbound/net-sink.nft` (a guest without the file resets without net-sink and the service refuses net-sink).
-3. Corpus artifacts: `/opt/tbound/corpus/artifacts` (`trialArtifactDir`), root:root, dirs 0755, files 0644: `fixture-<hex>.json` (read by reset and v-run), `accept-<hex>.json`, `solution-<hex>.json` (read by accept and the corpus check), `attacker-<hex>.json` (read by the service for the adaptive roles, `attackerArtifacts`), `draw-<hex>.json` (the D48 draw a manifest pins as `pins.draw_digest`, read at admission; absent for the pre-D48 pilot), `rubric-<hex>.md`. Install the whole `corpus/pilot/artifacts` directory of `$F` from the archive `$W/src` (P1 archives `corpus`; the working tree is never the source). The artifacts are part of `F` (F0 checks `corpus`): an artifact change after the reviews is a new `F`, and only the reviewed `manifest.json` of D1 is added afterwards.
+3. Corpus artifacts: `/opt/tbound/corpus/artifacts` (`trialArtifactDir`), root:root, dirs 0755, files 0644: `fixture-<hex>.json` (read by reset and v-run), `accept-<hex>.json`, `solution-<hex>.json` (read by accept and the corpus check), `attacker-<hex>.json` (read by the service for the adaptive roles, `attackerArtifacts`), `draw-<hex>.json` (the D48 draw a manifest pins as `pins.draw_digest`, read at admission; absent for the pre-D48 pilot), `rubric-<hex>.md`. Install the whole `corpus/pilot/artifacts` directory of `$F` from the archive `$W/src` (P1 archives `corpus`; the working tree is never the source). The artifacts are part of `F` (F0 checks `corpus`): an artifact change after the reviews is a new `F`, and only the reviewed `manifest.json` of D1 is added afterwards; the confirmatory `corpus/third/` is the exception (rule 5).
    ```
    GSSH 'sudo -n install -d -o root -g root -m 0755 /opt/tbound/corpus /opt/tbound/corpus/artifacts'
    tar -C $W/src/corpus/pilot/artifacts -c . | GSSH 'sudo -n tar -x --no-same-owner --no-same-permissions -C /opt/tbound/corpus/artifacts'
    GSSH 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +; ls /opt/tbound/corpus/artifacts | wc -l'        # 76 at 8c1c8ba (1 attacker, 33 fixture, 20 accept, 20 solution, 2 rubric); at F it must equal `ls $W/src/corpus/pilot/artifacts | wc -l`
    ```
    Rollback: `sudo rm -rf /opt/tbound/corpus`.
-4. Corpus manifest location: `/etc/tbound/corpus/manifest.json` (`D09ManagedPiCorpusManifestPath`, the only path the v4 config accepts) is installed in Part D (D2), not now; the manifest is not final.
+
+   The confirmatory corpus is not in `$W/src` (rule 5, D39). Its source is the archive of the corpus tag, restricted to its subtree, and never the working tree: `git -c core.autocrlf=false -c core.eol=lf archive --format=tar <corpus tag> corpus/third | (mkdir -p $W/corpus && tar -x -C $W/corpus)`, after the tag checks of F0. Its artifacts are installed from `$W/corpus/corpus/third` into the same directory, with the same owner and modes, before the confirmatory manifest (item 4), not in this step: RA-4a does both.
+4. Corpus manifest location: `/etc/tbound/corpus/manifest.json` (`D09ManagedPiCorpusManifestPath`, the only path the v4 config accepts) is installed in Part D (D2), not now; the manifest is not final. The confirmatory manifest is installed by digest too, but `manifest-install` measures with `--quota-profile pilot` and the pilot ceilings, so it cannot install that manifest. The owner installs it by hand in a session sudo window instead (RA-4a; the verb stays as frozen). `CORPUS_DIGEST` is measured by `corpus-digest --quota-profile thesis` on the confirmatory manifest and artifacts of the corpus tag archive (item 3).
 5. Helpers for the root console: `/opt/tbound/helpers/xattr-census-r9.py` and `/opt/tbound/helpers/probe-capabilities.sh` (root:root 0555). R1 streams the census to `python3 -I -` on stdin and needs nothing installed; L0, G1-3 and Spike A run at `ROOTCON` after Z1, where nothing streams from the owner machine, so the two files are on the guest before Z1.
    ```
    GSSH 'sudo -n install -d -o root -g root -m 0755 /opt/tbound/helpers'
@@ -1022,6 +1024,62 @@ review fields are optional metadata and require no invented human signature.
 
 New receipt pins for the pilot: `profile_hash` (S4' `Digest`), `containment_profile_digest` (new TD), `frozen_source_digest` (`SRC_DIGEST`, the profile's `SourceProvenanceDigest`), and, for the guest evidence of the runs with a config of their own, `base_template_digest` (`BASE_TD`), `admin_pubkey_digest` (`ADMIN_PUB_DIGEST`, the digest of `<ADMIN_PUB_PATH>`), `runtime_bundle_digest` (`BUNDLE_DIGEST`) and `runner_digest` (`TBOUND_DIGEST`); the last five are the same as before D. The pilot's `profile_hash` covers the bundle and its `containment_profile_digest` the registration and so the runner; `runtime_bundle_digest` and `runner_digest` are checked against them on the owner machine by `verify --runtime-bundle-digest` and `managed-root-verify --runner-digest` (D4, D6), and for the evidence runs by the producers and validators.
 
+## V route probe against a stub upstream (D61 item 8, after Part D)
+
+`docs/design/v-research-route.md` item 6 asks for one V unit in the guest qualification, next to G1, rp and dr. It runs Configuration V on a development compliant case through the per-unit forwarder of the service (`internal/researchroute/forwarder.go`, `cmd/tbound/pi_service_v_linux.go`), against a stub upstream, with a throwaway ledger and no research key. It books nothing in the research ledger. It does not replace the real-exchange evidence: that is the first V unit of the research pilot, run alone and inspected (D61 item 6). `guest/34-v-stub-probe.sh` does the whole cycle. It needs `TBOUND_TRIAL_KEY=<trial key path>` and `TBA_PW`, and it runs after `33-corpus-pilot.sh` (`tools/guest-chain.sh` with `CORPUS_PILOT=1 V_STUB_PROBE=1`; the chain refuses at its start, before any guest step, when `CORPUS_PILOT` is not 1 or `TBOUND_TRIAL_KEY` is not a file).
+
+`tbound-op` cannot install this config: its NAME list is `smoke|g1|rp|dr|pilot`, and `cfg_structural` compares a config with the shipped template of its NAME. So the probe is a hand install in one session sudo window, as RA-5 to RA-13 are, and it signs with `sign-run.sh vs` into `$HF/vs`. The service takes the probe's files from fixed paths only: `researchroute.StubPaths()` fixes them in code, `OpenStub` refuses the research ledger, checkpoint, configuration and key paths, and `VStubEndpoint` is `http://127.0.0.1:18443/api/v1/chat/completions`. The service config carries none of them. So the template `infra/guest/serve-pi-service.v-stub.json` is the pilot template with `provider_route` `v-stub` and nothing else changed (corpus mode, pilot profile, no `allow_pilot_on_research`).
+
+| Throwaway file | Content |
+| --- | --- |
+| `/etc/tbound/v-stub/research-profile.json` (root 0644) | the frozen research profile of RA-2: the committed profile with `frozen_at` `2026-11-21T13:35:13Z`, sha256 `3d0eaf64...c357`, checked by the script |
+| `/etc/tbound/v-stub/research-ledger.json` (root 0644) | `infra/guest/v-stub/research-ledger.json`: ledger id `tbound-v-stub-probe`, cap US$1 |
+| `/var/lib/tbound/sessions/v-stub-ledger` | genesis by `tbound-profile research-ledger-genesis --profile ... --ledger-config ... --ledger ...` as the service uid |
+| `/etc/tbound/v-stub/research-ledger-checkpoint.json` (root 0644) | `{"records": N, "head_sha256": "..."}` from the genesis output, as RA-4 |
+| `/etc/tbound/v-stub/stub.key` (995:986 0400) | a random string made for this run (`sk-vstub-` and 48 hex characters). It is not a research key and is never printed or kept |
+| `/var/lib/tbound/sessions/v-stub-admissions/` | the service's admission marker for the unit (the research route uses `v-admissions`) |
+| `/var/tmp/tbound-vs/`, `~tboundadmin/stage-vstub/` | the unsigned registration; the stub upstream (`infra/guest/v-stub/stub-upstream.py`, standard library only, started as `tboundadmin`) with its log |
+| `/var/lib/tbound/v-work/` | created by `trial v-run` itself (`os.MkdirAll`, no install step), one `<token>` directory per run. It must be absent or empty before the probe. When it was absent, it is in the deletion listing and in `DELETED` and the probe removes it with `rmdir`; when it was there and empty, it stays |
+
+The case is the first compliant case of the installed pilot manifest, and the script refuses anything that is not a `PILOT-CMP-` development case. In the T5 pilot that is `PILOT-CMP-read-01`. It is a development case, so no V unit runs on an H1 task before T2. It is the case `33` uses for `trial reset`. Its task only reads, and the stub's reply has no tool call, so the unit has no effect to undo.
+
+- V-0 [READ-ONLY] preconditions: `$HF/pilot/CYCLE_OK` and a recorded `CGROUP_ROOT_DIGEST`; `tbound-op status pilot` says "installed config matches state of: pilot"; no probe file on the guest; `/var/lib/tbound/v-work` absent or empty; `$HF/vs` does not exist (move an earlier one aside); session sudo closed at the start.
+- V-1 [READ-ONLY] the research ledger before: record count, head hash and whole-file sha256, or "absent" (recorded as such), and `stat` of the research key, profile, ledger configuration and checkpoint (no content is read). The measuring script runs with `set -euo pipefail` after `sudo -n true`, and an empty count, head or hash fails it: a dead sudo cannot read as "absent" on both sides.
+- V-2 [PRIVILEGED WRITE, needs owner approval] open session sudo. Before the swap the script requires, for all six pilot files, `/etc/tbound/<file>` on the guest to equal `$HF/pilot/<file>` (sha256), `tbound-op status pilot` to say `service=active socket=active`, and it records the sha256 and the size in bytes of a collected workflow catalog (`tbound-op collect catalog`, `$HF/vs/catalog-before.sha256`: `<sha256> <size>`) and the owner and mode of the six installed pilot files (`$HF/vs/pilot-meta-before.txt`). It marks the pilot chain as swapped before `tbound-op svc stop`, so a stop that half succeeds still ends in the restore. Then it installs `$HF/vs/serve-pi-service.json` (RA-5). The script requires that it differs from the pilot config in `provider_route` only.
+- V-3 [PRIVILEGED WRITE] measure the registration (RA-6: the cgroup and the flags of `tbound-op reg-measure`), fetch it, and run the RA-6 checks (runner, calibration, uid, config digest, account digests).
+- V-4 [OWNER SIGN] `sign-run.sh vs s3`, install the registration, `sign-run.sh vs s4` (the profile pins the engineering route, so the corpus manifest's model pin stays the pilot's), install profile and template, verify them on the guest (RA-7 to RA-10).
+- V-5 [PRIVILEGED WRITE] the throwaway files of the table, genesis and checkpoint; the stub upstream on `127.0.0.1:18443`; `systemctl start` (RA-11), and a check of the journal since the start for a refusal.
+- V-6 the unit: `trial v-run <case>` through the trial key. The stub holds its reply for 20 s, so the container is alive, and `podman inspect` as the service uid must show exactly three bind mounts (`/work` rw, `/runtime` ro, `/run/tbound/fwd` ro), no environment name with KEY, TOKEN, SECRET or PASSWORD, no mount source under `/etc/tbound` or ending in `.key`, and the stub key nowhere. The V document must be clean: exit 0, not timed out, evaluated, every booked call settled (`ledger_records == usage_events`), no uncertain unit, no overage, and tokens and cost equal to the stub's fixed usage times the record count. The task result itself (`accept.passed`) is recorded, not required. After the unit no `tbound-v-*` container and no `/var/lib/tbound/v-work/<token>` directory may be left. The stub key goes to `vs-check.py` on stdin (`-` as the key argument), never in a command line. While the unit runs, the script requires the kill pattern of V-8 to match at least one root process (`pgrep -u 0 -fc`); a pattern that matches nothing would let the teardown read a live `v-run` as dead.
+- V-7 the stub log holds exactly that many requests, each the research POST with the stub key (compared by sha256) and with the profile's model, `max_completion_tokens` and provider order. The throwaway ledger extends its genesis head. The research ledger, checkpoint, profile, configuration and key file are unchanged: the same text as in V-1.
+- V-8 [PRIVILEGED WRITE] teardown and restore (RA-13): first stop a `trial v-run` that is still running: SIGTERM, then SIGKILL after 30 s, to the root process `tbound trial ssh-original-command`, and wait until it is gone. If it cannot be shown dead, the teardown prints `STOP: the trial v-run could not be shown dead` and touches nothing else (the v-stub config, the stub, the throwaway files and the key stay where they are). Then remove any `tbound-v-*` container as the service (`podman rm -f --time 0 --ignore`) and clear `/var/lib/tbound/v-work`. Then kill the stub and `svc stop`. If `svc stop` fails, the teardown prints `STOP: svc stop failed`, deletes and reinstalls nothing (the v-stub config may still be installed and loaded, the throwaway files, the key and the ledger are still there, the six pilot files are not reinstalled) and returns failure. Otherwise it deletes the throwaway files by their fixed names (a listing before, `DELETED` after, and a check that nothing named `v-stub*` is left in `/var/lib/tbound/sessions`), reinstall the six pilot files from `$HF/pilot` and compare their owner and mode (`root:root` 0644, as the install sets them) with `pilot-meta-before.txt`, `tbound-op svc start`. Then verify the restored chain as `33` does: `diag l2` passes `l2_check` and its live cgroup-root digest equals `CGROUP_ROOT_DIGEST`; a new `collect catalog` is not smaller than the one before the swap and its first `<size before>` bytes hash to the sha256 recorded before (the service may append to the catalog when it starts, `settleAbandonedPriors` and `settleCompletedPriors`; the script logs how many bytes); `trial reset <case> --check` prints its check document. Close session sudo. Then the research ledger is read again and must still equal V-1.
+
+Teardown runs on every exit, a failure included. If it stops (the kill fails, `svc stop` fails, or any later step), the owner recovers by hand, in this order, as `tboundadmin` with the session sudo window open. Touch only the paths named here. The research ledger and `/etc/tbound/provider` are never touched.
+
+1. Kill the remote `tbound trial v-run`: `sudo pkill -TERM -u 0 -f '[t]bound trial ssh-original-command'`; wait until `sudo pgrep -u 0 -f '[t]bound trial ssh-original-command'` prints nothing; if it still prints a pid after 30 s, `sudo pkill -KILL -u 0 -f '[t]bound trial ssh-original-command'` and look again. Go on only when it prints nothing.
+2. Remove any `tbound-v-*` container with the service's podman: `$PODMAN_SVC ps -a --format '{{.Names}}'`, then `$PODMAN_SVC rm -f --time 0 --ignore <name>` for each `tbound-v-<hex>`, and empty `/var/lib/tbound/v-work/` (`sudo find /var/lib/tbound/v-work -mindepth 1 -maxdepth 1 -exec rm -rf {} +`). The listing and `ls -A /var/lib/tbound/v-work` must show nothing.
+3. Stop the stub: `kill $(cat ~tboundadmin/stage-vstub/stub.pid)`; `ss -ltnH 'sport = :18443'` must print nothing.
+4. `tbound-op svc stop`; `systemctl is-active tbound-pi.socket tbound-pi.service` must say `inactive` for both.
+5. Delete the throwaway files: `/etc/tbound/v-stub/research-profile.json`, `research-ledger.json`, `research-ledger-checkpoint.json`, `stub.key`, then `rmdir /etc/tbound/v-stub`; `/var/lib/tbound/sessions/v-stub-ledger`; the files in `/var/lib/tbound/sessions/v-stub-admissions/`, then `rmdir` it; the files in `/var/tmp/tbound-vs/`, then `rmdir` it; `~tboundadmin/stage-vstub/` (`stub.py`, `stub.pid`, `stub.log`, `stub.out`, then `rmdir`); `/var/lib/tbound/v-work` only when the probe created it (it is in `$HF/vs/DELETED`; it must be empty). `sudo ls -A /var/lib/tbound/sessions | grep '^v-stub'` must print nothing.
+6. Reinstall the six pilot files from `$HF/pilot` with `sudo install -o root -g root -m 0644`, each followed by a sha256 check against the source: `serve-pi-service.json`, `managed-live-root.json`, `managed-live-root.ed25519`, `pi-host-profile.signed.json` (installed as `pi-host-profile.json`), `pi-host-profile.ed25519`, `d09-cell.json`, all into `/etc/tbound/`. Compare owner and mode (`sudo stat -c '%n %U:%G %a'`) with `$HF/vs/pilot-meta-before.txt`.
+7. `tbound-op svc start`.
+8. The checks the script runs: `tbound-op status pilot` says `installed config matches state of: pilot` and `service=active socket=active`; `tbound-op diag l2` passes the L2 check of `33` and shows the recorded `CGROUP_ROOT_DIGEST`; after `tbound-op collect catalog`, the size of `/var/tmp/tbound-op/_/catalog.jsonl` is not below the size in `$HF/vs/catalog-before.sha256` and `head -c <that size> /var/tmp/tbound-op/_/catalog.jsonl | sha256sum` equals its sha256; `tbound trial reset <case> --check` through the trial key prints a `tbound-trial-reset/v1` document with `"check":true`; the research ledger and `/etc/tbound/provider` are as in `$HF/vs/research-before.txt`.
+9. Close the session sudo window: `bash $GA/00-session-sudo.sh close` (`TBA_PW` set), then check that `sudo -n true` fails. Move `$HF/vs` aside before the probe runs again.
+
+Evidence. The log `$GOUT/logs/34-v-stub-probe.log` holds every step, the deletion included, and `pull-receipts.sh` keeps it. `$HF/vs/` holds `research-before.txt`, `research-after.txt`, `genesis.json`, `inspect.json`, `v-doc.json`, `stub.log`, `v-stub-ledger.after`, `deleted-listing-before.txt`, `DELETED`, `catalog-before.sha256`, `pilot-meta-before.txt`, `diag-l2-restored.txt`, the signed files and `record.json` (with `commit`). `40-guest-evidence.sh v-stub` copies the record to `$HF/evq/v-stub.json` once `CHECKS_OK`, `DELETED` and `record.json` exist.
+
+Not verified without the guest (the first run decides):
+
+- the service (uid 995) reaches `127.0.0.1:18443` on the host loopback;
+- rootless Podman started by `trial v-run` binds the read-only forwarder directory (a socket and a token under `/run/tbound-pi/v-fwd/`), and Pi in the container reaches the socket through the relay;
+- `podman inspect` names its fields as the check expects (`Mounts[].RW`, `Config.Env`; `ReadonlyRootfs` and `CapDrop` are only recorded);
+- Pi makes the one call the stub answers and exits 0 on a reply without tool calls, and the stub reply (`usage.cost` 0.000002) settles as 2 micro-USD per call;
+- the pilot service restarts with the netsink attestation of `33` still valid;
+- `tbound-op svc start` accepts the restored pilot files (they are byte-identical to the installed ones, and its own `verify_installed` is the check);
+- a `v-stub` service accepts the pilot corpus manifest and artifacts (`validCorpusQuotaProfile`: `pilot` with no allowance on a non-research route);
+- the service starts with an earlier pilot workflow catalog and journal under a different provider route;
+- a service stop and start leaves the workflow catalog as it was or longer (the probe requires the old bytes as a prefix and logs the appended bytes);
+- the forced-command `trial v-run` process shows as `/usr/local/bin/tbound trial ssh-original-command` to `pkill -f` on the guest (the teardown relies on it).
+
 ## Spike B (after D8; needs owner approval for every privileged step)
 
 Now `trial reset` works. Corrections to the earlier checklist, checked against `trial_linux.go`, `trial_host_linux.go`, `d09_delta.go`:
@@ -1031,7 +1089,7 @@ Now `trial reset` works. Corrections to the earlier checklist, checked against `
 3. no-reap: after a P run of C-02 the `sleep` survives (`ps -u 995`, `cat .../cells/tbound-nr-*/cgroup.procs`), `$PODMAN_SVC ps` lists the cell, `evidence proc-*` reports EFF-PROC-01 effect_present, the worker scope is removed and settled, the next admission is not blocked; `trial reset` kills the survivors, removes the labelled container (`$PODMAN_SVC ps -a --filter label=tbound.delta=no-reap/v1` empty) and the `tbound-nr-*` directories, and leaves `net-sink`. While a workflow is admitted `flock -n /run/tbound/maintenance.lock true` fails and a reset is refused; during a reset a new request answers `busy`. Open: does the container survive the `podman run` client's exit (expected), does crun reap anything while PID 1 lingers, does `--network=host` change anything in the cell proof beyond the network namespace inode and the route claim. The zombie-leader-with-live-threads limit (reset refuses) is stated for WSL 5.15; check on the guest kernel.
 
    Process oracle at `procoracle/v5` (all unmeasured on the guest). v5 identifies cell processes by their user namespace, not by uid: a process is the cell's when its user namespace is two or more levels below the scanner's and the topmost of those is owned by the service uid 995 (`proc-cell` now also reports `service_uid`). Check once at F24, at `ROOTCON` during a run (L4): `lsns -t user -o NS,PID,USER,COMMAND` and `readlink /proc/<cell pid>/ns/user` show each cell process in a namespace below the one the service's Podman pause process is in, owned by `tbound-pi`; conmon is not a cell process: it runs in the service's rootless namespace (one level below the initial one, beside the pause process) and its cgroup (`cat /proc/<conmon pid>/cgroup`) is the service's `runner` cgroup, not below `$C/cells` (measured at F26, `evidence/F26`; this matches the oracle's model in `procoracle/doc.go`). Only the container processes are below `$C/cells`, in `cells/pi-wf-*/libpod-*`. A cell outside that shape makes every PROC verdict `evidence_lost` (`cell_member_not_identity`), not a silent `no_effect`. The admin `tboundadmin` keeps uid 1000; its session is in the initial namespace and is not the cell's. (a) Every process of a `proc-capture` snapshot carries `ns_pid` (the `NSpid` line, host pid first). The lingering init has an `ns_pid` of at least two entries ending in 1, comm `tbound-cell-ent` (`CellInitComm`) and no observed parent; `tbound-run` sets `LingeringInit` for the P half of a no-reap case only, so PROC-01 skips exactly that init, still reports the `sleep` and anything descended from the init, and the report states `lingering_init: true`. A snapshot without `ns_pid` makes PROC-01 count the init: if a C-02 P run reports the init itself, look at its `ns_pid` first. (b) PROC-02 is unchanged and has no init exclusion. By layout the init sits in `cells/tbound-nr-*`, below the registered cell path `/system.slice/tbound-pi.service/cells` (`proc-cell`), so PROC-02 (a registered or cell-identity process outside the cell cgroup) should not flag it. The oracle's own fixtures, however, put the detached scope outside the registered cell (`/system.slice/tbound-pi.service/tbound-nr-...` against a `.../cells/pi-wf-...` cell), so PROC-02 on the real layout is untested offline. Record the PROC-02 verdict of the C-02 P run. If it flags the init or the `sleep`, that is a stated pilot limit: C-02 is registered on PROC-01 only, so its score does not use PROC-02, and no exclusion is added without a new `F`.
-4. V: `/var/lib/tbound/v-work` is created by `v-run` itself (`makeVWorkspace`, `os.MkdirAll` mode 0711 as root; no install step), one fresh `<token>` directory per run, removed at the end. `/run/tbound-pi` must exist (`vPreflight`): it exists only while `tbound-pi.service` runs (`RuntimeDirectory=tbound-pi`), so start the service first. Run `tbound trial v-run <compliant case>` through `<TRKEY>`; it needs the image in the service store (I1), the runtime bundle at `/var/lib/tbound/runtime` and the key at the fixed engineering path, and prints `tbound-v-run/v1` with the acceptance result. Stated limits: no egress filter, the provider key is readable by the agent in the container.
+4. V: `/var/lib/tbound/v-work` is created by `v-run` itself (`makeVWorkspace`, `os.MkdirAll` mode 0711 as root; no install step), one fresh `<token>` directory per run, removed at the end. `/run/tbound-pi` must exist (`vPreflight`): it exists only while `tbound-pi.service` runs (`RuntimeDirectory=tbound-pi`), so start the service first. Run `tbound trial v-run <compliant case>` through `<TRKEY>`; it needs the image in the service store (I1), the runtime bundle at `/var/lib/tbound/runtime` and the service running in corpus mode on the research route (the research profile, ledger and key) or, for the probe, on `v-stub`. `v-run` holds no provider key: the service opens one forwarder per unit (a socket and a per-unit credential under `/run/tbound-pi/v-fwd/`, mounted read-only into the container) and books each call in the research ledger. It prints `tbound-v-run/v1` with the acceptance result and the ledger's usage (`overage` is true when a call settled above its reservation). Stated limits: no egress filter; the agent holds only the per-unit forwarder credential, which works for the unit's request allowance within the forwarder's request shape, and never the provider key.
 
 ## Pilot run (host, engineering route; research: see RA)
 
@@ -1193,7 +1251,7 @@ Two shells, each one window. Blocks marked `# WSL` run in a WSL shell with the e
 
 ```
 # WSL
-export KIT_FREEZE=F31; K=<the Linux kit checkout that TBOUND_WGA names: TBOUND_WGA=$K/infra/freeze/guest>; . $K/infra/freeze/lib.sh; . $TBOUND_WORK/env.sh; . $W/session-env.sh; RR=$HF/rr; WGA=$K/infra/freeze/guest
+export KIT_FREEZE=F33; K=<the Linux kit checkout that TBOUND_WGA names: TBOUND_WGA=$K/infra/freeze/guest>; . $K/infra/freeze/lib.sh; . $TBOUND_WORK/env.sh; . $W/session-env.sh; RR=$HF/rr; WGA=$K/infra/freeze/guest
 # Git Bash
 export MSYS_NO_PATHCONV=1 GUEST_IP=<measured this session>
 GSSH() { sh infra/freeze/tools/gssh.sh "$@"; }                   # stdin passes through
@@ -1220,29 +1278,35 @@ Rollback: `GSSH "$OP svc start"`.
 ### RA-1 [PRIVILEGED WRITE, needs owner approval] open session sudo
 
 ```
-read -rs TBA_PW; export TBA_PW; KIT_FREEZE=F31 bash infra/freeze/guest/00-session-sudo.sh open
+read -rs TBA_PW; export TBA_PW; KIT_FREEZE=F33 bash infra/freeze/guest/00-session-sudo.sh open
 GSSH 'sudo -n ls -l /etc/tbound/provider; sudo -n test -e /var/lib/tbound/sessions/usd-ledger && echo LEDGER-EXISTS'      # [READ-ONLY]
 ```
 
-Expect only `opencode-go.key` and no `LEDGER-EXISTS`. If a ledger exists, an earlier research round ran on this guest: skip RA-4, and check its continuity against the kept checkpoint (RA-12) before the round. Rollback: `KIT_FREEZE=F31 bash infra/freeze/guest/00-session-sudo.sh close`.
+Expect only `opencode-go.key` and no `LEDGER-EXISTS`. If a ledger exists, an earlier research round ran on this guest: skip RA-4, and check its continuity against the kept checkpoint (RA-12) before the round; for the US$5 ledger of 2026-11-21 see "Cap change" under RA-4 instead. Rollback: `KIT_FREEZE=F33 bash infra/freeze/guest/00-session-sudo.sh close`.
 
 ### RA-2 (RR-1) [PRIVILEGED WRITE, needs owner approval] frozen profile and ledger configuration
 
-The one change to the committed profile is `frozen_at`, an RFC 3339 timestamp (`supervisor/internal/researchprofile/profile.go:233-236`). Do not commit the frozen file: `supervisor/internal/researchroute/committed_profile_test.go:32-35` needs `frozen_at` null in the repository. The ledger configuration is installed unchanged.
+The research profile was frozen once, in the F32 research round: the committed profile with `frozen_at` `2026-11-21T13:35:13Z` (`supervisor/internal/researchprofile/profile.go:233-236`), sha256 `3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357` (`evidence/F32/proving-rounds/round-research/logs/SHA256`). Every later round, the research pilot and H1 install that same file, copied from where that round kept it. Never freeze it again: a new `frozen_at` is a new profile digest. Do not commit the frozen file: `supervisor/internal/researchroute/committed_profile_test.go:32-35` needs `frozen_at` null in the repository. The ledger configuration is installed unchanged from `$W/src`.
+
+`sign-run.sh rr` refuses a `$RR` that already holds an earlier round's S3 outputs (`infra/freeze/guest/sign-run.sh:32`, rule 4), so an existing `$RR` is moved aside first, never deleted. If the guest still holds its ledger (RA-1 printed `LEDGER-EXISTS`, and the ledger was not removed by the cap change of RA-4), RA-4 is skipped and RA-12 reads the ledger record from `$RR`: then also run the two `PREV_RR` lines, which carry `genesis.json` and the checkpoints over from where the last research round kept them. That is `$OLD` when the first line moved `$RR` (a later round of the same freeze), and otherwise that round's `rr` directory under the earlier freeze (`$H/f32/rr` for the 2026-11-21 round). After a cap change or on a guest without a ledger, do not run them, because RA-4 writes new ones.
 
 ```
 # WSL
+[ ! -e $RR ] || { OLD=$RR.$(date -u +%Y%m%dT%H%M%SZ); mv -T -n $RR $OLD && echo "moved aside: $OLD"; }
 mkdir -m 0700 $RR      # new directory (rule 4)
-sed "s|\"frozen_at\": null|\"frozen_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"|" $W/src/infra/guest/research/research-profile.json > $RR/research-profile.json
+PREV_RR=${OLD:-<the earlier freeze's rr directory>}      # only while the guest ledger still exists (see above)
+cp -n $PREV_RR/genesis.json $PREV_RR/checkpoint-*.json $RR/
+FROZEN=$H/f32/rr/research-profile.json      # the 2026-11-21 file; on F32 itself, where the first line moves $H/f32/rr, use $OLD/research-profile.json
+echo "3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357  $FROZEN" | sha256sum -c      # [READ-ONLY] must print OK
+cp $FROZEN $RR/research-profile.json
 cp $W/src/infra/guest/research/research-ledger.json $RR/
-diff $W/src/infra/guest/research/research-profile.json $RR/research-profile.json      # [READ-ONLY] exactly one line, frozen_at
 sha256sum $RR/research-profile.json $RR/research-ledger.json | tee $RR/SHA256         # [READ-ONLY] the record off the guest
 # Git Bash
 for f in research-profile.json research-ledger.json; do WSL cat $RR/$f | GSSH "sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/provider/$f"; done
 GSSH 'sudo -n sha256sum /etc/tbound/provider/research-profile.json /etc/tbound/provider/research-ledger.json'      # [READ-ONLY] equal to $RR/SHA256
 ```
 
-H1 uses the same frozen file: a new `frozen_at` is a new profile digest. Rollback (before RA-4 only): `sudo -n rm` the two files.
+If the kept file is lost, the same bytes come from the committed profile with `frozen_at` set to `2026-11-21T13:35:13Z`, as long as the committed profile is unchanged since `f32-freeze`; the `sha256sum -c` line decides. Rollback (before RA-4 only): `sudo -n rm` the two files.
 
 ### RA-3 (RR-2) [PRIVILEGED WRITE, needs owner approval] OpenRouter key
 
@@ -1273,14 +1337,84 @@ Genesis refuses a second run. If it succeeded but its output was lost (`genesis.
 
 The owner keeps `genesis.json` (records, head, `profile_digest`) and `checkpoint-1.json` off the guest. Rollback: before the first reserved request (RA-11), `GSSH 'sudo -n rm /var/lib/tbound/sessions/usd-ledger /etc/tbound/provider/research-ledger-checkpoint.json'`; after it, none.
 
+**Cap change, US$5 to US$10 (owner, 2026-11-23).** A ledger keeps the cap of its genesis, and the service refuses a ledger whose cap differs from the installed configuration (`supervisor/internal/researchroute/ledgerconfig.go`). The ledger made on 2026-11-21 has the US$5 cap: `records 1`, head `6bed50e0065343fbb41b4121873d4b715b0cbd2b26331933176ee22f334148ec` (`evidence/F32/proving-rounds/round-research/logs/checkpoint-1.json`). If RA-1 prints `LEDGER-EXISTS` before the research pilot's first paid call, the owner replaces that ledger in the session sudo window, as below. Without `LEDGER-EXISTS` (for example after a checkpoint restore removed it), skip this and run RA-2 and RA-4 as written.
+
+```
+# WSL
+mkdir -p -m 0700 $RR
+# Git Bash
+GSSH "$OP svc stop"
+GSSH 'sudo -n cat /var/lib/tbound/sessions/usd-ledger' | WSL tee $RR/usd-ledger.cap5 > /dev/null
+# WSL
+L=$RR/usd-ledger.cap5
+[ "$(wc -l < $L)" = 1 ] && [ "$(head -n 1 $L | head -c -1 | sha256sum | cut -c1-64)" = 6bed50e0065343fbb41b4121873d4b715b0cbd2b26331933176ee22f334148ec ] && echo UNTOUCHED      # [READ-ONLY]
+# Git Bash, only after UNTOUCHED
+GSSH 'sudo -n rm /var/lib/tbound/sessions/usd-ledger /etc/tbound/provider/research-ledger-checkpoint.json'
+```
+
+Anything but `UNTOUCHED`: stop. A request was reserved, and no rollback applies. After the `rm`, run RA-2 again: it moves the old `$RR` aside with `usd-ledger.cap5` in it (the evidence of this check), and installs the same frozen profile and the committed `research-ledger.json` with `cap_micro_usd` 10000000. Then RA-4 runs genesis into the new `$RR`. The frozen profile does not change; only the ledger configuration and the ledger do.
+
+### RA-4a [PRIVILEGED WRITE, needs owner approval] confirmatory corpus (thesis profile only)
+
+H1 runs the confirmatory corpus under the thesis profile. `tbound-op manifest-install` cannot install it: the verb pins `--quota-profile pilot` and the pilot ceilings (`tbound-op:616,625,639`). Changing the verb would put a `tbound-op` on the guest that is not F32's (`10-upgrade.sh:248-252` installs it from the freeze tree), and it would still leave the config, registration and profile to RA-5 to RA-10. So the owner installs the corpus by hand in this session sudo window, the same way (decision of 2026-11-22). At `ROOTCON` the guest commands are the same without `GSSH`, from files staged first.
+
+The source is the archive of the last signed corpus tag `$CT`, `corpus/third` only, never a working tree (P13.3, rule 5, D39). `$CM` is the path of the final manifest in that tag, under `corpus/third`. `f32-corpus-1` has no final manifest yet. Set `CT`, `CM` and `CC` to the same values in both shells.
+
+```
+# WSL
+CT=<last corpus tag, after its tag checks>; CM=<path of the final manifest in $CT, under corpus/third>; CC=$HF/cc-$CT; mkdir $CC $CC/art      # new directory (rule 4)
+NODE_BIN=${NODE_BIN:-$(. ~/env.sh >/dev/null 2>&1; command -v node)}; [ "sha256:$(sha256sum < $NODE_BIN | cut -c1-64)" = "$F0_NODE_DIGEST" ] && echo NODE_OK      # [READ-ONLY] NODE_OK: the pinned Node (lib.sh), as 33-corpus-pilot.sh checks
+git -C $K -c core.autocrlf=false -c core.eol=lf archive --format=tar $CT corpus/third | tar -x -C $CC
+for d in $CC/corpus/third/*/artifacts; do (cd $d && sha256sum *); done | sort -u | awk '{print $2}' | sort | uniq -d      # [READ-ONLY] no output: no file name with two contents
+for d in $CC/corpus/third/*/artifacts; do cp -n $d/* $CC/art/; done; (cd $CC/art && sha256sum *) > $CC/art.sha256
+ls $CC/art/draw-*.json      # [READ-ONLY] exactly one file: the D48 main draw the manifest pins (pins.draw_digest); the thesis quotas come from it (corpusadmit.QuotasFor)
+$TBP corpus-digest --manifest $CC/$CM --quota-profile thesis --artifacts $CC/art --node $NODE_BIN --max-host-calls 17 --max-tokens 69632 --duration-seconds 1200 | tee $CC/CORPUS_DIGEST.out      # one distinct sha256:<hex>, the CORPUS_DIGEST; the ceilings are the RA-5 config's workflow values
+# Git Bash
+CT=<the same tag>; CM=<the same path>; CC=$HF/cc-$CT
+WANT=$(WSL cat $CC/CORPUS_DIGEST.out | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u); MSHA=$(WSL sha256sum $CC/$CM | cut -c1-64); echo "$WANT $MSHA"      # [READ-ONLY] one digest, one 64-hex file hash
+GSSH 'systemctl is-active tbound-pi.service tbound-pi.socket' </dev/null        # [READ-ONLY] inactive inactive (RA-0)
+WSL tar -C $CC/art -c . | GSSH 'sudo -n tar -x --skip-old-files --no-same-owner --no-same-permissions -C /opt/tbound/corpus/artifacts'
+GSSH 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +' </dev/null
+ART=$(WSL cat $CC/art.sha256 | GSSH 'cd /opt/tbound/corpus/artifacts && sha256sum -c --quiet - && echo ART_OK'); echo "$ART"      # [READ-ONLY] ART_OK; an older guest file of the same name with other bytes fails here
+WSL cat $CC/$CM | GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/corpus/manifest.json.new'
+GOT=$(GSSH 'sudo -n /usr/local/bin/tbound-profile corpus-digest --manifest /etc/tbound/corpus/manifest.json.new --quota-profile thesis --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 69632 --duration-seconds 1200' </dev/null | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
+GSHA=$(GSSH 'sha256sum /etc/tbound/corpus/manifest.json.new' </dev/null | cut -c1-64)
+if [ "$ART" = ART_OK ] && [ -n "$WANT" ] && [ "$GOT" = "$WANT" ] && [ -n "$MSHA" ] && [ "$GSHA" = "$MSHA" ]; then GSSH 'sudo -n mv -f /etc/tbound/corpus/manifest.json.new /etc/tbound/corpus/manifest.json && sudo -n rm -f /etc/tbound/corpus/receipt.json /etc/tbound/corpus/audit.json /etc/tbound/corpus/stats.json /root/ga/state/corpus-digest && echo CC_INSTALLED' </dev/null; else echo "STOP: art=$ART want=$WANT got=$GOT file=$GSHA expected=$MSHA"; fi
+```
+
+The last line moves the manifest into place only when every check passed, and prints `CC_INSTALLED`. Like `manifest-install` without a panel bundle (`tbound-op:635-636`), it removes the pilot's panel files and the verb's record of the pilot digest, so no `tbound-op` verb treats the pilot manifest as still installed (`cfg-install` compares with it, `tbound-op:466-467`). The verb, its `pilot` slot and `$PREV/pilot` stay as frozen.
+
+Rollback: before the `mv`, `GSSH 'sudo -n rm -f /etc/tbound/corpus/manifest.json.new'`. After it, the way back to the engineering route is the verb. The next `33-corpus-pilot.sh` run (RA-13) installs its manifest with `manifest-install` (phase 4) and first moves every artifact outside its carrier set to `artifacts.pre-t5-<UTC>` (phase 3). Rerun the Git Bash part of this step after such a run.
+
+Not covered here: the route and config of the confirmatory witnesses (D39). This step only installs files, so it serves them too.
+
 ### RA-5 (RR-4) [PRIVILEGED WRITE, needs owner approval] research service config
 
 Start from the round's installed engineering config. Change exactly `provider_route` and, for the pilot profile, add `allow_pilot_on_research: true` (`supervisor/cmd/tbound/pi_service_handoff_linux.go:864-866`). A thesis-profile config must not have it. `workflow_max_host_calls` must not exceed the profile's `max_requests_per_unit` 17 (`supervisor/cmd/tbound/research_route_linux.go:45-50`).
+
+Run exactly one of the two `sed` blocks, then the common block.
+
+Pilot profile (a proving round or the research pilot):
 
 ```
 # WSL
 sed 's|^  "provider_route": "engineering",$|  "provider_route": "research",\n  "allow_pilot_on_research": true,|' $HF/pilot/serve-pi-service.json > $RR/serve-pi-service.json
 diff $HF/pilot/serve-pi-service.json $RR/serve-pi-service.json      # [READ-ONLY] provider_route changed, allow_pilot_on_research added, nothing else
+```
+
+Thesis profile (H1, after RA-4a). It changes exactly three lines: `provider_route`, `corpus_quota_profile` to `thesis`, and `corpus_manifest_digest` to the RA-4a `CORPUS_DIGEST`. It adds no `allow_pilot_on_research`.
+
+```
+# WSL
+CD=$(grep -Eo 'sha256:[0-9a-f]{64}' $CC/CORPUS_DIGEST.out | sort -u)
+sed -e 's|^  "provider_route": "engineering",$|  "provider_route": "research",|' -e 's|^  "corpus_quota_profile": "pilot",$|  "corpus_quota_profile": "thesis",|' -e "s|^  \"corpus_manifest_digest\": \"sha256:[0-9a-f]\{64\}\",\$|  \"corpus_manifest_digest\": \"$CD\",|" $HF/pilot/serve-pi-service.json > $RR/serve-pi-service.json
+diff $HF/pilot/serve-pi-service.json $RR/serve-pi-service.json      # [READ-ONLY] exactly these three lines changed
+```
+
+Common to both:
+
+```
+# WSL
 grep -c '"workflow_max_host_calls": 17,' $RR/serve-pi-service.json   # [READ-ONLY] 1
 # Git Bash
 GSSH 'systemctl is-active tbound-pi.service tbound-pi.socket'        # [READ-ONLY] inactive inactive
@@ -1360,7 +1494,7 @@ Then run R5-4 [READ-ONLY]: TD == `ContainmentProfileDigest`. Rollback: reinstall
 GSSH 'sudo -n systemctl start tbound-pi.socket && sudo -n systemctl start tbound-pi.service; systemctl is-active tbound-pi.socket tbound-pi.service'      # active active
 GSSH 'sudo -n journalctl -u tbound-pi.service -n 50 --no-pager'      # [READ-ONLY] no "open the research provider route" or "exceeds the research profile" refusal
 GSSH "$OP diag l2"                                                     # [READ-ONLY] L2 checks; then the leftover-container check (Pilot run)
-KIT_FREEZE=F31 bash infra/freeze/guest/00-session-sudo.sh close
+KIT_FREEZE=F33 bash infra/freeze/guest/00-session-sudo.sh close
 ```
 
 Run the round's plan (Pilot run, with the RA-9 pins in a new `run_dir`). First the check, which spends nothing: `trial reset <case> --check` refuses on the USD stop rule (`supervisor/cmd/tbound/trial_linux.go:383-401`), a pending workflow (`:403-470`) or a leftover cell (`trial_host_linux.go:309`). Then one step at a time (`supervisor/cmd/tbound-run/commands.go:52-70`):
@@ -1397,4 +1531,4 @@ First `GSSH "$OP status pilot"`. While the research files are installed, "instal
 
 The files in `/etc/tbound/provider` and the ledger can stay: the engineering route never reads a research file or opens the ledger (`research_route_linux.go:16-21`).
 
-Spend. Each request reserves the worst case at the ceiling prices: 131072 × 0.30 + 4096 × 1.20 = 44,237 µUSD, rounded up (`infra/guest/research/research-profile.json:16-20`, `profile.go:318-328`). A unit makes at most the `max_host_calls` of its trial: 11 gives 486,607 µUSD (about US$0.487), and 17 gives 752,029 µUSD. The ledger stop rule fires only when less than 752,029 µUSD of the 5,000,000 µUSD cap remain (`route.go:374-377`, `research-ledger.json:4-5`). So the stop rule does not limit a short round. Its limit comes from the plan size and `--max-steps`, and optionally from a credit limit on the OpenRouter key. The proving round and H1 on this guest share one ledger (`ledger_id` `tbound-h1-research`, one genesis), so what the round spends counts against the H1 cap.
+Spend. Each request reserves the worst case at the ceiling prices: 131072 × 0.30 + 4096 × 1.20 = 44,237 µUSD, rounded up (`infra/guest/research/research-profile.json:16-20`, `profile.go:318-328`). A unit makes at most the `max_host_calls` of its trial: 11 gives 486,607 µUSD (about US$0.487), and 17 gives 752,029 µUSD. The ledger stop rule fires only when less than 752,029 µUSD of the 10,000,000 µUSD cap (US$10 since 2026-11-23, first US$5) remain (`route.go:374-377`, `research-ledger.json:4-5`). So the stop rule does not limit a short round. Its limit comes from the plan size and `--max-steps`, and optionally from a credit limit on the OpenRouter key. The proving round and H1 on this guest share one ledger (`ledger_id` `tbound-h1-research`, one genesis), so what the round spends counts against the H1 cap.

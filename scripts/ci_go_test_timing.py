@@ -19,8 +19,6 @@ import sys
 TIMING_DOCUMENT_SCHEMA_VERSION = 1
 SLOWEST_PACKAGE_ROW_COUNT = 10
 SLOWEST_TEST_ROW_COUNT = 20
-# shortcut: the step summary lists 200 failed results, upgrade when a run needs every failure there
-# (the timing artifact keeps all results, so nothing is lost).
 FAILED_ROW_LIMIT = 200
 RESULT_ACTIONS = ("pass", "fail", "skip")
 

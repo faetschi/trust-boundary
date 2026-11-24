@@ -222,6 +222,7 @@ func TestExportEVQIgnoresGovernedVObligations(t *testing.T) {
 func TestExportEVQKeepsAFailedVObligation(t *testing.T) {
 	cfg := smallConfig()
 	s := smallSchedule(t, cfg)
+	s, _ = withV(t, s, firstCase(s, "compliant"))
 	fake := NewFakeExecutor(s.Config)
 	fake.Hook = func(st Step, o *Outcome) error {
 		if st.Configuration == CfgV {

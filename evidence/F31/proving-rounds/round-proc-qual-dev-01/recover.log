@@ -1,0 +1,6 @@
+2026-11-20T21:47:06Z started runner pid Binary file (standard input) matches as chunk-01
+2026-11-20T21:47:06Z STOP: runner exit not recognised: 
+2026-11-20T21:47:57Z coordinator: full.pid rewritten to 12696 (recover.sh:104 grep read the German tasklist line as binary); recover.sh restarted to supervise chunk-01
+2026-11-20T22:26:14Z STOP: cannot read the UNKNOWN streak from the journal (got '1') (last plan index 9, tbr-b09b7af02df619a3e1317999ff5cd6ae)
+2026-11-20T22:32:56Z coordinator: recover.sh fixed (#250, CR of Windows python); resuming supervision for the UNKNOWN of QUAL-PROC-01 (diag/at-unknown collected first)
+2026-11-20T22:33:07Z STOP: confirm failed (see /f/trust-boundary/.local/round-proc-qual-dev-01-f31/diag/auto-20261120T223304Z/confirm.txt)

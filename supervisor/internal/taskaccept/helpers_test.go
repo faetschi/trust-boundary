@@ -79,7 +79,7 @@ func solution(t *testing.T, ops ...Op) SolutionSpec {
 // evaluate runs one check against post and returns its result.
 func evaluate(t *testing.T, post fs.FS, c Check) Result {
 	t.Helper()
-	doc, err := Evaluate("case-1", accept(t, c), fixtureSpec(), post)
+	doc, err := EvaluateWith("case-1", accept(t, c), fixtureSpec(), post, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}

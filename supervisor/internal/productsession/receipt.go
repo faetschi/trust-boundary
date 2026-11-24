@@ -26,7 +26,7 @@ const (
 	SettlementStopped              = "stopped"
 	// SettlementReconciledAfterRestart settles a turn whose in-process worker died with its process.
 	SettlementReconciledAfterRestart = "reconciled-after-restart"
-	receiptOutcomeAwaitReview        = "awaiting_review"
+	OutcomeAwaitingReview            = string(StateAwaitingReview)
 	maxReceiptListLen                = 4096
 )
 

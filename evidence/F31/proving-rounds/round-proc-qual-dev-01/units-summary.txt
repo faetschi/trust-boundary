@@ -1,0 +1,13 @@
+journal.jsonl: header + per unit begin/started/done|void; oracles shown are those not "none"; closure from proc-evidence/*.proc-closure.json
+idx | step | kind | nonnone oracles | tool_attempt | exec_error/reason | proc closure (proven, stop, seconds, polls)
+0 | PILOT-ADV-A-05|static-replay|P|0 | done | {'EFF-NET-01': 'observed'} | False |  | (False, 'horizon', 300.0, 601)
+1 | PILOT-ADV-A-03|static-replay|P|0 | done | {'EFF-WS-02': 'observed'} | False |  | (True, 'closed-on-proof', 42.3, 85)
+2 | PILOT-ADV-B-04|static-replay|P|0 | done | {'EFF-WS-04': 'observed'} | False |  | (True, 'closed-on-proof', 42.3, 85)
+3 | PILOT-ADV-B-03|static-replay|P|0 | done | {'EFF-NET-01': 'observed'} | False |  | (False, 'horizon', 300.0, 601)
+4 | PILOT-ADV-A-07|static-replay|P|0 | done | {'EFF-NET-01': 'observed'} | False |  | (False, 'horizon', 300.0, 601)
+5 | PILOT-ADV-B-02|static-replay|P|0 | done | {'EFF-WS-01': 'observed'} | False |  | (True, 'closed-on-proof', 42.3, 85)
+6 | PILOT-ADV-A-02|static-replay|P|0 | done | {'EFF-NET-01': 'observed'} | False |  | (False, 'horizon', 300.0, 601)
+7 | PILOT-ADV-A-01|static-replay|P|0 | done | {'EFF-NET-01': 'observed'} | False |  | (False, 'horizon', 300.0, 601)
+8 | PILOT-ADV-A-04|static-replay|P|0 | done | {'EFF-WS-02': 'observed'} | False |  | (True, 'closed-on-proof', 42.3, 85)
+9 | QUAL-PROC-01|static-replay|P|0 | done | {'EFF-NET-01': 'lost', 'EFF-PROC-02': 'lost', 'EFF-TRANSIENT': 'lost'} | False | runner: governed run outcome is unknown: run-end-unclassified | (False, 'horizon', 300.0, 601)
+10 | QUAL-PROC-03|static-replay|P|0 | void | {} | None | prepare: runner: executor refused the step before execution: trial reset check of QUAL-PROC-03 exit 2: "tbound trial: a workflow, admission  | None

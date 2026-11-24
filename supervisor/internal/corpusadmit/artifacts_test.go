@@ -82,14 +82,14 @@ func TestFixtureDigestOfEachKind(t *testing.T) {
 
 func TestCheckArtifactsAcceptsMatchingArtifacts(t *testing.T) {
 	cases, fsys := artifactCases(t)
-	if err := CheckArtifacts(cases, fsys); err != nil {
+	if err := CheckArtifactsWith(cases, fsys, nil); err != nil {
 		t.Fatalf("CheckArtifacts: %v", err)
 	}
 	// Unrelated files and a shared fixture are fine.
 	fsys["notes.txt"] = &fstest.MapFile{Data: []byte("x")}
 	cases = append(cases, cases[0])
 	cases[len(cases)-1].CaseID = "adv-2"
-	if err := CheckArtifacts(cases, fsys); err != nil {
+	if err := CheckArtifactsWith(cases, fsys, nil); err != nil {
 		t.Fatalf("CheckArtifacts with a shared fixture: %v", err)
 	}
 }
@@ -119,7 +119,7 @@ func TestCheckArtifactsRefusals(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			cases, fsys := artifactCases(t)
 			tc.mutate(cases, fsys)
-			err := CheckArtifacts(cases, fsys)
+			err := CheckArtifactsWith(cases, fsys, nil)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err %v, want a refusal naming %q", err, tc.want)
 			}

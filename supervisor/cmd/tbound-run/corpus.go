@@ -30,7 +30,7 @@ type plan struct {
 // quotasFor returns the quotas of a profile for m, from the D48 draw it pins in the artifact directory
 // (corpusadmit.QuotasFor), as the corpus-mode service resolves them.
 func quotasFor(profile string, m evalcorpus.Manifest, artifactsDir string) (evalcorpus.Quotas, error) {
-	if profile != quotaThesis && profile != quotaPilot {
+	if profile != quotaThesis && profile != quotaPilot && profile != quotaScreening {
 		return evalcorpus.Quotas{}, fmt.Errorf("unknown quota profile %q", profile)
 	}
 	var artifacts fs.FS
@@ -95,7 +95,7 @@ func loadPlan(cfg runConfig) (plan, error) {
 	}
 	// A construct-witness run is a subset by design and is the only thesis plan that may be one (D41). The registered
 	// total is computed from the final counts (D53 item 4).
-	if planned := evalreport.PlannedUnits(allocation); cfg.CDH == nil && cfg.QuotaProfile == quotaThesis && cfg.Purpose != runner.PurposeConstructWitness &&
+	if planned := evalreport.PlannedUnits(allocation, sched.Config.PlanV); cfg.CDH == nil && cfg.QuotaProfile == quotaThesis && cfg.Purpose != runner.PurposeConstructWitness &&
 		(sched.Subset || sched.Units() != planned) {
 		return plan{}, fmt.Errorf("a thesis plan must be the registered %d units without a subset; it has %d (subset %t)",
 			planned, sched.Units(), sched.Subset)

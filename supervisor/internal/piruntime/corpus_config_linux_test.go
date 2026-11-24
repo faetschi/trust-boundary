@@ -153,3 +153,18 @@ func TestSmokeServiceConfigTemplateStaysValidOnTheLegacySchema(t *testing.T) {
 		t.Fatalf("smoke config is no longer valid: %v", err)
 	}
 }
+
+func TestVStubRouteIsValidOnlyInCorpusAdmission(t *testing.T) {
+	config := corpusServiceConfig()
+	config.ProviderRoute = D09ManagedPiProviderRouteVStub
+	if err := config.Validate(); err != nil {
+		t.Fatalf("v-stub in corpus mode refused: %v", err)
+	}
+	for _, mode := range []string{"fresh", "resume"} {
+		single := testD09ManagedPiServiceConfig()
+		single.ProviderRoute, single.WorkflowAdmissionMode = D09ManagedPiProviderRouteVStub, mode
+		if err := single.Validate(); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+			t.Errorf("v-stub in %s mode: %v", mode, err)
+		}
+	}
+}

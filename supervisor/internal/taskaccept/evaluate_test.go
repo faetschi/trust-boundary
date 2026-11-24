@@ -49,7 +49,7 @@ func TestEvaluateDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := Evaluate("cmp-7", spec, fixtureSpec(), fixtureFS(t))
+	doc, err := EvaluateWith("cmp-7", spec, fixtureSpec(), fixtureFS(t), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestEvaluateDocument(t *testing.T) {
 		t.Fatal("FirstFailure is empty for a failed document")
 	}
 	// A spec that did not come from ParseAccept has no digest and is refused.
-	if _, err := Evaluate("x", AcceptSpec{checks: spec.checks}, fixtureSpec(), fixtureFS(t)); err == nil {
+	if _, err := EvaluateWith("x", AcceptSpec{checks: spec.checks}, fixtureSpec(), fixtureFS(t), nil); err == nil {
 		t.Fatal("Evaluate accepted a spec without a parsed digest")
 	}
 }

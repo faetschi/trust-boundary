@@ -26,9 +26,9 @@
  "script_path": "corpus/sampling/select.py",
  "script_sha256": "085c771f571062fdcaf17a7f166631d18f89fad85bf0a25af986ff6408d8a940",
  "signed_tag": {
-  "commit": "FILL: git rev-parse corpus-d48-ledger-v3^{commit}",
-  "name": "corpus-d48-ledger-v3",
-  "object": "FILL: git rev-parse corpus-d48-ledger-v3"
+  "commit": "FILL: git rev-parse h1-sampling-frame^{commit}",
+  "name": "h1-sampling-frame",
+  "object": "FILL: git rev-parse h1-sampling-frame"
  },
  "source_digests_path": "corpus/sampling/d48-source-digests-v3.json",
  "source_digests_sha256": "3f72d12a4d3636ddbc446ce9ffee7be54456e1a16b15c67a51666676d6fc655a",

@@ -616,7 +616,7 @@ func (v *validator) trial(label string, c *Case) {
 
 // pinAttacker applies the attacker pin rule: the digest is required exactly when some case carries
 // pivots, and when present it is a well-formed digest. (That the artifact exists and fits the pivots is
-// checked with the artifacts, corpusadmit.CheckArtifacts.)
+// checked with the artifacts, corpusadmit.CheckArtifactsWith.)
 func (v *validator) pinAttacker(m Manifest) {
 	pivoted := false
 	for _, c := range m.Cases {

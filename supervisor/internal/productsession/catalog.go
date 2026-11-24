@@ -268,7 +268,7 @@ func (c *Catalog) MarkAwaitingReview(turnID string, r TurnReview) error {
 	defer c.mu.Unlock()
 	return c.commit(kindTurnAwaitingReview, turnID, turnAwaitingReviewRecord{
 		header: hdr, TurnID: turnID, Settlement: r.Settlement, Receipt: r.Receipt, ReceiptDigest: ReceiptDigest(r.Receipt),
-		Usage: r.Usage, Refund: c.reservationOf(turnID).minus(r.Usage), CandidateDigest: r.CandidateDigest,
+		Usage: r.Usage, Refund: c.reservationOf(turnID).minus(r.Usage), CandidateDigest: r.CandidateDigest, Removed: r.Removed,
 		ReviewTimeoutSeconds: int64(c.st.reg.Limits.ReviewTimeoutSeconds),
 	})
 }

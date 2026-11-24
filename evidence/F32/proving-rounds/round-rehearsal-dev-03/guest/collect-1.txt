@@ -1,0 +1,5 @@
+collected requests (489919 bytes)
+rq=0
+collected catalog (2328145 bytes)
+cat=0
+l4=0

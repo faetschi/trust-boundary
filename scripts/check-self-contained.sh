@@ -5,15 +5,15 @@ set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 
-FORBIDDEN='F:[/\\]+[A-Za-z]|/mnt/[def]/|/f/TBoundAssets|TBoundAssets|TBoundVMs|AppData[/\\]+Local[/\\]+TBound|/home/jeli2k'
+FORBIDDEN='F:[/\\]+[A-Za-z]|[A-Za-z]:[/\\]+(Users|ProgramData|Desktop|trust-boundary|TBound)|/mnt/[def]/|/mnt/[a-z]/Users|/[a-z]/trust-boundary|TBoundAssets|TBoundVMs|[/\\]Users[/\\]+Admin|\.t3[/\\]+(worktrees|userdata)|AppData[/\\]+Local[/\\]+(TBound|Temp[/\\]+claude)|jeli[2]k'
 # Historical records and files measured byte-for-byte on the guest keep the paths they were written with.
 hits=$(git grep -nIE "$FORBIDDEN" -- . \
-  ':!evidence' ':!infra/freeze/freezes' \
+  ':!evidence' ':!infra/freeze/freezes' ':!corpus/third/compliant/tools' \
   ':!infra/guest/systemd/var-lib-tbound-live.mount' ':!infra/guest/systemd/var-lib-tbound-runtime.mount' \
   ':!scripts/check-self-contained.sh' || true)
 if [ -n "$hits" ]; then
   printf '%s\n' "$hits" | cut -c1-160 >&2
-  echo "FAIL: tracked files depend on a path outside the repo. Use .local/ or evidence/ (docs/guides/self-contained-workspace.md)." >&2
+  echo "FAIL: tracked files hardcode a machine path. Use .local/, \$TBOUND_LOCAL or a repo-relative path (docs/guides/self-contained-workspace.md)." >&2
   exit 1
 fi
 
@@ -65,6 +65,16 @@ git -C "$PROBE" add .
 if bash "$PROBE/scripts/check-self-contained.sh" >/dev/null 2>&1; then
   echo "FAIL: checker missed an outside path" >&2; exit 1
 fi
+for bad in 'C:\Users\x\a' 'D:/Users/x/a' 'E:\trust-boundary\x' 'cd /f/trust-boundary/y' '/mnt/c/Users/x' 'C:/Users/x/.t3/worktrees/w' 'x/.t3/userdata/s' 'AppData/Local/Temp/claude/s' 'as jeli''2k'; do
+  printf '%s\n' "$bad" > "$PROBE/docs/a.md"; git -C "$PROBE" add .
+  if bash "$PROBE/scripts/check-self-contained.sh" >/dev/null 2>&1; then
+    echo "FAIL: checker missed '$bad'" >&2; exit 1
+  fi
+done
+for ok in '/home/<user>/x' '$HOME/x' '<repo>/.local/x' 'C:\Program Files\Git' 'https://example.test/a' 'out:\nnext'; do
+  printf '%s\n' "$ok" > "$PROBE/docs/a.md"; git -C "$PROBE" add .
+  bash "$PROBE/scripts/check-self-contained.sh" >/dev/null 2>&1 || { echo "FAIL: checker rejected '$ok'" >&2; exit 1; }
+done
 
 # Receipt export skips gate archives and keys, and never overwrites evidence.
 WORK=$SANDBOX/work/receipts/F14/logs

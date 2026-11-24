@@ -83,17 +83,19 @@ const (
 
 // The research provider route has its own fixed key file next to the engineering
 // one (same loader rules: service uid, mode 0400 or 0600, environment ignored).
-// provider_route in the service config is exactly one of the two route names.
+// provider_route in the service config is one of the route names; v-stub serves only role v (a probe against a stub).
 const (
 	D09ManagedPiResearchCredentialPath   = "/etc/tbound/provider/openrouter.key"
 	D09ManagedPiProviderRouteEngineering = "engineering"
 	D09ManagedPiProviderRouteResearch    = "research"
+	D09ManagedPiProviderRouteVStub       = "v-stub"
 
 	// Corpus quota profiles. "thesis" (the default when the member is absent) validates a
 	// corpus manifest against the pre-registered quotas; "pilot" against the small explicit
 	// pilot quotas of a pilot or G4 dry run, whose results are not thesis results.
-	D09ManagedPiCorpusQuotaProfileThesis = "thesis"
-	D09ManagedPiCorpusQuotaProfilePilot  = "pilot"
+	D09ManagedPiCorpusQuotaProfileThesis    = "thesis"
+	D09ManagedPiCorpusQuotaProfilePilot     = "pilot"
+	D09ManagedPiCorpusQuotaProfileScreening = "screening"
 )
 
 // D09ManagedPiServiceSocket is the fixed systemd activation policy for the
@@ -203,7 +205,8 @@ type D09ManagedPiServiceConfig struct {
 func (c D09ManagedPiServiceConfig) Validate() error {
 	if (c.SchemaVersion != D09ManagedPiServiceConfigSchema && c.SchemaVersion != D09ManagedPiServiceConfigSchemaV3) ||
 		c.SourcePolicy != "current-managed-live-root/v1" ||
-		(c.ProviderRoute != D09ManagedPiProviderRouteEngineering && c.ProviderRoute != D09ManagedPiProviderRouteResearch) ||
+		(c.ProviderRoute != D09ManagedPiProviderRouteEngineering && c.ProviderRoute != D09ManagedPiProviderRouteResearch && c.ProviderRoute != D09ManagedPiProviderRouteVStub) ||
+		(c.ProviderRoute == D09ManagedPiProviderRouteVStub && c.WorkflowAdmissionMode != D09ManagedPiWorkflowAdmissionCorpus) ||
 		!c.validWorkflowAdmissionEnvelope() ||
 		!validD09WorkflowBashPaths(c.WorkflowBashOutputPaths) ||
 		c.WorkflowCatalogPath != D09ManagedPiWorkflowCatalogPath || c.WorkflowRootDBPath != D09ManagedPiWorkflowRootDBPath ||
@@ -233,7 +236,7 @@ func (c D09ManagedPiServiceConfig) validWorkflowAdmissionEnvelope() bool {
 			c.CorpusQuotaProfile == "" && !c.AllowPilotOnResearch &&
 			validIdentity(c.WorkflowAdmissionID) && len(c.WorkflowAdmissionID) <= 256 &&
 			validIdentity(c.WorkflowTaskID) && len(c.WorkflowTaskID) <= 256 &&
-			len(c.WorkflowPrompt) > 0 && len(c.WorkflowPrompt) <= 16<<10 && utf8.ValidString(c.WorkflowPrompt) &&
+			len(c.WorkflowPrompt) > 0 && len(c.WorkflowPrompt) <= piRPCMaxPromptBytes && utf8.ValidString(c.WorkflowPrompt) &&
 			strings.TrimSpace(c.WorkflowPrompt) != ""
 	case D09ManagedPiWorkflowAdmissionCorpus:
 		return c.SchemaVersion == D09ManagedPiServiceConfigSchema &&
@@ -253,6 +256,8 @@ func (c D09ManagedPiServiceConfig) validCorpusQuotaProfile() bool {
 		return !c.AllowPilotOnResearch
 	case D09ManagedPiCorpusQuotaProfilePilot:
 		return c.AllowPilotOnResearch == (c.ProviderRoute == D09ManagedPiProviderRouteResearch)
+	case D09ManagedPiCorpusQuotaProfileScreening:
+		return !c.AllowPilotOnResearch && c.ProviderRoute == D09ManagedPiProviderRouteResearch
 	}
 	return false
 }

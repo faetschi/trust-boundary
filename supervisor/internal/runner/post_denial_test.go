@@ -78,7 +78,7 @@ func TestRerunRefusesDescriptiveV(t *testing.T) {
 	cfg := smallConfig()
 	cfg.RerunHeadroom = 1
 	s := smallSchedule(t, cfg)
-	rerun := findStep(t, s, firstCase(s, "compliant"), RoleCompliant, CfgV)
+	s, rerun := withV(t, s, firstCase(s, "compliant"))
 	fake := NewFakeExecutor(s.Config)
 	fake.Hook = outageHook(rerun)
 	j, _ := runAll(t, s, t.TempDir(), fake)
@@ -89,15 +89,18 @@ func TestRerunRefusesDescriptiveV(t *testing.T) {
 	}
 }
 
-// A V setup failure (terminal, no outcome) and a V that never ended both leave
-// the compliant task exported with VMissing, and neither fails EVQ (D44).
+// A V setup failure (terminal, no outcome), a V that never ended and a plan with no V step (D58 amendment) all leave
+// the compliant task exported with VMissing, and none fails EVQ (D44).
 func TestExportKeepsTaskWithMissingV(t *testing.T) {
-	for _, mode := range []string{"setup-failure", "never-ended"} {
+	for _, mode := range []string{"setup-failure", "never-ended", "absent"} {
 		t.Run(mode, func(t *testing.T) {
 			cfg := smallConfig()
 			s := smallSchedule(t, cfg)
 			id := firstCase(s, "compliant")
-			v := findStep(t, s, id, RoleCompliant, CfgV)
+			v := Step{}
+			if mode != "absent" {
+				s, v = withV(t, s, id)
+			}
 			fake := NewFakeExecutor(s.Config)
 			if mode == "setup-failure" {
 				fake.Hook = func(st Step, _ *Outcome) error {

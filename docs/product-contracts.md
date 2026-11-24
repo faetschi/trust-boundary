@@ -70,7 +70,7 @@ The catalog is one protected `audit.Journal` (hash chain, fsync per record, excl
 | `product_turn_admitted` | `SubmitTurn` accepted | **The durable acceptance point.** Turn ID and ordinal, principal, request key, payload digest, exact prompt and its digest, project, policy digest, Bash scope, publication mode, admitted baseline digest, predecessor turn ID and receipt digest, budget reservation, session revision after admission. |
 | `product_turn_linked` | Before any provider or tool work of the turn | Workflow, run, runtime session and conversation IDs, provider/Store/command journal paths, imported prefix digest. |
 | `product_turn_terminal` | After the child workflow has a verified disposition | Outcome, settlement, receipt bytes and digest, actual usage, result baseline digest, `context_eligible`, refund. |
-| `product_turn_awaiting_review` | A changed turn in review mode settled | Receipt bytes and digest, actual usage, refund, candidate tree digest. The turn stays non-terminal and blocks its session and project until P4 resolves it. |
+| `product_turn_awaiting_review` | A changed turn in review mode settled | Receipt bytes and digest, actual usage, refund, candidate tree digest, and the removal count when non-zero. The turn stays non-terminal and blocks its session and project until P4 resolves it. |
 | `product_turn_abandoned` | Reconciling an admitted turn with no link | Admission withdrawn with a full refund. No provider or tool work can precede the link record. |
 | `product_turn_refused` | The composition refused to launch an admitted, unlinked turn | Outcome `failed` with a full refund. `PREDECESSOR_EVIDENCE_INVALID` blocks the session; `STALE_BASELINE` blocks the project. |
 | `product_turn_unknown` | Reconciling a linked turn that has no verifiable disposition | Reservation stays consumed; project is blocked. |
@@ -403,7 +403,7 @@ Decisions taken during implementation:
 
 - The driver counts every removed object of the turn's net change from the baseline to the sealed tree: files, directories and links. A file rename counts as one removal, so it can cost a human look. A directory rename or removal counts the directory and every object below it, although publication refuses a directory removal anyway.
 - The limit is per turn. There is no session-wide or cumulative removal budget, so several auto turns that each stay at or under the limit all publish.
-- The limit rides in the turn's recorded `scope`, so it is fixed at admission and replays. The reducer accepts an auto-mode turn at `awaiting_review` only when its scope carries the limit. The removal count is not journaled, so replay does not recheck the driver's decision, and the review event does not say why the turn awaits review.
+- The limit rides in the turn's recorded `scope`, so it is fixed at admission and replays. The reducer accepts an auto-mode turn at `awaiting_review` only when its scope carries the limit. The count is journaled in the `product_turn_awaiting_review` record as an optional `removed` (omitted when zero) and the review event text states it (`3 changed paths, 2 removed`). Replay does not recheck the driver's decision against the limit.
 - Neither control sees an overwrite or a truncation such as `: > file`. The path still exists, so no removal is counted and `no_delete` does not apply.
 
 ### Bash in product turns

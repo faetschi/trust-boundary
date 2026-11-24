@@ -1,0 +1,13 @@
+active
+failed
+== journal
+2026-11-21T15:24:42+00:00 tbound-abi8-seed tbound[955485]: corpus manifest is missing, not the pinned manifest, or not admissible: a pilot corpus on the research route is the research pilot and must pin its D48 pilot draw (pins.draw_digest)
+== diag l2
+/usr/bin/podman ro,nosuid,nodev,relatime
+/usr/bin/crun ro,nosuid,nodev,relatime
+/opt/tbound/cell ro,nosuid,nodev,relatime
+/var/lib/tbound/runtime ro,nosuid,nodev,relatime
+== maintenance lock
+lock-free
+== leftover
+time="2026-11-21T15:24:46Z" level=error msg="mkdir /var/lib/tbound/podman-home/rundir/libpod: no such file or directory"

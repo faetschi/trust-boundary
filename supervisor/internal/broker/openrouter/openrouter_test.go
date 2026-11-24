@@ -70,7 +70,7 @@ func (r *fragmentReader) Read(out []byte) (int, error) {
 }
 
 func TestBuildRequestFixesEndpointAndToolSchemas(t *testing.T) {
-	built, err := BuildRequest(ApprovedModel, []Message{{Role: User, Content: strptr("hello")}})
+	built, err := BuildRequestForRoute(EngineeringRoute(), []Message{{Role: User, Content: strptr("hello")}}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,17 +132,17 @@ func TestBuildRequestFixesEndpointAndToolSchemas(t *testing.T) {
 	}
 }
 func TestBuildRequestRejectsUnsupportedMessageAndTool(t *testing.T) {
-	if _, err := BuildRequest(ApprovedModel, []Message{{Role: "function", Content: strptr("x")}}); err == nil {
+	if _, err := BuildRequestForRoute(EngineeringRoute(), []Message{{Role: "function", Content: strptr("x")}}, 0); err == nil {
 		t.Fatal("unsupported role accepted")
 	}
-	if _, err := BuildRequest(" ", []Message{{Role: User, Content: strptr("x")}}); err == nil {
+	if _, err := BuildRequestForRoute(Route{Model: " ", Endpoint: Endpoint}, []Message{{Role: User, Content: strptr("x")}}, 0); err == nil {
 		t.Fatal("invalid model accepted")
 	}
-	_, err := BuildRequest(ApprovedModel, []Message{{Role: Assistant, ToolCalls: []PriorToolCall{{ID: "c1", Name: "read", RawArguments: json.RawMessage(`{"path":"ok","extra":true}`)}}}})
+	_, err := BuildRequestForRoute(EngineeringRoute(), []Message{{Role: Assistant, ToolCalls: []PriorToolCall{{ID: "c1", Name: "read", RawArguments: json.RawMessage(`{"path":"ok","extra":true}`)}}}}, 0)
 	if err == nil {
 		t.Fatal("prior call outside the registered schema accepted")
 	}
-	if _, err := BuildRequest("vendor/model", []Message{{Role: User, Content: strptr("x")}}); err == nil {
+	if _, err := BuildRequestForRoute(Route{Model: "vendor/model", Endpoint: Endpoint}, []Message{{Role: User, Content: strptr("x")}}, 0); err == nil {
 		t.Fatal("request builder accepted a model outside the fixed OpenCode Go profile")
 	}
 }
@@ -300,7 +300,7 @@ func TestBuildRequestPreflightsBeforeMarshaling(t *testing.T) {
 	for i := range messages {
 		messages[i] = Message{Role: User, Content: &content}
 	}
-	if _, err := BuildRequest(ApprovedModel, messages); err == nil {
+	if _, err := BuildRequestForRoute(EngineeringRoute(), messages, 0); err == nil {
 		t.Fatal("oversized request content was accepted")
 	}
 }

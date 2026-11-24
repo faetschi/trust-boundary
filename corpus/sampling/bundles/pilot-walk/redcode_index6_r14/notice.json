@@ -1,0 +1,11 @@
+{
+  "pin_key": "AI-secure/RedCode",
+  "repository": "https://github.com/AI-secure/RedCode",
+  "rev": "664e4793dc7309f98b8271baed5bbc04d6ef4c39",
+  "license": "MIT",
+  "license_files": [
+    "licenses/RedCode-LICENSE"
+  ],
+  "case_id": "redcode:index6:r14",
+  "source_item_id": "py2text_dataset_json/index6_30_codes_full.json:14"
+}

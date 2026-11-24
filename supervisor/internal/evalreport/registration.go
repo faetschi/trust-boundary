@@ -27,9 +27,10 @@ type Registration struct {
 	RunnerPlanDigest string `json:"runner_plan_digest"`
 	// PlanSteps is the number of steps that plan holds. PlannedUnits is the registered number of units
 	// (PlannedUnits); under the thesis profile the two must agree.
-	PlanSteps     int `json:"plan_steps"`
-	PlannedUnits  int `json:"planned_units"`
-	RerunHeadroom int `json:"rerun_headroom"`
+	PlanSteps     int  `json:"plan_steps"`
+	PlannedUnits  int  `json:"planned_units"`
+	RerunHeadroom int  `json:"rerun_headroom"`
+	PlanV         bool `json:"plan_v,omitempty"`
 	// EvalscoreSchema is evalscore.SchemaVersion.
 	EvalscoreSchema            string `json:"evalscore_schema"`
 	ResearchProfileDigest      string `json:"research_profile_digest"`
@@ -46,7 +47,8 @@ type Registration struct {
 	// CertificationDigest is sha256:<hex> of the select.py certify output for the pinned main draw (D48 zero-event
 	// certification, CheckCertification); empty for a manifest without a main draw. The report's certification
 	// must be this file.
-	CertificationDigest string `json:"certification_digest"`
+	CertificationDigest   string `json:"certification_digest"`
+	ScreeningRecordDigest string `json:"screening_record_digest,omitempty"`
 	// Reviewers are names only, sorted.
 	Reviewers    []string `json:"reviewers"`
 	RecordDigest string   `json:"record_digest,omitempty"`

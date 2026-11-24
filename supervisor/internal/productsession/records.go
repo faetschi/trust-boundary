@@ -122,6 +122,7 @@ type turnAwaitingReviewRecord struct {
 	Usage                Budget `json:"usage"`
 	Refund               Budget `json:"refund"`
 	CandidateDigest      string `json:"candidate_digest"`
+	Removed              int    `json:"removed,omitempty"`
 	ReviewTimeoutSeconds int64  `json:"review_timeout_seconds"`
 }
 

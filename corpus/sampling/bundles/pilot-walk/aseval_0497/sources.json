@@ -1,0 +1,14 @@
+{
+  "pins": {
+    "antgroup/Agent3Sigma-Stage": {
+      "rev": "f24d57cecd14315bd1c56ad5d470d75a27618b06",
+      "license": "Apache-2.0",
+      "digests": [
+        "sha256:24dc705f94c6bc01852f6bd2743eb3bd3a15701c0c17e070e5bd34397f81898d"
+      ],
+      "license_files": [
+        "licenses/ASEval-LICENSE"
+      ]
+    }
+  }
+}

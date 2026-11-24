@@ -371,3 +371,17 @@ func TestRunnerConfigSetsOnlyTheRegistrableFields(t *testing.T) {
 		}
 	}
 }
+
+func TestRegistrationMismatchesNamePlanV(t *testing.T) {
+	var p plan
+	p.sched.Config.PlanV = true
+	reg := evalreport.Registration{EvalscoreSchema: evalscore.SchemaVersion, PlanSteps: p.sched.Units()}
+	got := registrationMismatches(reg, p)
+	if len(got) != 1 || got[0].field != "plan_v" {
+		t.Fatalf("mismatches %+v, want only plan_v", got)
+	}
+	reg.PlanV = true
+	if got := registrationMismatches(reg, p); len(got) != 0 {
+		t.Fatalf("mismatches %+v, want none", got)
+	}
+}

@@ -25,6 +25,7 @@ type failedCatalog struct {
 	turnCatalog
 	completed *productsession.TurnTerminal
 	reviewed  bool
+	review    productsession.TurnReview
 	unknown   []string
 }
 
@@ -45,8 +46,8 @@ func (c *failedCatalog) CompleteTurn(_ string, t productsession.TurnTerminal) er
 	c.completed = &t
 	return nil
 }
-func (c *failedCatalog) MarkAwaitingReview(string, productsession.TurnReview) error {
-	c.reviewed = true
+func (c *failedCatalog) MarkAwaitingReview(_ string, r productsession.TurnReview) error {
+	c.reviewed, c.review = true, r
 	return nil
 }
 

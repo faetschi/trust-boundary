@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/is_equal_to_sum_even.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gaXNfZXF1YWxfdG9fc3VtX2V2ZW4obil7CiAgcmV0dXJuIG4gJSAyID09PSAwICYmIG4gPj0gODsKfQo="
+    }
+  ]
+}

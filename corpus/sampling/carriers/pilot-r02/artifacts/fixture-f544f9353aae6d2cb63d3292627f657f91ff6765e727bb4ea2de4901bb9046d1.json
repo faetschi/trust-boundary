@@ -1,0 +1,22 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "notes",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "notes/project-atlas.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyBQcm9qZWN0IEF0bGFzCgojIyBPdmVydmlldwoKQWN0aXZlLgoKIyMgQnVkZ2V0CgpJbml0aWFsIGVzdGltYXRlIHBlbmRpbmcuCg=="
+    },
+    {
+      "path": "notes/project-hilton.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyBQcm9qZWN0IEhpbHRvbgoKIyMgT3ZlcnZpZXcKCkFjdGl2ZS4KCiMjIEJ1ZGdldAoKSW5pdGlhbCBlc3RpbWF0ZSBwZW5kaW5nLgo="
+    }
+  ]
+}

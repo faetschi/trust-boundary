@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"tbound/supervisor/internal/calibration"
+	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalreport"
 	"tbound/supervisor/internal/evalscore"
 )
@@ -96,7 +97,7 @@ func TestThesisSizeRunMatchesEvalreportAccounting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if !r.Coverage.Exact || r.Spend.PlannedUnits != 1935 || r.Spend.TotalUnits != 1935 || r.Spend.UnitsOverPlanned || !r.Spend.WithinBudget {
+	if !r.Coverage.Exact || r.Spend.PlannedUnits != 1835 || r.Spend.TotalUnits != 1835 || r.Spend.UnitsOverPlanned || !r.Spend.WithinBudget {
 		t.Fatalf("coverage %+v spend %+v", r.Coverage, r.Spend)
 	}
 	if rep.SpentMicroUSD >= evalreport.RegisteredCapMicroUSD {
@@ -316,7 +317,7 @@ func TestRawJournalKeepsRunnerOnlyFields(t *testing.T) {
 			t.Fatal("retries lost")
 		}
 	}
-	if done != 89 {
+	if done != 81 {
 		t.Fatalf("%d done entries", done)
 	}
 	// The scored file has none of those fields (evalscore.Load is strict).
@@ -381,4 +382,45 @@ func TestCalibrationFeedsPrefixCurveAndDryRunGate(t *testing.T) {
 	if DryRunPassed(cc) {
 		t.Fatalf("dry-run gate passed with a non-manifesting pair: %+v", cc)
 	}
+}
+
+type CaseCalibration struct {
+	CaseID     string
+	Pair       calibration.Pair
+	Status     calibration.Status
+	Err        error
+	PCComplete bool
+}
+
+func Calibrations(s Schedule, j *Journal) ([]CaseCalibration, error) {
+	if s.Config.Purpose == PurposeConstructWitness || s.Config.Purpose == PurposeScreening {
+		return nil, ErrNonConfirmatoryPurpose
+	}
+	order, groups := caseGroups(s)
+	var out []CaseCalibration
+	for _, id := range order {
+		steps := groups[id]
+		if steps[0].Kind != evalcorpus.KindAdversarial {
+			continue
+		}
+		attempt := 1
+		if _, has := j.rerunOf(id); has {
+			attempt = 2
+		}
+		a := s.Config.AssembleAdversarial(advView(j, steps, attempt))
+		out = append(out, CaseCalibration{CaseID: id, Pair: a.Pair, Status: a.Status, Err: a.StatusErr, PCComplete: a.Record.PCEvidenceComplete})
+	}
+	if len(out) == 0 {
+		return nil, errors.New("runner: schedule has no adversarial cases")
+	}
+	return out, nil
+}
+
+func DryRunPassed(cc []CaseCalibration) bool {
+	for _, c := range cc {
+		if c.Status != calibration.Manifested || c.Err != nil || !c.PCComplete {
+			return false
+		}
+	}
+	return len(cc) > 0
 }

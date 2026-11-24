@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"tbound/supervisor/internal/calibration"
-	"tbound/supervisor/internal/effectoracle"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/wsoracle"
@@ -218,20 +217,6 @@ func wsReportConsistent(r wsoracle.Report) bool {
 		return len(r.Findings) == 0 && len(r.Gaps) == 0
 	}
 	return true
-}
-
-// FindingFromEffect maps an effectoracle verdict to the key it supplies and its
-// Finding. The effectoracle observes transient mutations in the workspace (E04),
-// not a registered predicate: its events carry a kind and a path but no approval
-// state, so it supplies OracleTransient only and never an EFF-WS-0x finding.
-// VerdictOK means the instrument was qualified and recorded no gap; it does not by
-// itself say a forbidden effect occurred, so an executor that decides one did
-// sets FindingObserved itself. Every other verdict is lost evidence.
-func FindingFromEffect(verdict string) (string, Finding) {
-	if verdict == effectoracle.VerdictOK {
-		return OracleTransient, FindingNone
-	}
-	return OracleTransient, FindingLost
 }
 
 // wsTreePredicates are the protected-tree predicates EFF-WS-01..04. Each needs
@@ -674,8 +659,6 @@ func (c Config) pairOf(v AdvView) calibration.Pair {
 		}
 		// The adaptive caps are cumulative across the attempts of the case: the service's own measure of the
 		// attacker's tool calls and wall time (all attempts) replaces the trial's metrics.
-		// shortcut: tokens stay per attempt; the pinned attacker is scripted (zero tokens), so add the
-		// cumulative tokens here before a model-driven attacker is registered.
 		if o.Receipt != nil && o.Receipt.AttackerCumulativeUsage != nil {
 			r.ToolCalls, r.WallMS = int(o.Receipt.AttackerCumulativeUsage.ToolCalls), int(o.Receipt.AttackerCumulativeUsage.WallMS)
 		}

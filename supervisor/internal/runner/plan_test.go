@@ -3,7 +3,6 @@ package runner
 import (
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/evalcorpus"
@@ -22,8 +21,8 @@ func thesisSchedule(t testing.TB) Schedule {
 
 func TestPlanThesisUnitCounts(t *testing.T) {
 	s := thesisSchedule(t)
-	if evalreport.LegacyPlannedUnits != 1935 {
-		t.Fatalf("evalreport.LegacyPlannedUnits = %d, want 1935", evalreport.LegacyPlannedUnits)
+	if evalreport.LegacyPlannedUnits != 1835 {
+		t.Fatalf("evalreport.LegacyPlannedUnits = %d, want 1835", evalreport.LegacyPlannedUnits)
 	}
 	if got := len(s.Steps); got != evalreport.LegacyPlannedUnits {
 		t.Fatalf("units = %d, want %d", got, evalreport.LegacyPlannedUnits)
@@ -47,7 +46,7 @@ func TestPlanThesisUnitCounts(t *testing.T) {
 	}
 	want := map[Role]int{
 		RoleTrajectory: 299, RoleStaticReplay: 598, RoleAdaptiveReplay: 598,
-		RoleCompliant: 300, RoleAmbiguous: 40, RoleVarianceRepeat: 100,
+		RoleCompliant: 200, RoleAmbiguous: 40, RoleVarianceRepeat: 100,
 	}
 	for role, n := range want {
 		if byRole[role] != n {
@@ -55,14 +54,14 @@ func TestPlanThesisUnitCounts(t *testing.T) {
 		}
 	}
 	// 299 trajectories + 299*2 static/adaptive C replays + 100 compliant C + 20 ambiguous C + 100 repeats.
-	wantCfg := map[Configuration]int{CfgC: 299 + 598 + 100 + 20 + 100, CfgP: 598, CfgB: 100 + 20, CfgV: 100}
+	wantCfg := map[Configuration]int{CfgC: 299 + 598 + 100 + 20 + 100, CfgP: 598, CfgB: 100 + 20, CfgV: 0}
 	for c, n := range wantCfg {
 		if byCfg[c] != n {
 			t.Errorf("configuration %s: %d steps, want %d", c, byCfg[c], n)
 		}
 	}
 	if byCfg[CfgA] != 0 {
-		t.Errorf("configuration A is outside the 1,935 units but %d steps were planned", byCfg[CfgA])
+		t.Errorf("configuration A is outside the 1,835 units but %d steps were planned", byCfg[CfgA])
 	}
 }
 
@@ -166,29 +165,34 @@ func TestPlanPerCaseOrdering(t *testing.T) {
 
 func TestPlanCompliantPairOrderBalanced(t *testing.T) {
 	s := thesisSchedule(t)
-	orders := map[string]int{}
+	var tasks, orders []string
 	byTask := map[string]string{}
 	for _, st := range s.Steps {
-		if st.Role == RoleCompliant {
-			byTask[st.CaseID] += string(st.Configuration)
+		if st.Role != RoleCompliant {
+			continue
 		}
-	}
-	if len(byTask) != 100 {
-		t.Fatalf("%d compliant tasks", len(byTask))
-	}
-	for _, o := range byTask {
-		if len(o) != 3 || !strings.Contains(o, "B") || !strings.Contains(o, "C") || !strings.Contains(o, "V") {
-			t.Fatalf("task order %q is not a permutation of B, C, V", o)
+		if _, seen := byTask[st.CaseID]; !seen {
+			tasks = append(tasks, st.CaseID)
 		}
-		orders[o]++
+		byTask[st.CaseID] += string(st.Configuration)
 	}
-	if len(orders) != 6 {
-		t.Fatalf("%d distinct orders, want all 6", len(orders))
+	if len(tasks) != 100 {
+		t.Fatalf("%d compliant tasks", len(tasks))
 	}
-	for o, n := range orders {
-		if n < 16 || n > 17 {
-			t.Errorf("order %s used %d times, want 16 or 17", o, n)
+	counts := map[string]int{}
+	for i, id := range tasks {
+		o := byTask[id]
+		if o != "BC" && o != "CB" {
+			t.Fatalf("task %s order %q, want BC or CB", id, o)
 		}
+		if i > 0 && o == orders[i-1] {
+			t.Fatalf("tasks %s and %s share order %q", tasks[i-1], id, o)
+		}
+		orders = append(orders, o)
+		counts[o]++
+	}
+	if counts["BC"] != 50 || counts["CB"] != 50 {
+		t.Fatalf("orders %v, want 50 each", counts)
 	}
 }
 
@@ -197,7 +201,7 @@ func TestPlanRefusals(t *testing.T) {
 	cases := map[string]func(*Config, *evalcorpus.Manifest){
 		"empty freeze commit":   func(c *Config, _ *evalcorpus.Manifest) { c.FreezeCommit = "" },
 		"non-hex freeze commit": func(c *Config, _ *evalcorpus.Manifest) { c.FreezeCommit = "main" },
-		"unit cap above 1935":   func(c *Config, _ *evalcorpus.Manifest) { c.UnitCap = 1936 },
+		"unit cap above 1835":   func(c *Config, _ *evalcorpus.Manifest) { c.UnitCap = 1836 },
 		"unknown only-case":     func(c *Config, _ *evalcorpus.Manifest) { c.OnlyCases = []string{"nope"} },
 		"allocation differs": func(_ *Config, a *evalcorpus.Manifest) {
 			a.Cases = a.Cases[1:]
@@ -218,7 +222,7 @@ func TestPlanRefusals(t *testing.T) {
 		}
 	}
 	cfg := smallConfig()
-	cfg.UnitCap = 88
+	cfg.UnitCap = 80
 	if _, err := Plan(src, alloc, cfg); !errors.Is(err, ErrOverPlanned) {
 		t.Errorf("unit cap below the plan: got %v, want ErrOverPlanned", err)
 	}
@@ -241,13 +245,13 @@ func TestPlanSubsetForDryRun(t *testing.T) {
 	}
 }
 
-// The study's own plans keep their digests: an empty purpose is omitted from the digested config, so the bytes the
-// registered digests cover do not change. The values were computed before the purpose member was added.
+// Pinned plan digests (re-measured once for the D58 amendment, which dropped the V steps). An empty purpose is omitted from the digested config, so the bytes the
+// registered digests cover do not change with it.
 func TestNormalPlanDigestsAreUnchanged(t *testing.T) {
-	if got, want := smallSchedule(t, smallConfig()).Digest, "sha256:55b45cbe07bc55f1525c8e9d00692688c418423022bbbadeeb7f0d8542776b8b"; got != want {
+	if got, want := smallSchedule(t, smallConfig()).Digest, "sha256:3c9f26f4bab8f252a1fec7e7899384486648eef4008e9d0b5ae9d9e98d40b7a1"; got != want {
 		t.Errorf("small plan digest %s, want %s", got, want)
 	}
-	if got, want := thesisSchedule(t).Digest, "sha256:37faf9c235a4c570d7af07724cc729f282b5486fd907b0e36977e18092ac7c4d"; got != want {
+	if got, want := thesisSchedule(t).Digest, "sha256:89bcc8d9e0f470e19ffee5965d49deb20e02fc54d7ae73a2c709f63975c104e4"; got != want {
 		t.Errorf("thesis plan digest %s, want %s", got, want)
 	}
 }
@@ -332,8 +336,8 @@ func TestD48PlanUnitTotalIsComputedFromTheFinalCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	// smallQuotas: 11 adversarial, 8 compliant, 2 ambiguous, 3 variance cases.
-	want := 11*5 + 8*3 + 2*2 + 3*2
-	if s.Units() != want || s.PlannedUnits != want || evalreport.PlannedUnits(alloc) != want ||
+	want := 11*5 + 8*2 + 2*2 + 3*2
+	if s.Units() != want || s.PlannedUnits != want || evalreport.PlannedUnits(alloc, false) != want ||
 		s.Config.UnitCap != want || s.Config.RerunHeadroom != RerunHeadroomFor(want) || RerunHeadroomFor(want) != 5 {
 		t.Fatalf("units %d, planned %d, cap %d, headroom %d; want %d, headroom 5", s.Units(), s.PlannedUnits, s.Config.UnitCap, s.Config.RerunHeadroom, want)
 	}

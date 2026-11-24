@@ -32,6 +32,7 @@ const (
 	maxRunnerConfigBytes = 1 << 20
 	maxRubricBytes       = 16 << 20
 	maxCorpusCheckBytes  = 64 << 20
+	maxScreeningBytes    = 16 << 20
 )
 
 var (
@@ -50,7 +51,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	panelReceipt := flags.String("panel-receipt", "", "optional supplementary panel receipt.json")
 	panelAudit := flags.String("panel-audit", "", "optional supplementary panel audit.json; supply all three panel files together")
 	panelStats := flags.String("panel-stats", "", "optional supplementary panel diagnostics stats.json")
-	profile := flags.String("quota-profile", "", "quota profile: thesis or pilot")
+	profile := flags.String("quota-profile", "", "quota profile: thesis, pilot or screening")
 	runnerConfigPath := flags.String("runner-config", "", "runner Config JSON (its freeze_commit must equal --freeze-commit)")
 	researchProfilePath := flags.String("research-profile", "", "optional frozen research profile JSON")
 	ledgerConfigPath := flags.String("research-ledger-config", "", "optional research ledger configuration JSON")
@@ -59,6 +60,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	runBinding := flags.String("run-binding", "", "the run_binding that `tbound-run plan` prints for the registered run.json (D49 drain grace, admission policy, receipt pins)")
 	rubricPath := flags.String("attribution-rubric", "", "the frozen attribution rubric file; the run's attribution file must name its sha256 as rubric_digest")
 	corpusCheckPath := flags.String("corpus-check", "", "the `tbound-profile corpus-check` report.json of this manifest, with no failed and no guest-only row")
+	screeningPath := flags.String("screening-record", "", "optional screening record of the compliant tasks (D58 item 4); the record carries its sha256")
 	certificationPath := flags.String("certification", "", "the select.py certify output for the manifest's pinned main draw (required with a main draw, refused without)")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -93,10 +95,10 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	if cfg.FreezeCommit != *commit {
 		return fmt.Errorf("the runner config freeze_commit %q is not --freeze-commit %q", cfg.FreezeCommit, *commit)
 	}
-	if cfg.Purpose == runner.PurposeConstructWitness {
-		return errors.New("the runner config is a construct-witness run, which is non-confirmatory and cannot be pre-registered")
+	if cfg.Purpose == runner.PurposeConstructWitness || cfg.Purpose == runner.PurposeScreening {
+		return fmt.Errorf("the runner config is a %s run, which is non-confirmatory and cannot be pre-registered", cfg.Purpose)
 	}
-	// tbound-run plans from run.json with freeze_commit, evq_obligations, adaptive_caps, only_cases and purpose only
+	// tbound-run plans from run.json with freeze_commit, evq_obligations, adaptive_caps, only_cases, purpose and plan_v only
 	// (runConfig.runnerConfig), so a record with any other runner field could match no run. C-DH is outside H1.
 	if cfg.CDH != nil || cfg.NET02Mandatory || cfg.UnitCap != 0 || cfg.RerunHeadroom != 0 || cfg.NoRerunHeadroom {
 		return errors.New("the runner config sets cdh, net02_mandatory, unit_cap, rerun_headroom or no_rerun_headroom, which no tbound-run plan sets")
@@ -144,7 +146,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 		return errors.New("the runner plan is bound to another manifest digest")
 	}
 	// D53 item 4: the registered total is computed from the final counts, and a plan that is not exactly it is refused.
-	planned := evalreport.PlannedUnits(allocation)
+	planned := evalreport.PlannedUnits(allocation, schedule.Config.PlanV)
 	if *profile == "thesis" && (schedule.Subset || schedule.Units() != planned) {
 		return fmt.Errorf("a thesis plan must be the registered %d units without a subset; it has %d (subset %t)",
 			planned, schedule.Units(), schedule.Subset)
@@ -153,7 +155,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	rec := evalreport.Registration{
 		Domain: evalreport.RegistrationDomain, FreezeCommit: *commit, CorpusManifestDigest: manifestDigest, QuotaProfile: *profile,
 		RunnerPlanDigest: schedule.Digest, PlanSteps: schedule.Units(), PlannedUnits: planned,
-		RerunHeadroom: schedule.Config.RerunHeadroom, EvalscoreSchema: evalscore.SchemaVersion,
+		RerunHeadroom: schedule.Config.RerunHeadroom, PlanV: schedule.Config.PlanV, EvalscoreSchema: evalscore.SchemaVersion,
 		RunBinding: *runBinding, AttributionRubricDigest: "sha256:" + hex.EncodeToString(rubricSum[:]), CorpusCheckDigest: corpusCheck,
 		CertificationDigest: certification, Reviewers: names,
 	}
@@ -166,6 +168,14 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 		if rec.ResearchLedgerConfigDigest, err = researchLedgerConfigDigest(*ledgerConfigPath); err != nil {
 			return err
 		}
+	}
+	if *screeningPath != "" {
+		data, err := readRegularBounded(*screeningPath, maxScreeningBytes)
+		if err != nil {
+			return fmt.Errorf("screening record: %w", err)
+		}
+		sum := sha256.Sum256(data)
+		rec.ScreeningRecordDigest = "sha256:" + hex.EncodeToString(sum[:])
 	}
 	if rec.RecordDigest, err = rec.ComputeDigest(); err != nil {
 		return err

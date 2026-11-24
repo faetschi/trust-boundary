@@ -142,7 +142,7 @@ func (d *Driver) RunTurn(ctx context.Context, admission productsession.Admission
 		s.outcome = productsession.OutcomeNoDiff
 	case turn.PublicationMode == productsession.PublicationReview,
 		turn.Scope != nil && turn.Scope.AutoPublishMaxRemovals != nil && resolved.Removed > *turn.Scope.AutoPublishMaxRemovals:
-		s.outcome, s.candidate = "awaiting_review", sealed
+		s.outcome, s.candidate, s.removed = productsession.OutcomeAwaitingReview, sealed, resolved.Removed
 	default:
 		host.Crash("before-auto-publication")
 		// This decision is the publication-start boundary, ordered with CancelTurn's durable record.
@@ -174,7 +174,7 @@ func (d *Driver) RunTurn(ctx context.Context, admission productsession.Admission
 	if after != s.resultBaseline {
 		return s.unknown("the project changed outside the turn", nil)
 	}
-	if s.outcome != "awaiting_review" {
+	if s.outcome != productsession.OutcomeAwaitingReview {
 		return s.settle()
 	}
 	// The review is recorded and held under d.mu, so a resolution or cancellation sees both or neither;
@@ -215,6 +215,7 @@ type settlement struct {
 	resultBaseline string
 	transactionID  string
 	candidate      string
+	removed        int
 }
 
 // unknown records a linked turn whose disposition cannot be established. It never claims success.
@@ -243,8 +244,6 @@ func (s *settlement) settle() (productsession.TurnReceipt, error) {
 	}
 	link := s.prepared.Link()
 	reservation := s.turn.Reservation
-	// shortcut: elapsed time after the ledger deadline (settlement, publication) is not billed beyond
-	// the reservation; bill it once the catalog can record an overrun.
 	elapsed := min(int64(math.Ceil(time.Since(ev.Started).Seconds())), reservation.DurationSeconds)
 	usage := productsession.Budget{HostCalls: ev.HostCalls, Tokens: ev.Tokens,
 		DurationSeconds: elapsed}
@@ -268,9 +267,9 @@ func (s *settlement) settle() (productsession.TurnReceipt, error) {
 	if err != nil {
 		return s.unknown("the turn receipt could not be built", err)
 	}
-	if s.outcome == "awaiting_review" {
+	if s.outcome == productsession.OutcomeAwaitingReview {
 		err = s.d.catalog.MarkAwaitingReview(s.turn.ID, productsession.TurnReview{Settlement: receipt.Settlement,
-			Receipt: encoded, Usage: usage, CandidateDigest: s.candidate})
+			Receipt: encoded, Usage: usage, CandidateDigest: s.candidate, Removed: s.removed})
 	} else {
 		err = s.d.catalog.CompleteTurn(s.turn.ID, productsession.TurnTerminal{Outcome: s.outcome, Settlement: receipt.Settlement,
 			Receipt: encoded, Usage: usage, ResultBaselineDigest: s.resultBaseline, ContextEligible: s.work.FinalAnswer})

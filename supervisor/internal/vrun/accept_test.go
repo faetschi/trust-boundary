@@ -37,7 +37,7 @@ func TestAcceptPodmanArgsIsolateTheCheck(t *testing.T) {
 			}
 		}
 	}
-	for _, bad := range []string{WorkDir, RuntimeDir, KeyFile, "--privileged", "--network=host", "--net=", ",rw"} {
+	for _, bad := range []string{WorkDir, RuntimeDir, ForwarderDir, "--privileged", "--network=host", "--net=", ",rw"} {
 		if strings.Contains(joined, bad) {
 			t.Errorf("argv contains %q:\n%s", bad, joined)
 		}
