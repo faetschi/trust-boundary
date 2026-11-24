@@ -306,6 +306,8 @@ func TestPreregistrationRecordEveryInputChangesTheDigest(t *testing.T) {
 			f.SetInt(f.Int() + 1)
 		case reflect.Slice:
 			f.Set(reflect.Append(f, reflect.ValueOf("extra")))
+		case reflect.Bool:
+			f.SetBool(!f.Bool())
 		default:
 			t.Fatalf("field %s has kind %s", name, f.Kind())
 		}
