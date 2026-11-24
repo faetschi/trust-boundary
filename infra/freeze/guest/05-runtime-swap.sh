@@ -97,6 +97,8 @@ if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
 # unchanged (git diff --quiet); the only piruntime change since F31 is #251 (d09_delta_linux.go, d09_command_runner_linux.go), off the digest path.
 if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
    [ "$F" = 08f3c3ee4043171b55867dfd2dfe5258809cf40b ]; then ALLOW_PREV_MEASURER=1; fi
+if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
+   [ "$F" = 4e8ac37d8f2cbb5a67a8a5c8b965c8345ece4e36 ]; then ALLOW_PREV_MEASURER=1; fi
 UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
 OLD=/var/lib/tbound/runtime-src.old-${PREV_BUNDLE_DIGEST:7:8}-$(date -u +%Y%m%dT%H%M%S%NZ)
 
