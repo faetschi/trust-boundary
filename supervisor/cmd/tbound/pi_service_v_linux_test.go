@@ -275,6 +275,27 @@ func TestVServiceRefusesTheRequestAfterTheCaseMaxHostCalls(t *testing.T) {
 	}
 }
 
+func TestVServiceCapIsBoundedByTheProfile(t *testing.T) {
+	h := newVTestHarness(t)
+	limit := h.bundle.MaxRequestsPerUnit()
+	trial, ok := h.catalog.corpus.trial(h.caseID)
+	if !ok || trial.MaxHostCalls <= limit {
+		t.Fatalf("the case's max_host_calls %d must be above the profile's %d", trial.MaxHostCalls, limit)
+	}
+	conn, dir, token := openVUnit(t, h, "tbr-v-profile-cap", h.caseID)
+	for i := uint64(1); i <= limit; i++ {
+		if status, body := vPost(t, dir, token, vTestRequestBody); status != http.StatusOK {
+			t.Fatalf("request %d of %d: status %d %s", i, limit, status, body)
+		}
+	}
+	if status, _ := vPost(t, dir, token, vTestRequestBody); status != http.StatusTooManyRequests {
+		t.Errorf("request %d past the profile's bound: status %d, want %d", limit+1, status, http.StatusTooManyRequests)
+	}
+	if _, totals := finishVUnit(t, conn); uint64(totals.Booked) != limit {
+		t.Errorf("booked %d, want the profile's %d", totals.Booked, limit)
+	}
+}
+
 func TestVServiceAdmitsACaseOnce(t *testing.T) {
 	h := newVTestHarness(t)
 	conn, _, _ := openVUnit(t, h, "tbr-v-once-1", h.caseID)
