@@ -59,6 +59,11 @@ type vTestUpstream struct {
 
 func newVTestBundle(t *testing.T) (*researchroute.Bundle, *vTestUpstream) {
 	t.Helper()
+	return newVTestBundleWithProfile(t, vTestProfile)
+}
+
+func newVTestBundleWithProfile(t *testing.T, profile string) (*researchroute.Bundle, *vTestUpstream) {
+	t.Helper()
 	upstream := &vTestUpstream{}
 	upstream.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstream.requests.Add(1)
@@ -78,7 +83,7 @@ func newVTestBundle(t *testing.T) (*researchroute.Bundle, *vTestUpstream) {
 	paths := researchroute.Paths{Profile: filepath.Join(dir, "profile.json"), LedgerConfig: filepath.Join(dir, "ledger.json"),
 		Ledger: filepath.Join(dir, "stub-ledger"), Checkpoint: filepath.Join(dir, "checkpoint.json"), Key: filepath.Join(dir, "stub.key"),
 		OwnerUID: uint32(os.Getuid())}
-	for path, content := range map[string]string{paths.Profile: vTestProfile, paths.LedgerConfig: vTestLedgerConfig, paths.Key: "dummy-stub-key-123\n"} {
+	for path, content := range map[string]string{paths.Profile: profile, paths.LedgerConfig: vTestLedgerConfig, paths.Key: "dummy-stub-key-123\n"} {
 		if err := os.WriteFile(path, []byte(content), 0o400); err != nil {
 			t.Fatal(err)
 		}
@@ -168,7 +173,9 @@ func vPost(t *testing.T, dir, token, body string) (int, string) {
 	t.Helper()
 	req, _ := http.NewRequest(http.MethodPost, "http://forwarder/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := vUnitClient(dir).Do(req)
+	client := vUnitClient(dir)
+	defer client.CloseIdleConnections()
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,6 +246,32 @@ func TestVServiceServesOneUnitAndEverythingIsDeadAfterwards(t *testing.T) {
 	}
 	if h.journalRecords(t) != 0 {
 		t.Fatal("a V unit wrote the service request journal")
+	}
+}
+
+func TestVServiceRefusesTheRequestAfterTheCaseMaxHostCalls(t *testing.T) {
+	h := newVTestHarness(t)
+	profile := strings.Replace(vTestProfile, `"max_requests_per_unit": 5`, `"max_requests_per_unit": 17`, 1)
+	bundle, upstream := newVTestBundleWithProfile(t, profile)
+	h.service.bundle, h.upstream = bundle, upstream
+	trial, ok := h.catalog.corpus.trial(h.caseID)
+	if !ok || trial.MaxHostCalls == 0 || trial.MaxHostCalls >= bundle.MaxRequestsPerUnit() {
+		t.Fatalf("the case's max_host_calls %d must be below the profile's %d", trial.MaxHostCalls, bundle.MaxRequestsPerUnit())
+	}
+	conn, dir, token := openVUnit(t, h, "tbr-v-cap", h.caseID)
+	for i := uint64(1); i <= trial.MaxHostCalls; i++ {
+		if status, body := vPost(t, dir, token, vTestRequestBody); status != http.StatusOK {
+			t.Fatalf("request %d of %d: status %d %s", i, trial.MaxHostCalls, status, body)
+		}
+	}
+	if status, _ := vPost(t, dir, token, vTestRequestBody); status != http.StatusTooManyRequests {
+		t.Errorf("request max_host_calls+1 = %d: status %d, want %d", trial.MaxHostCalls+1, status, http.StatusTooManyRequests)
+	}
+	if got := uint64(upstream.requests.Load()); got != trial.MaxHostCalls {
+		t.Errorf("the upstream saw %d requests, want max_host_calls %d", got, trial.MaxHostCalls)
+	}
+	if _, totals := finishVUnit(t, conn); uint64(totals.Booked) != trial.MaxHostCalls {
+		t.Errorf("booked %d, want max_host_calls %d", totals.Booked, trial.MaxHostCalls)
 	}
 }
 
