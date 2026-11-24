@@ -47,15 +47,16 @@ type Forwarder struct {
 	token       []byte
 	closed      atomic.Bool
 
-	run    sync.Mutex
-	mu     sync.Mutex
-	calls  uint64
-	totals ForwardTotals
+	run      sync.Mutex
+	mu       sync.Mutex
+	calls    uint64
+	maxCalls uint64
+	totals   ForwardTotals
 }
 
-func (b *Bundle) NewForwarder(admissionID, token string) (*Forwarder, error) {
-	if admissionID == "" || len(token) < 32 {
-		return nil, errors.New("a forwarder needs an admission id and a credential of at least 32 bytes")
+func (b *Bundle) NewForwarder(admissionID, token string, maxHostCalls uint64) (*Forwarder, error) {
+	if admissionID == "" || len(token) < 32 || maxHostCalls == 0 {
+		return nil, errors.New("a forwarder needs an admission id, a credential of at least 32 bytes and the case's max_host_calls")
 	}
 	credentials, err := b.Credentials()
 	if err != nil {
@@ -65,7 +66,8 @@ func (b *Bundle) NewForwarder(admissionID, token string) (*Forwarder, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Forwarder{bundle: b, doer: doer, admissionID: admissionID, token: []byte(token)}, nil
+	return &Forwarder{bundle: b, doer: doer, admissionID: admissionID, token: []byte(token),
+		maxCalls: min(maxHostCalls, b.MaxRequestsPerUnit())}, nil
 }
 
 func (b *Bundle) MaxCompletionTokens() uint64 { return *b.profile.MaxOutputTokens }
@@ -130,7 +132,7 @@ func (f *Forwarder) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f.mu.Lock()
-	over := f.calls >= f.bundle.MaxRequestsPerUnit()
+	over := f.calls >= f.maxCalls
 	if !over {
 		f.calls++
 	}

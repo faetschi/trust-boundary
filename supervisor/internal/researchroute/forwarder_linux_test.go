@@ -43,7 +43,7 @@ func newForwarderFixture(t *testing.T) (*Bundle, *upstream, *httptest.Server, *F
 		sse(w, map[string]any{"prompt_tokens": 11, "completion_tokens": 3, "cost": 0.000002})
 	}
 	bundle = f.open(up.URL + "/api/v1/chat/completions")
-	fwd, err := bundle.NewForwarder("case-1/v/1", forwardToken)
+	fwd, err := bundle.NewForwarder("case-1/v/1", forwardToken, bundle.MaxRequestsPerUnit())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestStubRouteBooksNothingInTheResearchLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = stubBundle.Close() })
-	fwd, err := stubBundle.NewForwarder("case-1/v/1", forwardToken)
+	fwd, err := stubBundle.NewForwarder("case-1/v/1", forwardToken, stubBundle.MaxRequestsPerUnit())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,6 +369,60 @@ func TestForwarderSettlesTheUnitAfterTheClientHasGone(t *testing.T) {
 	close(proceed)
 	if totals := fwd.Finish(); totals != (ForwardTotals{Booked: 1, Settled: 1, TokensIn: 11, TokensOut: 3, CostMicroUSD: 2}) {
 		t.Fatalf("totals %+v", totals)
+	}
+	if snap := snapshot(t, bundle); snap.SettledMicroUSD != 2 || snap.UncertainUnits != 0 || snap.OpenMicroUSD != 0 {
+		t.Fatalf("ledger %+v", snap)
+	}
+}
+
+func TestForwarderFinishWaitsForTheOpenCallAndSettlesIt(t *testing.T) {
+	bundle, up, srv, fwd := newForwarderFixture(t)
+	proceed := make(chan struct{})
+	release := sync.OnceFunc(func() { close(proceed) })
+	defer release()
+	up.handler = func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, ": open\n\n")
+		w.(http.Flusher).Flush()
+		<-proceed
+		_, _ = io.WriteString(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":3,\"cost\":0.000002}}\n\ndata: [DONE]\n\n")
+	}
+	statuses := make(chan int, 1)
+	go func() {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+ForwardPath, strings.NewReader(piRequest))
+		req.Header.Set("Authorization", "Bearer "+forwardToken)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			statuses <- 0
+			return
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		statuses <- resp.StatusCode
+	}()
+	for deadline := time.Now().Add(10 * time.Second); up.requests.Load() == 0; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the call did not reach the upstream")
+		}
+	}
+	finished := make(chan ForwardTotals, 1)
+	go func() { finished <- fwd.Finish() }()
+	select {
+	case totals := <-finished:
+		t.Fatalf("Finish returned while the call was still open: %+v", totals)
+	case <-time.After(300 * time.Millisecond):
+	}
+	release()
+	select {
+	case totals := <-finished:
+		if totals != (ForwardTotals{Booked: 1, Settled: 1, TokensIn: 11, TokensOut: 3, CostMicroUSD: 2}) {
+			t.Fatalf("totals %+v", totals)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Finish did not return after the call ended")
+	}
+	if status := <-statuses; status != http.StatusOK {
+		t.Fatalf("status %d", status)
 	}
 	if snap := snapshot(t, bundle); snap.SettledMicroUSD != 2 || snap.UncertainUnits != 0 || snap.OpenMicroUSD != 0 {
 		t.Fatalf("ledger %+v", snap)

@@ -57,8 +57,8 @@ ST=$(git -C "$REPO" -c core.autocrlf=true status --porcelain -- supervisor adapt
 echo "status-porcelain-bytes=${#ST}"; echo "$ST" | head
 [ -z "$ST" ] || die "dirty build inputs"
 
-# evq-capture runs tests under $CF/work/tmp. The longest test socket path adds 75 bytes, and a Unix socket path must stay under 108.
-[ "$(printf %s "$CF" | wc -c)" -le 28 ] || die "$CF is over the 28-byte limit: Unix socket tests would fail after 25 minutes. Put the freeze home on a shorter path (OLDH)"
+# evq-capture runs tests under $CF/work/tmp. The longest test socket path adds 83 bytes (internal/vrun relay_test.go), and a Unix socket path must stay under 108.
+[ "$(printf %s "$CF" | wc -c)" -le 24 ] || die "$CF is over the 24-byte limit: Unix socket tests would fail after 25 minutes. Put the freeze home on a shorter path (OLDH)"
 
 # 3. The kept H (owner keys + F0 outputs): names only, never contents.
 H=$OLDH
