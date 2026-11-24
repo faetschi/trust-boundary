@@ -435,6 +435,32 @@ func TestVRoleAdmission(t *testing.T) {
 	}
 }
 
+func TestVForwarderCommandRequestPassesTheCorpusAdmissionScreen(t *testing.T) {
+	h := newCorpusServiceHarness(t)
+	caseID := corpusCaseForRole(t, h.manifest, corpusRoleCompliant)
+	cmd := vForwarderCommand("/usr/local/bin/tbound", caseID, "tbr-v-screen")
+	served := cmd.Args[len(noNewPrivsWrap)+1:]
+	if len(served) == 0 || served[0] != "serve" {
+		t.Fatalf("the forwarder command does not run serve: %q", cmd.Args)
+	}
+	args, err := parseServeArgs(served[1:], io.Discard)
+	if err != nil {
+		t.Fatalf("serve refuses the forwarder command %q: %v", cmd.Args, err)
+	}
+	request := args.clientRequest()
+	for _, route := range []string{piruntime.D09ManagedPiProviderRouteVStub, piruntime.D09ManagedPiProviderRouteResearch} {
+		config := h.config
+		config.ProviderRoute = route
+		config.WorkflowBashOutputPaths = []string{}
+		if got := h.catalog.screenRequest(config, piServicePeerCredentials{UID: os.Getuid()}, request); got != "" {
+			t.Errorf("%s route: the screen refuses the forwarder's request with %q", route, got)
+		}
+		if _, ok := h.catalog.envelopeFor(config, request); !ok {
+			t.Errorf("%s route: the forwarder's request selects no envelope", route)
+		}
+	}
+}
+
 func TestVStubRouteIsAValidServiceConfigRoute(t *testing.T) {
 	config := corpusTestServiceConfig(corpusTestDigest("manifest"))
 	for _, route := range []string{piruntime.D09ManagedPiProviderRouteEngineering, piruntime.D09ManagedPiProviderRouteResearch, piruntime.D09ManagedPiProviderRouteVStub} {
