@@ -22,7 +22,7 @@ import (
 	"tbound/supervisor/internal/vrun"
 )
 
-const vForwarderAnswerWait = 60 * time.Second
+const vForwarderAnswerWait = 3 * time.Minute
 
 type vForwarderHandle interface {
 	Dir() string
