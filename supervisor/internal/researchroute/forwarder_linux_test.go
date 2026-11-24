@@ -378,6 +378,8 @@ func TestForwarderSettlesTheUnitAfterTheClientHasGone(t *testing.T) {
 func TestForwarderFinishWaitsForTheOpenCallAndSettlesIt(t *testing.T) {
 	bundle, up, srv, fwd := newForwarderFixture(t)
 	proceed := make(chan struct{})
+	release := sync.OnceFunc(func() { close(proceed) })
+	defer release()
 	up.handler = func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, ": open\n\n")
@@ -410,7 +412,7 @@ func TestForwarderFinishWaitsForTheOpenCallAndSettlesIt(t *testing.T) {
 		t.Fatalf("Finish returned while the call was still open: %+v", totals)
 	case <-time.After(300 * time.Millisecond):
 	}
-	close(proceed)
+	release()
 	select {
 	case totals := <-finished:
 		if totals != (ForwardTotals{Booked: 1, Settled: 1, TokensIn: 11, TokensOut: 3, CostMicroUSD: 2}) {
