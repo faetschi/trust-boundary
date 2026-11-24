@@ -1,0 +1,14 @@
+{
+  "pins": {
+    "AgentDojo-v1": {
+      "rev": "089ed468cf3ed0322acc66b0211f26d9d90dbf60",
+      "license": "MIT",
+      "digests": [
+        "sha256:03e0894ffb544a79fd0bfd2c62cc5f90b19a2b1d429068d800239bfd020b6dcc"
+      ],
+      "license_files": [
+        "licenses/AgentDojo-LICENSE"
+      ]
+    }
+  }
+}

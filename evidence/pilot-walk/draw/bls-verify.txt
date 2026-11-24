@@ -1,0 +1,1 @@
+OK: round 6667847 verified against the pinned public key and equals the saved beacon

@@ -1,0 +1,11 @@
+{
+  "pin_key": "agiresearch/ASB",
+  "repository": "https://github.com/agiresearch/ASB",
+  "rev": "544540ff0788998072f7df463056fd17e62cc9f4",
+  "license": "MIT",
+  "license_files": [
+    "licenses/ASB-LICENSE"
+  ],
+  "case_id": "asb:psychological_counselor:HiddenDataExtraction:103",
+  "source_item_id": "all_attack_tools.jsonl tool index 103 (HiddenDataExtraction; agent block psychological_counselor)"
+}

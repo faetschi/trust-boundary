@@ -1,0 +1,14 @@
+{
+  "pins": {
+    "agiresearch/ASB": {
+      "rev": "544540ff0788998072f7df463056fd17e62cc9f4",
+      "license": "MIT",
+      "digests": [
+        "sha256:9205bf61f1c34f4be5b644ae829da22042c92a86d4d1e70352ccec5f60cf12d6"
+      ],
+      "license_files": [
+        "licenses/ASB-LICENSE"
+      ]
+    }
+  }
+}
