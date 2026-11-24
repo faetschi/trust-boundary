@@ -47,8 +47,8 @@ func TestAcceptCellArgvIsolatesTheAgentFile(t *testing.T) {
 				t.Errorf("argv lacks %q: %s", want, args)
 			}
 		}
-		if strings.Contains(args, "dst="+vrun.WorkDir) || strings.Contains(args, e.root) || strings.Contains(args, e.keyFile) {
-			t.Errorf("argv mounts the workspace, the live root or the key: %s", args)
+		if strings.Contains(args, "dst="+vrun.WorkDir) || strings.Contains(args, e.root) || strings.Contains(args, e.forwarder.dir) {
+			t.Errorf("argv mounts the workspace, the live root or the forwarder: %s", args)
 		}
 		if inv.UID != e.owner.UID || inv.GID != e.owner.GID {
 			t.Errorf("podman runs as %d:%d, want the host identity %d:%d", inv.UID, inv.GID, e.owner.UID, e.owner.GID)

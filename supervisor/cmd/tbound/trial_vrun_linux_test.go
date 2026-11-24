@@ -20,6 +20,7 @@ import (
 
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/researchroute"
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/vrun"
 )
@@ -82,22 +83,63 @@ func mountSource(t *testing.T, args []string, dst string) string {
 	return ""
 }
 
+const vTestUnitCredential = "unit-credential-0123456789abcdef"
+
+type fakeForwarder struct {
+	dir       string
+	totals    researchroute.ForwardTotals
+	finishErr error
+	finished  int
+	aborted   int
+	podman    *fakePodman
+	ranFirst  bool
+}
+
+func (f *fakeForwarder) Dir() string { return f.dir }
+
+func (f *fakeForwarder) Finish() (researchroute.ForwardTotals, error) {
+	f.finished++
+	f.podman.mu.Lock()
+	f.ranFirst = len(f.podman.runs) == 1
+	f.podman.mu.Unlock()
+	return f.totals, f.finishErr
+}
+
+func (f *fakeForwarder) Abort() { f.aborted++ }
+
 type vTestEnv struct {
 	*taskTestEnv
-	podman  *fakePodman
-	work    string
-	keyFile string
-	clock   int64
-	tokens  int
+	podman     *fakePodman
+	work       string
+	clock      int64
+	tokens     int
+	forwarder  *fakeForwarder
+	forwardErr error
+	requestIDs []string
 }
 
 func newVTestEnv(t *testing.T) *vTestEnv {
 	t.Helper()
 	base := newTaskTestEnv(t)
 	dir := t.TempDir()
-	e := &vTestEnv{taskTestEnv: base, podman: &fakePodman{}, work: filepath.Join(dir, "v-work"), keyFile: filepath.Join(dir, "opencode-go.key")}
-	if err := os.WriteFile(e.keyFile, []byte("not-a-real-key\n"), 0o400); err != nil {
+	e := &vTestEnv{taskTestEnv: base, podman: &fakePodman{}, work: filepath.Join(dir, "v-work")}
+	fwdDir := filepath.Join(dir, "v-fwd")
+	if err := os.Mkdir(fwdDir, 0o700); err != nil {
 		t.Fatal(err)
+	}
+	for name, content := range map[string]string{vrun.SocketName: "", vrun.TokenName: vTestUnitCredential} {
+		if err := os.WriteFile(filepath.Join(fwdDir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.forwarder = &fakeForwarder{dir: fwdDir, podman: e.podman,
+		totals: researchroute.ForwardTotals{Booked: 2, Settled: 2, TokensIn: 200, TokensOut: 50, CostMicroUSD: 350}}
+	e.task.forwarder = func(_ context.Context, _, requestID string) (vForwarderHandle, error) {
+		e.requestIDs = append(e.requestIDs, requestID)
+		if e.forwardErr != nil {
+			return nil, e.forwardErr
+		}
+		return e.forwarder, nil
 	}
 	owner := e.owner
 	e.task.template = func(context.Context) (vTemplate, error) {
@@ -109,7 +151,6 @@ func newVTestEnv(t *testing.T) *vTestEnv {
 	e.task.podman = e.podman
 	e.task.workRoot = e.work
 	e.task.runtimeBundle = filepath.Join(dir, "runtime")
-	e.task.keyPath = e.keyFile
 	e.task.now = func() time.Time { e.clock += int64(time.Second); return time.Unix(0, e.clock) }
 	e.task.token = func() (string, error) { e.tokens++; return fmt.Sprintf("%016x", e.tokens), nil }
 	e.task.deadline = func(s uint64) time.Duration { return time.Duration(s) * time.Millisecond }
@@ -214,16 +255,37 @@ func TestVRunArgumentShapeAndDocument(t *testing.T) {
 			t.Errorf("args lack %v: %q", pair, args)
 		}
 	}
-	if got := mountSource(t, args, vrun.KeyFile); got != e.keyFile {
-		t.Errorf("key mount source = %q, want %q", got, e.keyFile)
+	if got := mountSource(t, args, vrun.ForwarderDir); got != e.forwarder.dir {
+		t.Errorf("forwarder mount source = %q, want %q", got, e.forwarder.dir)
 	}
 	if got := mountSource(t, args, vrun.RuntimeDir); got != e.task.runtimeBundle {
 		t.Errorf("runtime mount source = %q", got)
 	}
-	for _, a := range args {
-		if strings.Contains(a, "not-a-real-key") {
-			t.Errorf("the key is in an argument: %q", a)
+	if joined := strings.Join(args, " "); strings.Contains(joined, "--network") || strings.Contains(joined, "allow_host_loopback") {
+		t.Errorf("v-run changes the default podman network: %q", args)
+	}
+	mounts := 0
+	for i, a := range args {
+		if a == "--mount" {
+			mounts++
+			if strings.Contains(args[i+1], "/etc/tbound") || strings.Contains(args[i+1], "provider") || strings.Contains(args[i+1], ".key") {
+				t.Errorf("a mount reaches a provider key location: %q", args[i+1])
+			}
 		}
+		if strings.Contains(a, vTestUnitCredential) || (a != args[len(args)-1] && (strings.Contains(a, "API_KEY") || strings.Contains(a, "openrouter") || strings.Contains(a, "opencode"))) {
+			t.Errorf("an argument carries a credential or key name: %q", a)
+		}
+	}
+	if mounts != 3 {
+		t.Errorf("want the workspace, the runtime and the forwarder mounts, got %d", mounts)
+	}
+	for _, kv := range inv.Env {
+		if strings.Contains(kv, vTestUnitCredential) || strings.Contains(kv, "openrouter") {
+			t.Errorf("podman environment carries %q", kv)
+		}
+	}
+	if !e.forwarder.ranFirst || e.forwarder.finished != 1 || doc.LedgerRecords != 2 || doc.UncertainUnits != 0 {
+		t.Errorf("forwarder finished %d times (after podman %v), doc = %+v", e.forwarder.finished, e.forwarder.ranFirst, doc)
 	}
 	if last := args[len(args)-1]; last != e.prompt {
 		t.Errorf("the prompt is %q, want the manifest's %q", last, e.prompt)
@@ -262,6 +324,43 @@ func TestVRunReportsAFailedAcceptanceAsData(t *testing.T) {
 	}
 	if doc.Exit != 1 || doc.Accept == nil || doc.Accept.Passed {
 		t.Fatalf("doc = %+v", doc)
+	}
+}
+
+func TestVRunReportsTheForwardersRecordsNotPisFigures(t *testing.T) {
+	e := newVTestEnv(t)
+	e.forwarder.totals = researchroute.ForwardTotals{Booked: 3, Settled: 2, Uncertain: 1, TokensIn: 90, TokensOut: 9, CostMicroUSD: 77}
+	e.podman.onRun = solvingContainer(t, nil)
+	doc, _, err := e.vrun(t, trialTestCase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.TokensIn != 90 || doc.TokensOut != 9 || doc.CostMicroUSD != 77 || doc.UsageEvents != 2 || doc.LedgerRecords != 3 || doc.UncertainUnits != 1 || doc.ToolCalls != 1 {
+		t.Fatalf("doc = %+v", doc)
+	}
+	if len(e.requestIDs) != 1 || e.forwarder.aborted != 1 {
+		t.Fatalf("forwarder requests %v, aborts %d", e.requestIDs, e.forwarder.aborted)
+	}
+}
+
+func TestVRunWithoutTheForwardersRecordsIsAnErrorNotADocument(t *testing.T) {
+	e := newVTestEnv(t)
+	e.forwarder.finishErr = errors.New("service gone")
+	e.podman.onRun = solvingContainer(t, nil)
+	_, out, err := e.vrun(t, trialTestCase)
+	if err == nil || !strings.Contains(err.Error(), "cost is unknown") || out != "" {
+		t.Fatalf("err = %v, out = %q", err, out)
+	}
+}
+
+func TestVRunClosesTheForwarderWhenPodmanFails(t *testing.T) {
+	e := newVTestEnv(t)
+	e.podman.onRun = func(context.Context, podmanInvocation) (int, error) { return 125, nil }
+	if _, _, err := e.vrun(t, trialTestCase); err == nil {
+		t.Fatal("v-run succeeded")
+	}
+	if e.forwarder.aborted != 1 || e.forwarder.finished != 0 {
+		t.Fatalf("aborted %d finished %d", e.forwarder.aborted, e.forwarder.finished)
 	}
 }
 
@@ -383,15 +482,18 @@ func TestVRunRefusals(t *testing.T) {
 		"template fails": {func(e *vTestEnv) {
 			e.task.template = func(context.Context) (vTemplate, error) { return vTemplate{}, errors.New("no template") }
 		}, []string{trialTestCase}, "no template"},
-		"preflight fails": {func(e *vTestEnv) { e.task.preflight = func() error { return errors.New("no runtime dir") } }, []string{trialTestCase}, "no runtime dir"},
-		"key missing":     {func(e *vTestEnv) { e.task.keyPath = filepath.Join(filepath.Dir(e.keyFile), "missing.key") }, []string{trialTestCase}, "provider key"},
-		"key is a symlink": {func(e *vTestEnv) {
-			link := filepath.Join(filepath.Dir(e.keyFile), "link.key")
-			if err := os.Symlink(e.keyFile, link); err != nil {
+		"preflight fails":                   {func(e *vTestEnv) { e.task.preflight = func() error { return errors.New("no runtime dir") } }, []string{trialTestCase}, "no runtime dir"},
+		"the service refuses the forwarder": {func(e *vTestEnv) { e.forwardErr = errors.New("admission-already-used") }, []string{trialTestCase}, "admission-already-used"},
+		"forwarder directory is open to others": {func(e *vTestEnv) {
+			if err := os.Chmod(e.forwarder.dir, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			e.task.keyPath = link
-		}, []string{trialTestCase}, "provider key"},
+		}, []string{trialTestCase}, "0700 directory"},
+		"forwarder directory has no socket": {func(e *vTestEnv) {
+			if err := os.Remove(filepath.Join(e.forwarder.dir, vrun.SocketName)); err != nil {
+				t.Fatal(err)
+			}
+		}, []string{trialTestCase}, "fwd.sock"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newVTestEnv(t)

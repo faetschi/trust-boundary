@@ -36,7 +36,7 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	source := flags.String("source", "", "protected source snapshot directory for the governed production session")
 	taskID := flags.String("task-id", "", "registered, host-admitted production task identity (the case_id in corpus mode)")
 	attempt := flags.Int("attempt", 0, "corpus-mode attempt, 1 or 2 (2 only as an outage rerun); corpus-mode services take the prompt from their frozen manifest and refuse --task")
-	role := flags.String("role", "", "corpus-mode governed role of the trial: trajectory, static-replay, adaptive-replay, variance-1, variance-2, compliant, ambiguous, p-static-replay, p-adaptive-replay, b-compliant or b-ambiguous (the service checks it against the case kind)")
+	role := flags.String("role", "", "corpus-mode governed role of the trial: trajectory, static-replay, adaptive-replay, variance-1, variance-2, compliant, ambiguous, p-static-replay, p-adaptive-replay, b-compliant, b-ambiguous or v (the service checks it against the case kind)")
 	taskRequestID := flags.String("task-request-id", "", "bounded production prompt request identity")
 	task := flags.String("task", "", "bounded plain production task prompt (host-admitted control, never a model or key hint)")
 	var rawBashOutputPaths []string
@@ -98,9 +98,13 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 		cloned := cloneDurableOutputScopePaths(bashOutputPaths)
 		bashOutputScope = &cloned
 	}
-	return runProductionPiServiceClient(ctx, transcript, piServiceRequest{
+	request := piServiceRequest{
 		RequestID: *taskRequestID, TaskID: *taskID, Prompt: *task, Attempt: *attempt, Role: *role, BashOutputPaths: bashOutputScope,
-	})
+	}
+	if request.Role == corpusRoleV {
+		return runProductionPiServiceVClient(ctx, os.Stdin, transcript, request)
+	}
+	return runProductionPiServiceClient(ctx, transcript, request)
 }
 
 func rejectFixtureProductionInputs(flags *flag.FlagSet, fixtureFlag string) error {

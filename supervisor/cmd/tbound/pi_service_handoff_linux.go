@@ -320,6 +320,7 @@ type piServiceRequestJournal struct {
 	// verified is the in-memory record of settlement verifications that passed in this
 	// process. See begin for the exact guarantee. It starts empty at every service start.
 	verified map[string]piServiceVerifiedSettlement
+	vHandler piServiceVHandler
 	// admissionScreen is the service's host-side check of a request that runs before
 	// the request is journaled as accepted. It returns an error code to refuse the
 	// request without consuming its request id, or "" to let it proceed. It is nil
@@ -835,7 +836,7 @@ func validateProductionPiServiceConfig(config piServiceConfig) error {
 	}
 	if (config.SchemaVersion != piServiceConfigSchema && config.SchemaVersion != piServiceConfigSchemaV3) ||
 		config.SourcePolicy != piServiceSourcePolicy ||
-		(config.ProviderRoute != piruntime.D09ManagedPiProviderRouteEngineering && config.ProviderRoute != piruntime.D09ManagedPiProviderRouteResearch) ||
+		(config.ProviderRoute != piruntime.D09ManagedPiProviderRouteEngineering && config.ProviderRoute != piruntime.D09ManagedPiProviderRouteResearch && config.ProviderRoute != piruntime.D09ManagedPiProviderRouteVStub) ||
 		!validPiServiceAdmissionEnvelope(config) ||
 		sessionrepo.ValidateOutputScopePaths(config.WorkflowBashOutputPaths) != nil ||
 		config.WorkflowCatalogPath != piServiceWorkflowCatalogPath || config.WorkflowRootDBPath != piServiceWorkflowRootDBPath ||
@@ -1493,15 +1494,17 @@ func readPiServiceRequest(conn *net.UnixConn) (piServiceRequest, error) {
 	if err := conn.SetReadDeadline(time.Now().Add(piServiceReadTimeout)); err != nil {
 		return request, err
 	}
-	var trailing [1]byte
-	if count, err := conn.Read(trailing[:]); count != 0 || !errors.Is(err, io.EOF) {
-		return request, errors.Join(ErrPiServiceRefused, errors.New("service protocol accepts exactly one request frame per connection"), err)
-	}
 	if err := protocol.ValidateStrictJSON(data); err != nil {
 		return request, errors.Join(ErrPiServiceRefused, err)
 	}
 	if err := unmarshalGovernedJSON(data, &request); err != nil {
 		return piServiceRequest{}, errors.Join(ErrPiServiceRefused, err)
+	}
+	if request.Role != corpusRoleV {
+		var trailing [1]byte
+		if count, err := conn.Read(trailing[:]); count != 0 || !errors.Is(err, io.EOF) {
+			return request, errors.Join(ErrPiServiceRefused, errors.New("service protocol accepts exactly one request frame per connection"), err)
+		}
 	}
 	if err := validatePiServiceRequest(request); err != nil {
 		return piServiceRequest{}, err
@@ -1515,7 +1518,7 @@ func readPiServiceRequest(conn *net.UnixConn) (piServiceRequest, error) {
 
 func writePiServiceFrame(conn net.Conn, response piServiceResponse) error {
 	if conn == nil || response.SchemaVersion != piServiceResponseSchema ||
-		response.Status != "completed" && response.Status != "busy" && response.Status != "unknown" && response.Status != "refused" {
+		response.Status != "completed" && response.Status != "busy" && response.Status != "unknown" && response.Status != "refused" && response.Status != piServiceStatusReady {
 		return ErrPiServiceRefused
 	}
 	data, err := json.Marshal(response)
@@ -1572,7 +1575,7 @@ func readPiServiceResponse(conn net.Conn) (piServiceResponse, error) {
 	}
 	if err := unmarshalGovernedJSON(data, &response); err != nil || response.SchemaVersion != piServiceResponseSchema ||
 		(response.RequestID != "" && !boundedProductionIdentity(response.RequestID, productionRequestMaxBytes)) ||
-		response.Status != "completed" && response.Status != "busy" && response.Status != "unknown" && response.Status != "refused" ||
+		response.Status != "completed" && response.Status != "busy" && response.Status != "unknown" && response.Status != "refused" && response.Status != piServiceStatusReady ||
 		len(response.Receipt) > piServiceResponseMaxBytes {
 		return response, errors.Join(ErrPiServiceRefused, err)
 	}
@@ -1655,6 +1658,10 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
 				RequestID: request.RequestID, Status: "refused", ErrorCode: code})
 			_ = unixConn.Close()
+			continue
+		}
+		if request.Role == corpusRoleV {
+			serveVRequest(ctx, journal.vService(), unixConn, request, &active, maintenance, &tasks)
 			continue
 		}
 		settling.Lock()
@@ -1818,39 +1825,14 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 
 func callProductionPiService(ctx context.Context, socket piServiceSocketRegistration, serviceUID, serviceGID int,
 	request piServiceRequest, output io.Writer) error {
-	if ctx == nil || output == nil || serviceUID <= 0 || serviceGID <= 0 ||
-		validatePiServiceSocketRegistration(socket, serviceUID, serviceGID) != nil {
+	if output == nil {
 		return ErrPiServiceUnavailable
 	}
-	clientUID, clientGID := os.Geteuid(), os.Getegid()
-	allowed := piServicePeerCredentials{PID: os.Getpid(), UID: clientUID, GID: clientGID}
-	if !piServicePeerAllowed(socket, allowed) {
-		return ErrPiServiceRefused
-	}
-	socketIdentity, err := measurePiServiceSocketPath(socket, false)
+	unixConn, err := dialProductionPiService(ctx, socket, serviceUID, serviceGID, request)
 	if err != nil {
 		return err
 	}
-	if err := validatePiServiceRequest(request); err != nil {
-		return err
-	}
-	dialer := net.Dialer{Timeout: piServiceReadTimeout}
-	conn, err := dialer.DialContext(ctx, "unix", socket.SocketPath)
-	if err != nil {
-		return errors.Join(ErrPiServiceUnavailable, err)
-	}
-	defer conn.Close()
-	unixConn, ok := conn.(*net.UnixConn)
-	if !ok {
-		return ErrPiServiceRefused
-	}
-	serverPeer, err := readPiServicePeer(unixConn)
-	if err != nil || !piServiceServerAllowed(serverPeer, serviceUID, serviceGID) {
-		return errors.Join(ErrPiServiceRefused, err)
-	}
-	if err := socketIdentity.revalidate(socket, false); err != nil {
-		return errors.Join(ErrPiServiceRefused, err)
-	}
+	defer unixConn.Close()
 	response, err := callPiServiceConn(unixConn, request)
 	if err != nil {
 		return err
@@ -1916,7 +1898,7 @@ func checkPiServiceClientRequest(config piServiceConfig, request piServiceReques
 			return fmt.Errorf("%w: the corpus-mode service needs --attempt 1 or 2", ErrPiServiceRefused)
 		}
 		if !validCorpusRole(request.Role) {
-			return fmt.Errorf("%w: the corpus-mode service needs --role, one of trajectory, static-replay, adaptive-replay, variance-1, variance-2, compliant, ambiguous, p-static-replay, p-adaptive-replay, b-compliant, b-ambiguous", ErrPiServiceRefused)
+			return fmt.Errorf("%w: the corpus-mode service needs --role, one of trajectory, static-replay, adaptive-replay, variance-1, variance-2, compliant, ambiguous, p-static-replay, p-adaptive-replay, b-compliant, b-ambiguous, v", ErrPiServiceRefused)
 		}
 		return nil
 	}
@@ -2117,6 +2099,7 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	requests.setEvidenceFiles(workflowCatalog.settlementEvidenceFiles)
 	requests.setEvidenceState(workflowCatalog.settlementEvidenceState)
 	requests.setReconciler(newProductionUnknownReconciler(workflowCatalog, serviceConfig, providerRoute))
+	requests.setVHandler(newVForwardService(providerRoute, corpus, serviceConfig))
 	// Recovers an abandon whose catalog terminal is missing; a failure leaves that prior as it was.
 	if err := requests.settleAbandonedPriors(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "abandoned requests not yet closed in the workflow catalog:", err)

@@ -37,8 +37,14 @@ func openProductionProviderRoute(config piServiceConfig, paths researchroute.Pat
 	switch config.ProviderRoute {
 	case piruntime.D09ManagedPiProviderRouteEngineering:
 		return productionProviderRoute{}, nil
-	case piruntime.D09ManagedPiProviderRouteResearch:
-		bundle, err := researchroute.Open(paths)
+	case piruntime.D09ManagedPiProviderRouteResearch, piruntime.D09ManagedPiProviderRouteVStub:
+		open := func() (*researchroute.Bundle, error) { return researchroute.Open(paths) }
+		if config.ProviderRoute == piruntime.D09ManagedPiProviderRouteVStub {
+			open = func() (*researchroute.Bundle, error) {
+				return researchroute.OpenStub(researchroute.StubPaths(), researchroute.VStubEndpoint)
+			}
+		}
+		bundle, err := open()
 		if err != nil {
 			return productionProviderRoute{}, fmt.Errorf("open the research provider route: %w", err)
 		}
@@ -50,7 +56,7 @@ func openProductionProviderRoute(config piServiceConfig, paths researchroute.Pat
 		}
 		return productionProviderRoute{research: bundle}, nil
 	default:
-		return productionProviderRoute{}, fmt.Errorf("provider_route %q is not engineering or research", config.ProviderRoute)
+		return productionProviderRoute{}, fmt.Errorf("provider_route %q is not engineering, research or v-stub", config.ProviderRoute)
 	}
 }
 

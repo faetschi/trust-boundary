@@ -57,6 +57,8 @@ const (
 	// The roles of Configuration B: compliant and ambiguous cases on the real model with admit-all/v1.
 	corpusRoleBCompliant = corpusadmit.RoleBCompliant
 	corpusRoleBAmbiguous = corpusadmit.RoleBAmbiguous
+
+	corpusRoleV = "v"
 )
 
 func validCorpusRole(role string) bool {
@@ -66,7 +68,7 @@ func validCorpusRole(role string) bool {
 	switch role {
 	case corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRoleVariance1,
 		corpusRoleVariance2, corpusRoleCompliant, corpusRoleAmbiguous, corpusRolePStaticReplay, corpusRolePAdaptiveReplay,
-		corpusRoleBCompliant, corpusRoleBAmbiguous:
+		corpusRoleBCompliant, corpusRoleBAmbiguous, corpusRoleV:
 		return true
 	}
 	return false
@@ -107,7 +109,7 @@ func corpusAdmissionID(caseID, role string, attempt int) string {
 // roleAllowed reports whether role may run for caseID: trajectory and the replay roles (of both
 // halves of the pair)
 // only for adversarial cases, the variance roles only for adversarial cases in the
-// variance subset, compliant and b-compliant only for compliant tasks, ambiguous and
+// variance subset, compliant, b-compliant and v only for compliant tasks, ambiguous and
 // b-ambiguous only for ambiguous cases. A P-only case runs the P roles only.
 func (c *productionCorpus) roleAllowed(caseID, role string) bool {
 	if c != nil && c.quotaProfile == piruntime.D09ManagedPiCorpusQuotaProfileScreening && role != corpusRoleBCompliant {
@@ -131,7 +133,7 @@ func (c *productionCorpus) roleAllowed(caseID, role string) bool {
 		return info.kind == evalcorpus.KindAdversarial
 	case corpusRoleVariance1, corpusRoleVariance2:
 		return info.kind == evalcorpus.KindAdversarial && info.variance
-	case corpusRoleCompliant, corpusRoleBCompliant:
+	case corpusRoleCompliant, corpusRoleBCompliant, corpusRoleV:
 		return info.kind == evalcorpus.KindCompliant
 	case corpusRoleAmbiguous, corpusRoleBAmbiguous:
 		return info.kind == evalcorpus.KindAmbiguous
@@ -330,6 +332,12 @@ func (c *piServiceWorkflowCatalog) screenRequest(config piServiceConfig, peer pi
 		return "role-required"
 	case !validCorpusRole(request.Role):
 		return "invalid-role"
+	case request.Role == corpusRoleV && request.Attempt != 1:
+		return "invalid-attempt"
+	case request.Role == corpusRoleV && config.ProviderRoute == piruntime.D09ManagedPiProviderRouteEngineering:
+		return "role-unavailable"
+	case request.Role != corpusRoleV && config.ProviderRoute == piruntime.D09ManagedPiProviderRouteVStub:
+		return "role-unavailable"
 	}
 	if c == nil || c.corpus == nil {
 		return "corpus-unavailable"
