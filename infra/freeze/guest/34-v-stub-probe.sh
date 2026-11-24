@@ -23,8 +23,9 @@ readonly STUB_ENDPOINT=http://127.0.0.1:18443/api/v1/chat/completions
 readonly LEDGER_ID=tbound-v-stub-probe
 readonly FROZEN_AT=2026-11-21T13:35:13Z
 readonly FROZEN_PROFILE_SHA=sha256:3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357
+readonly VWORK=/var/lib/tbound/v-work
 readonly THROWAWAY_PATHS="$VS $VS_LEDGER $VS_ADMISSIONS $VS_SCRATCH $STUB_DIR"
-SESSION_OPEN=0 SWAPPED=0 THROWAWAY=0 STUB_UP=0 TORN_DOWN=0 TD_RC=0 VJOB=""
+SESSION_OPEN=0 SWAPPED=0 THROWAWAY=0 STUB_UP=0 VRUN=0 TORN_DOWN=0 TD_RC=0 VJOB="" VWORK_PRE="" VWORK_DEL="" DEL_PATHS=""
 VS_CASE="" VS_KEY="" PILOT_FILES="serve-pi-service.json:serve-pi-service.json managed-live-root.json:managed-live-root.json managed-live-root.ed25519:managed-live-root.ed25519 pi-host-profile.signed.json:pi-host-profile.json pi-host-profile.ed25519:pi-host-profile.ed25519 d09-cell.json:d09-cell.json"
 
 session_close() {
@@ -80,7 +81,34 @@ stub_start() {
   ok "stub upstream listens on 127.0.0.1:$STUB_PORT (pid $(G "cat $STUB_DIR/stub.pid" | tr -d '\r\n'), hold $STUB_HOLD s)"
 }
 
+v_leftovers() {
+  local ps dirs
+  ps=$(podsvc "ps -a --format '{{.Names}}'" | tr -d '\r') || { echo "podman ps as the service failed: cannot tell whether a tbound-v- container is left" >&2; return 1; }
+  dirs=$(G "sudo -n sh -c 'if test -d $VWORK; then ls -A $VWORK; fi'" | tr -d '\r') || { echo "cannot list $VWORK" >&2; return 1; }
+  printf '%s\n%s\n' "$(grep '^tbound-v-' <<<"$ps" || true)" "$dirs" | grep . || true
+}
 td_job() { if [ -n "$VJOB" ] && kill -0 "$VJOB" 2>/dev/null; then kill "$VJOB" || true; fi; }
+td_vrun() {
+  local names n left
+  GI 'sudo -n bash -s' <<'EOS'
+set -u
+P='[t]bound trial ssh-original-command'
+pkill -TERM -u 0 -f "$P" || true
+for i in $(seq 1 30); do pgrep -u 0 -f "$P" > /dev/null || exit 0; sleep 1; done
+pkill -KILL -u 0 -f "$P" || true
+sleep 2
+! pgrep -u 0 -f "$P" > /dev/null
+EOS
+  names=$(podsvc "ps -a --format '{{.Names}}'" | tr -d '\r') || die "podman ps as the service failed: a tbound-v- container may be left"
+  for n in $(grep '^tbound-v-' <<<"$names" || true); do
+    [[ $n =~ ^tbound-v-[0-9a-f]+$ ]] || die "unexpected container name '$n'"
+    podsvc "rm -f --time 0 --ignore $n" > /dev/null
+  done
+  G "sudo -n sh -c 'if test -d $VWORK; then find $VWORK -mindepth 1 -maxdepth 1 -exec rm -rf {} +; fi'"
+  left=$(v_leftovers) || die "cannot look for a V container or work directory"
+  [ -z "$left" ] || die "a V container or work directory is still on the guest: $left"
+  ok "no trial v-run process, no tbound-v- container, no work directory under $VWORK"
+}
 td_stub() {
   if ! hf_has vs/stub.log && G "test -s $STUB_DIR/stub.log"; then G "cat $STUB_DIR/stub.log" | tr -d '\r' | save vs/stub.log; fi
   G "if test -f $STUB_DIR/stub.pid; then kill \$(cat $STUB_DIR/stub.pid) 2>/dev/null || true; fi; sleep 1; rm -f $STUB_DIR/stub.py $STUB_DIR/stub.pid $STUB_DIR/stub.log $STUB_DIR/stub.out; rmdir $STUB_DIR 2>/dev/null || true"
@@ -91,17 +119,17 @@ td_stub() {
 td_stop_service() { op "svc stop"; }
 td_delete() {
   local listing p left
-  listing=$(G "for p in $VS $VS_LEDGER $VS_ADMISSIONS $VS_SCRATCH; do sudo -n find \$p -printf '%p %y %s %U:%G %m\n' 2>/dev/null || true; done" | tr -d '\r')
+  listing=$(G "for p in $DEL_PATHS; do sudo -n find \$p -printf '%p %y %s %U:%G %m\n' 2>/dev/null || true; done" | tr -d '\r')
   printf 'to delete:\n%s\n' "$listing"
   hf_has vs/deleted-listing-before.txt || printf '%s\n' "${listing:-nothing present}" | save vs/deleted-listing-before.txt
-  G "sudo -n rm -f $VS/research-profile.json $VS/research-ledger.json $VS/research-ledger-checkpoint.json $VS/stub.key $VS_LEDGER; for d in $VS_ADMISSIONS $VS_SCRATCH; do if sudo -n test -d \$d; then sudo -n find \$d -mindepth 1 -maxdepth 1 -type f -delete; sudo -n rmdir \$d; fi; done; if sudo -n test -d $VS; then sudo -n rmdir $VS; fi"
-  for p in $VS $VS_LEDGER $VS_ADMISSIONS $VS_SCRATCH; do
+  G "sudo -n rm -f $VS/research-profile.json $VS/research-ledger.json $VS/research-ledger-checkpoint.json $VS/stub.key $VS_LEDGER; for d in $VS_ADMISSIONS $VS_SCRATCH $VWORK_DEL; do if sudo -n test -d \$d; then sudo -n find \$d -mindepth 1 -maxdepth 1 -type f -delete; sudo -n rmdir \$d; fi; done; if sudo -n test -d $VS; then sudo -n rmdir $VS; fi"
+  for p in $DEL_PATHS; do
     [ "$(G "sudo -n test -e $p && echo present || echo absent" | tr -d '\r')" = absent ] || die "$p is still on the guest after the deletion"
     ok "deleted: $p"
   done
   left=$(G "sudo -n ls -A /var/lib/tbound/sessions | grep '^v-stub' || true" | tr -d '\r')
   [ -z "$left" ] || die "files named v-stub* are left in /var/lib/tbound/sessions: $left"
-  hf_has vs/DELETED || printf 'deleted %s\n' $VS $VS_LEDGER $VS_ADMISSIONS $VS_SCRATCH | save vs/DELETED
+  hf_has vs/DELETED || printf 'deleted %s\n' $DEL_PATHS | save vs/DELETED
 }
 td_restore() {
   local pair
@@ -124,6 +152,7 @@ vs_teardown() {
   TD_RC=0
   say "teardown: stub, v-stub service, throwaway files, pilot chain"
   tstep td_job
+  if [ "$VRUN" = 1 ]; then tstep td_vrun && VRUN=0; fi
   if [ "$STUB_UP" = 1 ]; then tstep td_stub && STUB_UP=0; fi
   if [ "$SWAPPED" = 1 ]; then tstep td_stop_service; fi
   if [ "$THROWAWAY" = 1 ]; then tstep td_delete && THROWAWAY=0; fi
@@ -159,6 +188,14 @@ say "1. the research ledger before the probe (read-only)"
 for p in $THROWAWAY_PATHS; do
   [ "$(G "sudo -n test -e $p && echo present || echo absent" | tr -d '\r')" = absent ] || die "$p is already on the guest: an earlier probe left it, the owner looks"
 done
+VWORK_PRE=$(G "sudo -n sh -c 'if test -e $VWORK; then echo present; else echo absent; fi'" | tr -d '\r') || die "cannot look at $VWORK"
+DEL_PATHS="$VS $VS_LEDGER $VS_ADMISSIONS $VS_SCRATCH"
+case $VWORK_PRE in
+  absent) VWORK_DEL=$VWORK; DEL_PATHS="$DEL_PATHS $VWORK";;
+  present) left=$(G "sudo -n ls -A $VWORK" | tr -d '\r') || die "cannot list $VWORK"
+    [ -z "$left" ] || die "$VWORK holds work directories from an earlier V run: the owner looks";;
+  *) die "unexpected state of $VWORK: '$VWORK_PRE'";;
+esac
 RS_BEFORE=$(research_state); printf '%s\n' "$RS_BEFORE"
 printf '%s\n' "$RS_BEFORE" | save vs/research-before.txt
 
@@ -181,8 +218,8 @@ eq "config differs from the pilot config in provider_route only" \
 
 say "3. stop the pilot service, install the v-stub config and measure the registration (RA-5, RA-6)"
 THROWAWAY=1
-op "svc stop"
 SWAPPED=1
+op "svc stop"
 gput 0644 root:root "$HG/serve-pi-service.json" /etc/tbound/serve-pi-service.json
 GI 'sudo -n bash -s' <<'EOS'
 set -euo pipefail
@@ -257,6 +294,7 @@ G "sudo -n journalctl -u tbound-pi.service --since '$T0 UTC' --no-pager" | tr -d
 ok "the v-stub service and socket are active, no refusal in the journal"
 
 say "7. one V unit on $VS_CASE through the forwarder, the stub holds its reply for $STUB_HOLD s"
+VRUN=1
 ( rc=0; trial "v-run $VS_CASE" > "$LOCAL_TMP/vdoc.json" 2> "$LOCAL_TMP/verr.txt" || rc=$?; echo "$rc" > "$LOCAL_TMP/vrc" ) &
 VJOB=$!
 SEEN=0
@@ -277,6 +315,9 @@ wait "$VJOB" || true
 VJOB=""
 VRC=$(cat "$LOCAL_TMP/vrc")
 [ "$VRC" = 0 ] || die "trial v-run exited $VRC: $(head -c 600 "$LOCAL_TMP/verr.txt")"
+LEFT=$(v_leftovers) || die "cannot look for a V container or work directory after the unit"
+[ -z "$LEFT" ] || die "after the V unit a container or work directory is left on the guest: $LEFT"
+VRUN=0
 tr -d '\r' < "$LOCAL_TMP/vdoc.json" | save vs/v-doc.json
 DOCOUT=$(WX python3 -I "$WGA/vs-check.py" doc "$HG/v-doc.json" "$VS_CASE" | tr -d '\r')
 printf '%s\n' "$DOCOUT" | head -n -1
