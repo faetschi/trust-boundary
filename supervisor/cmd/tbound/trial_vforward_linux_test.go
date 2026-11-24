@@ -80,7 +80,7 @@ func TestCheckVForwarderDirAcceptsOnlyASocketAndATokenOfTheServiceUser(t *testin
 func TestVForwarderClientRunsUnderNoNewPrivs(t *testing.T) {
 	cmd := vForwarderCommand("/usr/local/bin/tbound", "case-1", "req-1")
 	want := []string{"/usr/bin/setpriv", "--no-new-privs", "--", "/usr/local/bin/tbound", "serve", "--pi", "--task-id", "case-1",
-		"--attempt", "1", "--role", corpusRoleV, "--task-request-id", "req-1"}
+		"--attempt", "1", "--role", corpusRoleV, "--task-request-id", "req-1", "--bash-no-outputs"}
 	if !slices.Equal(cmd.Args, want) || cmd.Path != want[0] {
 		t.Fatalf("command %q (path %q)", cmd.Args, cmd.Path)
 	}
