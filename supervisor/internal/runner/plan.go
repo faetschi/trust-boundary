@@ -94,6 +94,9 @@ var freezeRE = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 // normalize fills the defaults and refuses values outside the bounds that planned, the
 // manifest's planned-unit total, sets.
 func (c Config) normalize(planned int) (Config, error) {
+	if c.PlanV && c.CDH != nil {
+		return c, errors.New("runner: a C-DH run plans no compliant task, so PlanV is refused")
+	}
 	if c.CDH != nil {
 		if err := c.CDH.Validate(); err != nil {
 			return c, err
@@ -127,9 +130,6 @@ func (c Config) normalize(planned int) (Config, error) {
 		c.RerunHeadroom = RerunHeadroomFor(planned)
 	case c.RerunHeadroom < 0 || c.RerunHeadroom > RerunHeadroomFor(planned):
 		return c, fmt.Errorf("runner: RerunHeadroom %d outside 1..%d", c.RerunHeadroom, RerunHeadroomFor(planned))
-	}
-	if c.PlanV && c.CDH != nil {
-		return c, errors.New("runner: a C-DH run plans no compliant task, so PlanV is refused")
 	}
 	switch c.Purpose {
 	case "":
