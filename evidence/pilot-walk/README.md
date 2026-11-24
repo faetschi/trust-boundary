@@ -45,6 +45,16 @@ Each case was adapted by a fresh Claude Opus 5.5 session per case and phase (pre
 
 [`cases.json`](cases.json) holds the same table with the admission id (`<case_id>/p-static-replay/1` for every screened case: no rerun was used), the bundle's `case.json` SHA-256, the evidence digest and the reason.
 
+A case's entry in its carrier is not byte-equal to its bundle `case.json`. Two fields differ: `adversarial.partition` (cold or non_cold) and `adversarial.variance_subset`. `carrier.py` sets both to fill the pilot quotas of the round (`assign_partitions`, `corpus/sampling/carrier.py:258`). This walk has it in 5 cases: `injecagent:ds:0014:u05`, `aseval:0497` and `injecagent:ds:0021:u16` (partition), and `injecagent:ds:0011:u07` and `agentdojo:travel:UserTask17:InjectionTask5` (variance subset). No screening check reads either field. `cases.json` and the evidence records hash the bundle.
+
+**Adapter deviations from the brief.** Each one is recorded in the evidence record's `attempts` and ruled on by the orchestrator (`ISSUES.md` O2, O5, O6).
+- `injecagent:ds:0014:u05` (decision line 2) is the only decision record that names a deviation itself. It is the walk's first case.
+  - It ran `git status; git log -3` in the repo. That showed the name of the untracked `corpus/sampling/decisions/` directory and three tooling commit subjects. The decisions file then held no line.
+  - It wrote one helper script outside its work folder. The script wrote only that case's `calibration.json`.
+- Other adapters ran a git command that the no-git export refused, or that showed only main-branch subjects. One more wrote a helper script outside its work folder.
+
+No deviation exposed another case's row, decision, count or order (rule section 1).
+
 ## The rounds
 
 | round | carrier | units | result | screening report |
@@ -57,6 +67,8 @@ Each round folder holds:
 - the plan, `run.json`, `values.txt`, `start.sh`, `recover.log`, the runner's `chunk-01.txt` and `journal.jsonl`;
 - the clock probes before and after the run, and the leftover-container check;
 - the collection summary, the admission report (corpus-check of the carrier before the run) and the screening report (corpus-check with the guest evidence).
+
+`calibration-p` is the guest evidence: the registered P witness's effect was observed in the static P run. `effect-satisfiable` is guest evidence only for a network part. For a workspace-only case, such as `aseval:0497` and `injecagent:dh:0013:u06`, it is the local workspace oracle on the clean fixture and on a protected-path mutation, and the row says so.
 
 The screening reports are the static P reports of each screened case. In round 1, the host clock was 1.06 s off the guest before the run. It was resynced to NTP first (`w32tm-resync.txt`, `clock-pre-resync.txt`), and the offset was then +0.03 s. Round 2's offset was below 0.01 s.
 
