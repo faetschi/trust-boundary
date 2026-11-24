@@ -413,7 +413,9 @@ func escapedRuneLength(r rune) int {
 		return utf8.RuneLen(r)
 	}
 }
-func validateMessage(m Message) error {
+func validateMessage(m Message) error { return validateMessageCalls(m, 1) }
+
+func validateMessageCalls(m Message, maxCalls int) error {
 	if m.Reasoning != "" && m.Role != Assistant {
 		return errors.New("only an assistant message carries reasoning")
 	}
@@ -426,7 +428,7 @@ func validateMessage(m Message) error {
 		if m.ToolCallID != "" || (m.Content == nil && len(m.ToolCalls) == 0) {
 			return errors.New("invalid assistant message fields")
 		}
-		if len(m.ToolCalls) > 1 {
+		if len(m.ToolCalls) > maxCalls {
 			return errors.New("profile permits one prior tool call per assistant message")
 		}
 		seen := map[string]bool{}

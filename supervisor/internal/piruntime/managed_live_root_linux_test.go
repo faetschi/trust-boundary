@@ -468,7 +468,7 @@ func TestD09ManagedPiServiceConfigProviderRouteIsARequiredEnum(t *testing.T) {
 			t.Errorf("route %q refused: %v", route, err)
 		}
 	}
-	for _, route := range []string{"", "Engineering", "research ", "opencode-go", "openrouter", "both"} {
+	for _, route := range []string{"", "Engineering", "research ", "opencode-go", "openrouter", "both", "v-stub ", "stub"} {
 		config := testD09ManagedPiServiceConfig()
 		config.ProviderRoute = route
 		if err := config.Validate(); !errors.Is(err, ErrD09ManagedLiveRootRefused) {

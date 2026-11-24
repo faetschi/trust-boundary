@@ -113,26 +113,33 @@ func newHTTPDoer(key APIKeySource, timeout time.Duration, endpoint string) (*HTT
 	return &HTTPDoer{client: client, key: key, endpoint: endpoint}, nil
 }
 
+var ErrNotSent = errors.New("the request was not sent")
+
+type notSentError string
+
+func (e notSentError) Error() string      { return string(e) }
+func (notSentError) Is(target error) bool { return target == ErrNotSent }
+
 func (d *HTTPDoer) Do(request *http.Request) (*http.Response, error) {
 	if d == nil || d.client == nil || d.key == nil {
-		return nil, errors.New("OpenCode Go HTTP transport is not configured")
+		return nil, notSentError("OpenCode Go HTTP transport is not configured")
 	}
 	if request == nil || request.URL == nil || request.Method != http.MethodPost ||
 		request.URL.String() != d.endpoint || request.URL.User != nil ||
 		(request.Host != "" && request.Host != request.URL.Host) {
-		return nil, errors.New("request does not match the registered OpenCode Go endpoint and method")
+		return nil, notSentError("request does not match the registered OpenCode Go endpoint and method")
 	}
 	if err := validateRegisteredHeaders(request.Header, d.research); err != nil {
-		return nil, err
+		return nil, notSentError(err.Error())
 	}
 
 	key, err := d.key()
 	if err != nil {
-		return nil, errors.New("OpenCode Go credential source failed")
+		return nil, notSentError("OpenCode Go credential source failed")
 	}
 	key, err = normalizeAPIKey(key)
 	if err != nil {
-		return nil, errors.New("OpenCode Go credential source returned an invalid credential")
+		return nil, notSentError("OpenCode Go credential source returned an invalid credential")
 	}
 
 	outgoing := request.Clone(request.Context())

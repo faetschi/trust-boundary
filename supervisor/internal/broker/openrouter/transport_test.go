@@ -469,3 +469,39 @@ func TestBodyReadFailureIsReportedAsItsClassOnly(t *testing.T) {
 type failingReader struct{ err error }
 
 func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
+
+func TestHTTPDoerMarksOnlyRefusalsBeforeTheWireAsNotSent(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint := "http://" + listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	failingKey := func() (string, error) { return "", errors.New("no key") }
+	for name, tc := range map[string]struct {
+		key     APIKeySource
+		mutate  func(*http.Request)
+		notSent bool
+	}{
+		"extra header":     {func() (string, error) { return "test-key-123", nil }, func(r *http.Request) { r.Header.Set("X-Extra", "x") }, true},
+		"other endpoint":   {func() (string, error) { return "test-key-123", nil }, func(r *http.Request) { r.URL.Path = "/other" }, true},
+		"credential fails": {failingKey, func(*http.Request) {}, true},
+		"refused":          {func() (string, error) { return "test-key-123", nil }, func(*http.Request) {}, false},
+	} {
+		doer, err := newHTTPDoer(tc.key, time.Second, endpoint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := testRequest(t, endpoint)
+		tc.mutate(request)
+		response, err := doer.Do(request)
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+		if err == nil || errors.Is(err, ErrNotSent) != tc.notSent {
+			t.Errorf("%s: err = %v, not sent = %v", name, err, tc.notSent)
+		}
+	}
+}

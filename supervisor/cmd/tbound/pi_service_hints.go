@@ -37,6 +37,7 @@ var piServiceErrorHints = map[string]string{
 	"role-kind-mismatch":   "this role is not allowed for the case; use a role its case kind allows",
 	"role-unavailable":     "the case has no servable artifact for this role in the installed corpus; pick another role or install the missing artifact",
 
+	"v-forwarder-unavailable": "the service could not open the unit's forwarder, or could not record the admission of a V unit; check the service log; a V unit is never rerun, so use a fresh case or dev id",
 	"admission-already-used":  "this case, role and attempt were already admitted under another request id (single use); replay the original request id to read it back; use the next attempt or role only after the earlier run's outcome is settled (completed, or abandoned via tbound-op abandon)",
 	"replay-binding-mismatch": "the stored result belongs to a different manifest, service config or registration than the active one; the request id is consumed, so install the original binding to read it back, or use a fresh admission only after the earlier run's outcome is settled (completed, or abandoned via tbound-op abandon)",
 }
