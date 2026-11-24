@@ -43,7 +43,7 @@ func newForwarderFixture(t *testing.T) (*Bundle, *upstream, *httptest.Server, *F
 		sse(w, map[string]any{"prompt_tokens": 11, "completion_tokens": 3, "cost": 0.000002})
 	}
 	bundle = f.open(up.URL + "/api/v1/chat/completions")
-	fwd, err := bundle.NewForwarder("case-1/v/1", forwardToken)
+	fwd, err := bundle.NewForwarder("case-1/v/1", forwardToken, bundle.MaxRequestsPerUnit())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestStubRouteBooksNothingInTheResearchLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = stubBundle.Close() })
-	fwd, err := stubBundle.NewForwarder("case-1/v/1", forwardToken)
+	fwd, err := stubBundle.NewForwarder("case-1/v/1", forwardToken, stubBundle.MaxRequestsPerUnit())
 	if err != nil {
 		t.Fatal(err)
 	}
