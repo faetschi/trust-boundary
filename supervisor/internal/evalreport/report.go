@@ -91,8 +91,8 @@ const (
 	LegacyPlannedUnitsWithV = LegacyPlannedUnits + 100
 
 	// The planned units of one case, as runner.Plan schedules them: an adversarial case
-	// runs the C trajectory and the static and adaptive P/C replays, a compliant task B and C
-	// (D58 amendment: no V), an ambiguous case B and C, and a variance case two more C repeats.
+	// runs the C trajectory and the static and adaptive P/C replays, a compliant task B and C, and V
+	// too when the plan has V (D61 item 3), an ambiguous case B and C, and a variance case two more C repeats.
 	AdversarialUnits = 5
 	CompliantUnits   = 2
 	CompliantUnitsV  = 3

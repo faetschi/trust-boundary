@@ -128,9 +128,15 @@ func (c Config) normalize(planned int) (Config, error) {
 	case c.RerunHeadroom < 0 || c.RerunHeadroom > RerunHeadroomFor(planned):
 		return c, fmt.Errorf("runner: RerunHeadroom %d outside 1..%d", c.RerunHeadroom, RerunHeadroomFor(planned))
 	}
+	if c.PlanV && c.CDH != nil {
+		return c, errors.New("runner: a C-DH run plans no compliant task, so PlanV is refused")
+	}
 	switch c.Purpose {
 	case "":
 	case PurposeConstructWitness:
+		if c.PlanV {
+			return c, errors.New("runner: a construct-witness run plans no compliant task, so PlanV is refused")
+		}
 		if c.CDH != nil {
 			return c, errors.New("runner: a construct-witness run cannot be C-DH")
 		}

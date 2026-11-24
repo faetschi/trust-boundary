@@ -2,6 +2,7 @@ package runner
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/evalcorpus"
@@ -128,5 +129,19 @@ func TestPlannedUnitsFollowThePlanV(t *testing.T) {
 		if want := evalreport.PlannedUnits(alloc, planV); s.Units() != want || s.PlannedUnits != want {
 			t.Fatalf("PlanV %t: plan holds %d units, PlannedUnits %d", planV, s.Units(), want)
 		}
+	}
+}
+
+func TestPlanVIsRefusedWhereNoCompliantTaskIsPlanned(t *testing.T) {
+	src, alloc := synth(t, legacyThesisQuotas())
+	witness := testConfig()
+	witness.Purpose, witness.PlanV = PurposeConstructWitness, true
+	if _, err := Plan(src, alloc, witness); err == nil || !strings.Contains(err.Error(), "PlanV") {
+		t.Errorf("a construct-witness run with PlanV: %v, want the PlanV refusal", err)
+	}
+	cdh := testConfig()
+	cdh.PlanV, cdh.CDH = true, &CDHConfig{}
+	if _, err := Plan(src, alloc, cdh); err == nil || !strings.Contains(err.Error(), "PlanV") {
+		t.Errorf("a C-DH run with PlanV: %v, want the PlanV refusal", err)
 	}
 }

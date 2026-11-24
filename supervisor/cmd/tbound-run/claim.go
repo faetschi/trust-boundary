@@ -111,6 +111,7 @@ func registrationMismatches(reg evalreport.Registration, p plan) []mismatch {
 	check("runner_plan_digest", reg.RunnerPlanDigest, p.sched.Digest)
 	check("run_binding", reg.RunBinding, p.sched.RunBinding)
 	check("plan_steps", strconv.Itoa(reg.PlanSteps), strconv.Itoa(p.sched.Units()))
+	check("plan_v", strconv.FormatBool(reg.PlanV), strconv.FormatBool(p.sched.Config.PlanV))
 	check("evalscore_schema", reg.EvalscoreSchema, evalscore.SchemaVersion)
 	if p.attributions.rubricDigest != "" {
 		check("attribution_rubric_digest", reg.AttributionRubricDigest, p.attributions.rubricDigest)

@@ -98,7 +98,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	if cfg.Purpose == runner.PurposeConstructWitness || cfg.Purpose == runner.PurposeScreening {
 		return fmt.Errorf("the runner config is a %s run, which is non-confirmatory and cannot be pre-registered", cfg.Purpose)
 	}
-	// tbound-run plans from run.json with freeze_commit, evq_obligations, adaptive_caps, only_cases and purpose only
+	// tbound-run plans from run.json with freeze_commit, evq_obligations, adaptive_caps, only_cases, purpose and plan_v only
 	// (runConfig.runnerConfig), so a record with any other runner field could match no run. C-DH is outside H1.
 	if cfg.CDH != nil || cfg.NET02Mandatory || cfg.UnitCap != 0 || cfg.RerunHeadroom != 0 || cfg.NoRerunHeadroom {
 		return errors.New("the runner config sets cdh, net02_mandatory, unit_cap, rerun_headroom or no_rerun_headroom, which no tbound-run plan sets")
