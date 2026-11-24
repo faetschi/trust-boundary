@@ -123,7 +123,7 @@ func (s *vForwardService) serve(ctx context.Context, request piServiceRequest, c
 		}
 		return answer("refused", "v-forwarder-unavailable", nil)
 	}
-	unit, err := s.open(admissionID)
+	unit, err := s.open(admissionID, trial.MaxHostCalls)
 	if err != nil {
 		return answer("unknown", "v-forwarder-unavailable", nil)
 	}
@@ -225,7 +225,7 @@ type vUnit struct {
 	fwd    *researchroute.Forwarder
 }
 
-func (s *vForwardService) open(admissionID string) (*vUnit, error) {
+func (s *vForwardService) open(admissionID string, maxHostCalls uint64) (*vUnit, error) {
 	if err := os.MkdirAll(s.unitsDir, 0o700); err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func (s *vForwardService) open(admissionID string) (*vUnit, error) {
 	if err := os.WriteFile(filepath.Join(dir, vrun.TokenName), []byte(token), 0o600); err != nil {
 		return fail(err)
 	}
-	fwd, err := s.bundle.NewForwarder(admissionID, token)
+	fwd, err := s.bundle.NewForwarder(admissionID, token, maxHostCalls)
 	if err != nil {
 		return fail(err)
 	}

@@ -92,7 +92,7 @@ func startVForwarder(ctx context.Context, caseID, requestID string) (vForwarderH
 }
 
 func vForwarderCommand(self, caseID, requestID string) *exec.Cmd {
-	args := append(append([]string(nil), noNewPrivsWrap[1:]...), self, "serve", "--pi", "--task-id", caseID, "--attempt", "1", "--role", corpusRoleV, "--task-request-id", requestID)
+	args := append(append([]string(nil), noNewPrivsWrap[1:]...), self, "serve", "--pi", "--task-id", caseID, "--attempt", "1", "--role", corpusRoleV, "--task-request-id", requestID, "--bash-no-outputs")
 	return exec.Command(noNewPrivsWrap[0], args...)
 }
 
