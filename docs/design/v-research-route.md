@@ -22,7 +22,7 @@ V (plain Pi, no tbound) runs the 100 compliant tasks, paired with B and C, on th
    - Plan: both field values, step counts, the 50/50 B-before-C split, and the off value equal to the current plan digest.
    - Counts and report: `PlannedUnits` and the Markdown line for both values.
    - Forwarder: no key in the container; a wrong path, method or model is refused; cost- and routing-changing members are dropped; the reservation is booked before the upstream call; the request after the cap is refused; the listener and credential are dead after the unit.
-6. **Guest qualification.** One V route probe on a development compliant task, next to G1, rp and dr, against a stub upstream. It books nothing in the research ledger, so the fresh genesis of D59 item 4 holds no reservation before the research pilot.
+6. **Guest qualification.** One V route probe on a development compliant task, next to G1, rp and dr, against a stub upstream. It books nothing in the research ledger, so the fresh genesis of D59 item 4 holds no reservation before the research pilot. The probe's service uses a throwaway test ledger at its own path, never the research ledger's path, and no research key (owner, 2026-11-24). The ledger is deleted after qualification, and the F33 evidence records the deletion. The real-exchange evidence for V is the research pilot's first V unit, run alone and inspected (D61 item 6).
 
 ## Not changed
 
