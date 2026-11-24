@@ -114,7 +114,7 @@ func TestForwardedRequestRefusesMembersThatCouldBeBilledOutsideTheSizeGate(t *te
 		"server tool with parameters":  forwardedBody(`[`+user+`]`, `[{"type":"openrouter:web_search","parameters":{"max_results":100}}]`),
 		"tool without a type":          forwardedBody(`[`+user+`]`, `[{"function":{"name":"read","description":"d","parameters":{}}}]`),
 		"extra tool member":            forwardedBody(`[`+user+`]`, `[{"type":"function","cache_control":{"type":"ephemeral"},"function":{"name":"read","description":"d","parameters":{}}}]`),
-		"extra function member":        forwardedBody(`[`+user+`]`, tool(`,"strict":false`)),
+		"extra function member":        forwardedBody(`[`+user+`]`, tool(`,"cache_control":{"type":"ephemeral"}`)),
 		"function without description": forwardedBody(`[`+user+`]`, `[{"type":"function","function":{"name":"read","parameters":{}}}]`),
 		"function with a bad name":     forwardedBody(`[`+user+`]`, `[{"type":"function","function":{"name":"","description":"d","parameters":{}}}]`),
 		"parameters not an object":     forwardedBody(`[`+user+`]`, `[{"type":"function","function":{"name":"read","description":"d","parameters":"x"}}]`),
@@ -144,5 +144,22 @@ func TestForwardedRequestRefusesMembersThatCouldBeBilledOutsideTheSizeGate(t *te
 		if _, err := BuildForwardedRequest(route, []byte(body), 4096); !errors.Is(err, ErrForwardedRequest) {
 			t.Errorf("%s: err = %v, want ErrForwardedRequest", name, err)
 		}
+	}
+}
+
+func TestForwardedRequestDropsPiToolStrictFlag(t *testing.T) {
+	route := researchTestRoute(t)
+	messages := `[{"role":"user","content":"a"}]`
+	sent := `[{"type":"function","function":{"name":"read","description":"d","parameters":{"type":"object"},"strict":false}}]`
+	built, err := BuildForwardedRequest(route, []byte(forwardedBody(messages, sent)), 4096)
+	if err != nil {
+		t.Fatalf("Pi's strict:false tool flag was refused: %v", err)
+	}
+	if strings.Contains(string(built.Body()), "strict") {
+		t.Fatalf("strict reached the upstream body: %s", built.Body())
+	}
+	bad := `[{"type":"function","function":{"name":"read","description":"d","parameters":{"type":"object"},"strict":"no"}}]`
+	if _, err := BuildForwardedRequest(route, []byte(forwardedBody(messages, bad)), 4096); err == nil {
+		t.Fatal("a non-boolean strict was accepted")
 	}
 }

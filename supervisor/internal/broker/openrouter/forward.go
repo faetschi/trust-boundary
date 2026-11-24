@@ -135,8 +135,11 @@ func parseForwardedTools(raw []byte) ([]forwardedTool, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := keys(fn, []string{"name", "description", "parameters"}, nil); err != nil {
+		if err := keys(fn, []string{"name", "description", "parameters"}, []string{"strict"}); err != nil {
 			return nil, err
+		}
+		if raw, ok := fn["strict"]; ok && string(raw) != "true" && string(raw) != "false" {
+			return nil, errors.New("tool strict must be a boolean")
 		}
 		name, err := str(fn, "name")
 		if err != nil || !validText(name, maxText) {
