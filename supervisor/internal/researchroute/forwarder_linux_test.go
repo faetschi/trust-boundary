@@ -3,13 +3,17 @@
 package researchroute
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/usdledger"
 )
 
@@ -310,6 +314,11 @@ func TestOpenStubRefusesProductionPathsAndNonLoopbackEndpoints(t *testing.T) {
 		"checkpoint": func(p *Paths) { p.Checkpoint = CheckpointPath },
 		"config":     func(p *Paths) { p.LedgerConfig = LedgerConfigPath },
 		"key":        func(p *Paths) { p.Key = KeyPath },
+
+		"ledger with a dot segment":      func(p *Paths) { p.Ledger = "/var/lib/tbound/sessions/./usd-ledger" },
+		"ledger with a trailing slash":   func(p *Paths) { p.Ledger = LedgerPath + "/" },
+		"key through a parent segment":   func(p *Paths) { p.Key = "/etc/tbound/provider/../provider/openrouter.key" },
+		"checkpoint with a double slash": func(p *Paths) { p.Checkpoint = "/" + CheckpointPath },
 	} {
 		paths := stub.paths
 		mutate(&paths)
@@ -317,5 +326,109 @@ func TestOpenStubRefusesProductionPathsAndNonLoopbackEndpoints(t *testing.T) {
 			_ = b.Close()
 			t.Errorf("OpenStub accepted the production %s path", name)
 		}
+	}
+}
+
+type panickingWriter struct{ http.ResponseWriter }
+
+func (panickingWriter) Header() http.Header { panic("the client connection failed") }
+
+func TestForwarderSettlesTheUnitAfterTheClientHasGone(t *testing.T) {
+	bundle, up, _, fwd := newForwarderFixture(t)
+	proceed := make(chan struct{})
+	up.handler = func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n")
+		w.(http.Flusher).Flush()
+		<-proceed
+		_, _ = io.WriteString(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":3,\"cost\":0.000002}}\n\ndata: [DONE]\n\n")
+	}
+	contexts := make(chan context.Context, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contexts <- r.Context()
+		fwd.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+ForwardPath, strings.NewReader(piRequest))
+	req.Header.Set("Authorization", "Bearer "+forwardToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resp.Body.Read(make([]byte, 1)); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	_ = resp.Body.Close()
+	select {
+	case <-(<-contexts).Done():
+	case <-time.After(10 * time.Second):
+		t.Fatal("the server did not see the client leave")
+	}
+	close(proceed)
+	if totals := fwd.Finish(); totals != (ForwardTotals{Booked: 1, Settled: 1, TokensIn: 11, TokensOut: 3, CostMicroUSD: 2}) {
+		t.Fatalf("totals %+v", totals)
+	}
+	if snap := snapshot(t, bundle); snap.SettledMicroUSD != 2 || snap.UncertainUnits != 0 || snap.OpenMicroUSD != 0 {
+		t.Fatalf("ledger %+v", snap)
+	}
+}
+
+func TestForwarderReleasesTheReservationOnlyWhenTheTransportRefusedBeforeSending(t *testing.T) {
+	bundle, up, srv, fwd := newForwarderFixture(t)
+	doer, err := openrouter.NewHTTPDoerForEndpoint(func() (string, error) { return "", errors.New("no key") }, time.Second, bundle.Route().Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fwd.doer = doer
+	if status, _ := post(t, srv, ForwardPath, forwardToken, piRequest, nil); status != http.StatusBadGateway {
+		t.Fatalf("status %d", status)
+	}
+	if totals := fwd.Finish(); totals != (ForwardTotals{Booked: 1}) {
+		t.Fatalf("totals %+v", totals)
+	}
+	if snap := snapshot(t, bundle); snap.UncertainUnits != 0 || snap.OpenMicroUSD != 0 || snap.SettledUnits != 1 || snap.SettledMicroUSD != 0 || up.requests.Load() != 0 {
+		t.Fatalf("ledger %+v, provider requests %d", snap, up.requests.Load())
+	}
+}
+
+func TestForwarderMarksTheUnitUncertainWhenTheHandlerPanicsAfterBooking(t *testing.T) {
+	bundle, _, _, fwd := newForwarderFixture(t)
+	req := httptest.NewRequest(http.MethodPost, ForwardPath, strings.NewReader(piRequest))
+	req.Header.Set("Authorization", "Bearer "+forwardToken)
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("the handler did not panic")
+			}
+		}()
+		fwd.ServeHTTP(panickingWriter{}, req)
+	}()
+	if totals := fwd.Finish(); totals != (ForwardTotals{Booked: 1, Uncertain: 1}) {
+		t.Fatalf("totals %+v", totals)
+	}
+	if snap := snapshot(t, bundle); snap.UncertainMicroUSD != 8400 || snap.OpenMicroUSD != 0 {
+		t.Fatalf("ledger %+v", snap)
+	}
+}
+
+func TestForwarderReportsAnOverageAndRefusesWhatFollows(t *testing.T) {
+	bundle, up, srv, fwd := newForwarderFixture(t)
+	up.handler = func(w http.ResponseWriter, _ *http.Request) {
+		sse(w, map[string]any{"prompt_tokens": 11, "completion_tokens": 3, "cost": 0.05})
+	}
+	if status, _ := post(t, srv, ForwardPath, forwardToken, piRequest, nil); status != 200 {
+		t.Fatalf("status %d", status)
+	}
+	if status, _ := post(t, srv, ForwardPath, forwardToken, piRequest, nil); status != http.StatusServiceUnavailable {
+		t.Fatalf("status after the overage %d", status)
+	}
+	totals := fwd.Finish()
+	if !totals.Overage || totals.Booked != 1 || totals.Settled != 1 || totals.Uncertain != 0 {
+		t.Fatalf("totals %+v", totals)
+	}
+	if !snapshot(t, bundle).Overspent {
+		t.Fatal("the ledger did not record the overage")
 	}
 }

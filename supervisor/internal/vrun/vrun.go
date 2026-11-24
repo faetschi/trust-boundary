@@ -21,8 +21,8 @@ const Schema = "tbound-v-run/v1"
 // forwarder settled, and CostMicroUSD is what the research ledger settled for them at the
 // research profile's prices, in millionths of a US dollar (not Pi's own price table).
 // UsageEvents is the number of settled calls and LedgerRecords the number of ledger units the
-// unit booked; UncertainUnits counts booked calls whose cost stays reserved. StartedNS and
-// FinishedNS are guest wall-clock Unix nanoseconds around the container run.
+// unit booked; UncertainUnits counts booked calls whose cost stays reserved; Overage flags a call settled above its reservation.
+// StartedNS and FinishedNS are guest wall-clock Unix nanoseconds around the container run.
 type Doc struct {
 	Schema         string                `json:"schema"`
 	CaseID         string                `json:"case_id"`
@@ -37,6 +37,7 @@ type Doc struct {
 	UsageEvents    int                   `json:"usage_events"`
 	LedgerRecords  int                   `json:"ledger_records"`
 	UncertainUnits int                   `json:"uncertain_units"`
+	Overage        bool                  `json:"overage"`
 	Accept         *taskaccept.AcceptDoc `json:"accept"`
 	AcceptError    string                `json:"accept_error,omitempty"`
 	StartedNS      int64                 `json:"started_ns"`

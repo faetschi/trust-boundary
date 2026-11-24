@@ -172,6 +172,12 @@ func TestParseDoc(t *testing.T) {
 	if err != nil || d.Accept == nil || !d.Accept.Passed || d.CaseID != "cmp-1" {
 		t.Fatalf("Parse = %+v, %v", d, err)
 	}
+	over := goodDoc()
+	over.Overage = true
+	raw, _ = json.Marshal(over)
+	if d, err := Parse(raw); err != nil || !d.Overage || !strings.Contains(string(raw), `"overage":true`) {
+		t.Fatalf("overage lost: %+v, %v, %s", d, err, raw)
+	}
 	null := goodDoc()
 	null.Accept, null.AcceptError = nil, "tree unreadable"
 	raw, _ = json.Marshal(null)

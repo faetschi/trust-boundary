@@ -329,13 +329,13 @@ func TestVRunReportsAFailedAcceptanceAsData(t *testing.T) {
 
 func TestVRunReportsTheForwardersRecordsNotPisFigures(t *testing.T) {
 	e := newVTestEnv(t)
-	e.forwarder.totals = researchroute.ForwardTotals{Booked: 3, Settled: 2, Uncertain: 1, TokensIn: 90, TokensOut: 9, CostMicroUSD: 77}
+	e.forwarder.totals = researchroute.ForwardTotals{Booked: 3, Settled: 2, Uncertain: 1, TokensIn: 90, TokensOut: 9, CostMicroUSD: 77, Overage: true}
 	e.podman.onRun = solvingContainer(t, nil)
 	doc, _, err := e.vrun(t, trialTestCase)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if doc.TokensIn != 90 || doc.TokensOut != 9 || doc.CostMicroUSD != 77 || doc.UsageEvents != 2 || doc.LedgerRecords != 3 || doc.UncertainUnits != 1 || doc.ToolCalls != 1 {
+	if doc.TokensIn != 90 || doc.TokensOut != 9 || doc.CostMicroUSD != 77 || doc.UsageEvents != 2 || doc.LedgerRecords != 3 || doc.UncertainUnits != 1 || !doc.Overage || doc.ToolCalls != 1 {
 		t.Fatalf("doc = %+v", doc)
 	}
 	if len(e.requestIDs) != 1 || e.forwarder.aborted != 1 {

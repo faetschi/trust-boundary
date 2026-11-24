@@ -354,7 +354,7 @@ func trialVRun(ctx context.Context, args []string, env trialEnv) (doc vrun.Doc, 
 	}
 	doc = vrun.Doc{Schema: vrun.Schema, CaseID: caseID, ImageDigest: tmpl.ImageDigest, FixtureDigest: c.FixtureDigest,
 		Exit: exit, TimedOut: killed, TokensIn: totals.TokensIn, TokensOut: totals.TokensOut, CostMicroUSD: totals.CostMicroUSD,
-		ToolCalls: usage.Usage().ToolCalls, UsageEvents: totals.Settled, LedgerRecords: totals.Booked, UncertainUnits: totals.Uncertain,
+		ToolCalls: usage.Usage().ToolCalls, UsageEvents: totals.Settled, LedgerRecords: totals.Booked, UncertainUnits: totals.Uncertain, Overage: totals.Overage,
 		StartedNS: startedAt.UnixNano(), FinishedNS: finishedAt.UnixNano()}
 	if result, aerr := taskaccept.EvaluateWith(caseID, accept, fixture, tree, cellNodeRunner{ctx: ctx, task: task}); aerr != nil {
 		doc.AcceptError = aerr.Error()

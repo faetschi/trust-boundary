@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +37,7 @@ type ForwardTotals struct {
 	TokensIn     int64 `json:"tokens_in"`
 	TokensOut    int64 `json:"tokens_out"`
 	CostMicroUSD int64 `json:"cost_micro_usd"`
+	Overage      bool  `json:"overage"`
 }
 
 type Forwarder struct {
@@ -152,30 +154,39 @@ func (f *Forwarder) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f.count(func(t *ForwardTotals) { t.Booked++ })
-	f.send(w, r.Context(), unit, built, body)
+	f.send(w, context.WithoutCancel(r.Context()), unit, built, body)
 }
 
 func (f *Forwarder) send(w http.ResponseWriter, ctx context.Context, unit string, built openrouter.BuiltRequest, body []byte) {
+	final := false
+	defer func() {
+		if !final {
+			f.uncertain(ctx, unit)
+		}
+	}()
 	upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, built.RequestURL(), bytes.NewReader(body))
 	if err != nil {
 		f.release(ctx, unit)
+		final = true
 		http.Error(w, "request refused before sending", http.StatusInternalServerError)
 		return
 	}
 	upstream.Header = f.bundle.route.RequestHeaders("")
 	response, err := f.doer.Do(upstream)
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "provider HTTP request failed") {
-			f.uncertain(ctx, unit)
-		} else {
+		if errors.Is(err, openrouter.ErrNotSent) {
 			f.release(ctx, unit)
+		} else {
+			f.uncertain(ctx, unit)
 		}
+		final = true
 		http.Error(w, "provider unreachable", http.StatusBadGateway)
 		return
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		f.uncertain(ctx, unit)
+		final = true
 		w.Header().Set("Content-Type", response.Header.Get("Content-Type"))
 		w.WriteHeader(response.StatusCode)
 		_, _ = io.Copy(w, io.LimitReader(response.Body, 64<<10))
@@ -208,9 +219,11 @@ func (f *Forwarder) send(w http.ResponseWriter, ctx context.Context, unit string
 	}
 	if len(tap.usage) == 0 {
 		f.uncertain(ctx, unit)
+		final = true
 		return
 	}
 	f.settle(ctx, unit, tap.usage)
+	final = true
 }
 
 func (f *Forwarder) count(update func(*ForwardTotals)) {
@@ -232,8 +245,9 @@ func (f *Forwarder) uncertain(ctx context.Context, unit string) {
 
 func (f *Forwarder) settle(ctx context.Context, unit string, usage json.RawMessage) {
 	err := f.bundle.SettleSpend(ctx, unit, usage)
+	overage := errors.Is(err, ErrSpendOverage)
 	info, found, infoErr := f.bundle.Unit(unit)
-	if (err != nil && !errors.Is(err, ErrSpendOverage)) || infoErr != nil || !found || info.State != usdledger.UnitStateSettled {
+	if (err != nil && !overage) || infoErr != nil || !found || info.State != usdledger.UnitStateSettled {
 		f.count(func(t *ForwardTotals) { t.Uncertain++ })
 		return
 	}
@@ -246,6 +260,7 @@ func (f *Forwarder) settle(ctx context.Context, unit string, usage json.RawMessa
 		t.TokensIn += int64(in)
 		t.TokensOut += int64(out)
 		t.CostMicroUSD += info.SettledMicroUSD
+		t.Overage = t.Overage || overage
 	})
 }
 
@@ -307,8 +322,12 @@ func StubPaths() Paths {
 func OpenStub(paths Paths, endpoint string) (*Bundle, error) {
 	production := DefaultPaths()
 	for _, own := range []string{paths.Profile, paths.LedgerConfig, paths.Ledger, paths.Checkpoint, paths.Key} {
+		absolute, err := filepath.Abs(own)
+		if err != nil {
+			return nil, err
+		}
 		for _, prod := range []string{production.Ledger, production.Checkpoint, production.LedgerConfig, production.Key} {
-			if own == prod {
+			if absolute == filepath.Clean(prod) {
 				return nil, errors.New("the v-stub route may not use a research ledger, checkpoint, ledger configuration or key path")
 			}
 		}
