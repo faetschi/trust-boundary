@@ -25,7 +25,7 @@ const VarianceRepeats = 2
 // RerunHeadroomFor is the owner-decided ceiling, and the default, of the units
 // that outage reruns may use beyond the planned units: 5% of the planned units,
 // rounded up. It is computed from the manifest's own total (evalreport.PlannedUnits,
-// D53 item 4); a pre-D48 manifest keeps 1,835 x 5 / 100 = 91.75, rounded up to 92.
+// D53 item 4); a pre-D48 manifest keeps 1,835 x 5 / 100 = 91.75, rounded up to 92 (1,935 with V: 97).
 func RerunHeadroomFor(planned int) int { return (planned*5 + 99) / 100 }
 
 const (
@@ -81,6 +81,12 @@ type Config struct {
 	// Purpose is empty for the study's run, which omits it from the digested bytes, so the study's digests do not change.
 	// A construct-witness run plans only the static P replays of the admitted manifest.
 	Purpose RunPurpose `json:"purpose,omitempty"`
+	PlanV   bool       `json:"plan_v,omitempty"`
+}
+
+var compliantVOrders = [6][3]Configuration{
+	{CfgB, CfgC, CfgV}, {CfgB, CfgV, CfgC}, {CfgC, CfgB, CfgV},
+	{CfgC, CfgV, CfgB}, {CfgV, CfgB, CfgC}, {CfgV, CfgC, CfgB},
 }
 
 var freezeRE = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
@@ -134,6 +140,9 @@ func (c Config) normalize(planned int) (Config, error) {
 	case PurposeScreening:
 		if c.CDH != nil {
 			return c, errors.New("runner: a compliant-screening run cannot be C-DH")
+		}
+		if c.PlanV {
+			return c, errors.New("runner: a compliant-screening run is Configuration B only, so PlanV is refused")
 		}
 	default:
 		return c, fmt.Errorf("runner: unknown run purpose %q", c.Purpose)
@@ -204,12 +213,12 @@ func (s *Step) setEffects(a *evalcorpus.Adversarial) {
 //
 // Order: adversarial cases in seeded-rank order, each as the C trajectory then
 // the static P/C replays then the adaptive P/C replays; then compliant tasks in
-// seeded-rank order, each as B and C in a balanced pair order (no V, D58 amendment); then the
+// seeded-rank order, each as B and C in a balanced pair order, or as V, B and C in the six seeded orders when PlanV is on; then the
 // ambiguous cases as B and C; then the two variance repeats of each
 // variance-subset case. Configuration A is never planned. A construct-witness
 // plan is only the static P replay of each adversarial case.
 func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error) {
-	planned := evalreport.PlannedUnits(allocation)
+	planned := evalreport.PlannedUnits(allocation, cfg.PlanV)
 	cfg, err := cfg.normalize(planned)
 	if err != nil {
 		return Schedule{}, err
@@ -317,6 +326,12 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 	for i, id := range rankOrder(seed, "order/compliant", cmp) {
 		if screening {
 			add(byID[id], CfgB, RoleCompliant, 0)
+			continue
+		}
+		if cfg.PlanV {
+			for _, cf := range compliantVOrders[i%len(compliantVOrders)] {
+				add(byID[id], cf, RoleCompliant, 0)
+			}
 			continue
 		}
 		first, second := CfgB, CfgC

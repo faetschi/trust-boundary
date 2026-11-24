@@ -95,7 +95,7 @@ func loadPlan(cfg runConfig) (plan, error) {
 	}
 	// A construct-witness run is a subset by design and is the only thesis plan that may be one (D41). The registered
 	// total is computed from the final counts (D53 item 4).
-	if planned := evalreport.PlannedUnits(allocation); cfg.CDH == nil && cfg.QuotaProfile == quotaThesis && cfg.Purpose != runner.PurposeConstructWitness &&
+	if planned := evalreport.PlannedUnits(allocation, sched.Config.PlanV); cfg.CDH == nil && cfg.QuotaProfile == quotaThesis && cfg.Purpose != runner.PurposeConstructWitness &&
 		(sched.Subset || sched.Units() != planned) {
 		return plan{}, fmt.Errorf("a thesis plan must be the registered %d units without a subset; it has %d (subset %t)",
 			planned, sched.Units(), sched.Subset)

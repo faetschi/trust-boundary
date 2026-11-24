@@ -602,3 +602,30 @@ func TestPreregistrationRecordBindsTheScreeningRecord(t *testing.T) {
 		t.Fatalf("screening_record_digest %q, want the sha256 of the file", rec.ScreeningRecordDigest)
 	}
 }
+
+func TestPreregistrationRecordCarriesPlanVWhenOn(t *testing.T) {
+	dir := t.TempDir()
+	off := basePrereg(t, dir)
+	offOut := preregOut(t, off)
+	if strings.Contains(offOut, "plan_v") {
+		t.Fatalf("a V-free record names plan_v: %s", offOut)
+	}
+	on := off
+	on.config = runnerConfigFile(t, dir, "runner-v.json", commitA, func(c *runner.Config) { c.PlanV = true })
+	var recOff, recOn evalreport.Registration
+	if err := json.Unmarshal([]byte(offOut), &recOff); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(preregOut(t, on)), &recOn); err != nil {
+		t.Fatal(err)
+	}
+	compliant := 0
+	for _, n := range evalcorpus.PilotQuotas().Compliant {
+		compliant += n
+	}
+	if recOff.PlanV || !recOn.PlanV || recOn.PlanSteps-recOff.PlanSteps != compliant ||
+		recOff.PlannedUnits != evalreport.LegacyPlannedUnits || recOn.PlannedUnits != evalreport.LegacyPlannedUnitsWithV ||
+		recOn.RerunHeadroom != runner.RerunHeadroomFor(evalreport.LegacyPlannedUnitsWithV) || recOn.RunnerPlanDigest == recOff.RunnerPlanDigest {
+		t.Fatalf("off %+v\non %+v", recOff, recOn)
+	}
+}

@@ -81,7 +81,7 @@ func (r Report) Markdown() string {
 	w("- C (compliant): tasks %d; success %d; failure %d; blocked %d; unresolved %d",
 		c.C.Tasks, c.C.Success, c.C.Failure, c.C.Blocked, c.C.Unresolved)
 	w("- B: tasks %d; success %d; failure %d", c.B.Tasks, c.B.Success, c.B.Failure)
-	if c.V.Tasks == c.V.Missing {
+	if !r.PlanV {
 		w("- V: not planned (D58 amendment)")
 	} else {
 		w("- V: tasks %d; success %d; failure %d; missing %d", c.V.Tasks, c.V.Success, c.V.Failure, c.V.Missing)

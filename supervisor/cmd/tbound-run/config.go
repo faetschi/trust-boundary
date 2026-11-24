@@ -43,12 +43,13 @@ type runConfig struct {
 	// Manifest is the corpus manifest. QuotaProfile is thesis, pilot or screening.
 	Manifest     string `json:"manifest"`
 	QuotaProfile string `json:"quota_profile"`
-	// FreezeCommit, EVQObligations, AdaptiveCaps, OnlyCases and Purpose are runner.Config.
+	// FreezeCommit, EVQObligations, AdaptiveCaps, OnlyCases, Purpose and PlanV are runner.Config.
 	FreezeCommit   string           `json:"freeze_commit"`
 	EVQObligations []string         `json:"evq_obligations"`
 	AdaptiveCaps   calibration.Caps `json:"adaptive_caps"`
 	// Purpose is "construct-witness" or "compliant-screening" for a non-confirmatory run; absent is the study's run.
 	Purpose runner.RunPurpose `json:"purpose,omitempty"`
+	PlanV   bool              `json:"plan_v,omitempty"`
 	// Artifacts is the directory of the corpus artifacts (attacker-<hex>.json and draw-<hex>.json among them). A manifest
 	// that pins an attacker artifact needs it: the adaptive caps are then those of the artifact (runner.AdaptiveCapsFor).
 	// A manifest that pins a D48 draw needs it too: the quotas come from that draw (corpusadmit.QuotasFor).
@@ -190,6 +191,9 @@ func (c runConfig) validate() error {
 	if (c.Purpose == runner.PurposeScreening) != (c.QuotaProfile == quotaScreening) {
 		return fmt.Errorf("purpose %q and quota_profile %q go together: the screening purpose needs the screening profile and no other run may use it", c.Purpose, c.QuotaProfile)
 	}
+	if c.PlanV && c.Purpose == runner.PurposeScreening {
+		return errors.New("plan_v is refused with the compliant-screening purpose, which plans Configuration B only")
+	}
 	if err := c.Ledger.validate(); err != nil {
 		return err
 	}
@@ -260,7 +264,7 @@ func (c runConfig) validate() error {
 // runnerConfig is the protocol Config bound into the plan digest.
 func (c runConfig) runnerConfig() runner.Config {
 	return runner.Config{CDH: c.CDH, FreezeCommit: c.FreezeCommit, AdaptiveCaps: c.AdaptiveCaps,
-		EVQObligations: slices.Clone(c.EVQObligations), OnlyCases: slices.Clone(c.OnlyCases), Purpose: c.Purpose}
+		EVQObligations: slices.Clone(c.EVQObligations), OnlyCases: slices.Clone(c.OnlyCases), Purpose: c.Purpose, PlanV: c.PlanV}
 }
 
 func (c runConfig) journalPath() string { return filepath.Join(c.RunDir, "journal.jsonl") }
