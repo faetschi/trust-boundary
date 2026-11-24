@@ -11,8 +11,9 @@ PROFILE=$ROOT/infra/guest/research/research-profile.json
 T=$(mktemp -d "${TMPDIR:-/tmp}/vstub-test.XXXXXX")
 case $T in /tmp/vstub-test.* | "${TMPDIR:-/tmp}"/vstub-test.*) ;; *) echo "FATAL: unexpected temp dir '$T'" >&2; exit 2 ;; esac
 STUB_PID=""
-cleanup() { [ -z "$STUB_PID" ] || kill "$STUB_PID" 2>/dev/null || true; rm -rf -- "$T"; }
+cleanup() { [ -z "$STUB_PID" ] || { kill "$STUB_PID" 2>/dev/null || true; wait "$STUB_PID" 2>/dev/null || true; }; rm -rf -- "$T"; }
 trap cleanup EXIT
+trap 'exit 1' INT TERM HUP
 FAILS=0
 pass() { printf 'PASS %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; FAILS=$((FAILS + 1)); }
@@ -25,7 +26,7 @@ py() { python3 -I "$@"; }
 
 KEY=sk-vstub-0123456789abcdef0123456789abcdef0123456789abcdef
 PORT=$(py -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
-py "$STUB" "$T/stub.log" "$T/stub.pid" 0 "$PORT" &
+python3 -I "$STUB" "$T/stub.log" "$T/stub.pid" 0 "$PORT" >"$T/stub.out" 2>&1 </dev/null &
 STUB_PID=$!
 for _ in $(seq 1 50); do py -c 'import socket,sys; socket.create_connection(("127.0.0.1", int(sys.argv[1])), 1)' "$PORT" 2>/dev/null && break; sleep 0.1; done
 
@@ -157,6 +158,12 @@ expect_ok "record prints a JSON object" bash -c 'python3 -I "$1" record commit a
 expect_refuse "record refuses an odd number of arguments" "key value pairs" py "$CHECK" record commit
 
 for f in "$K"/guest/34-v-stub-probe.sh "$K"/guest/sign-run.sh "$K"/guest/40-guest-evidence.sh "$K"/guest/glib.sh "$K"/tools/guest-chain.sh; do expect_ok "bash -n ${f#"$K"/}" bash -n "$f"; done
+expect_ok "the stub is started in a brace group, so the ssh stdout closes at once" grep -qF '{ setsid nohup python3 -I stub.py stub.log stub.pid $STUB_HOLD > stub.out 2>&1 < /dev/null & }' "$K/guest/34-v-stub-probe.sh"
+mkdir "$T/l"
+cat >"$T/launch.sh" <<'EOF'
+cd "$1" && : > l.log && { setsid nohup sh -c 'echo $$ > p; exec sleep 30' > l.out 2>&1 < /dev/null & }
+EOF
+expect_ok "a brace-grouped background launch returns at once under bash and the stand-in keeps running" bash -c 'out=$(timeout 10 bash "$1" "$2") && sleep 1 && kill "$(cat "$2/p")"' _ "$T/launch.sh" "$T/l"
 expect_ok "sign-run.sh takes the vs target" grep -q 'case "$NAME" in rp|dr|pilot|rr|vs)' "$K/guest/sign-run.sh"
 expect_ok "glib.sh WGA_FILES lists vs-check.py" grep -q 'guest/vs-check.py' "$K/guest/glib.sh"
 expect_ok "the v-stub service config template differs from the pilot one in provider_route only" bash -c 'diff <(tr -d "\r" < "$1") <(tr -d "\r" < "$2") | grep "^[<>]" | tr "\n" "|" | grep -qx "<   \"provider_route\": \"engineering\",|>   \"provider_route\": \"v-stub\",|"' _ "$ROOT/infra/guest/serve-pi-service.corpus-pilot.json" "$ROOT/infra/guest/serve-pi-service.v-stub.json"

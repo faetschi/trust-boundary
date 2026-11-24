@@ -67,10 +67,10 @@ EOS
 
 stub_start() {
   [ -z "$(G "ss -ltnH 'sport = :$STUB_PORT'" | tr -d '\r')" ] || die "port $STUB_PORT on the guest is in use: the stub upstream cannot start"
+  STUB_UP=1
   WX cat "$SRC/infra/guest/v-stub/stub-upstream.py" | GI "umask 077; install -d -m 0700 $STUB_DIR && cat > $STUB_DIR/stub.py"
   eq "staged stub.py == the frozen source" "$(G "sha256sum $STUB_DIR/stub.py" | cut -d' ' -f1 | sed 's/^/sha256:/')" "$(wd "$SRC/infra/guest/v-stub/stub-upstream.py")"
-  STUB_UP=1
-  G "cd $STUB_DIR && : > stub.log && setsid nohup python3 -I stub.py stub.log stub.pid $STUB_HOLD > stub.out 2>&1 < /dev/null &"
+  G "cd $STUB_DIR && : > stub.log && { setsid nohup python3 -I stub.py stub.log stub.pid $STUB_HOLD > stub.out 2>&1 < /dev/null & }"
   local i
   for i in $(seq 1 20); do
     if G "python3 -I -c 'import socket; socket.create_connection((\"127.0.0.1\", $STUB_PORT), 2)'" >/dev/null 2>&1; then break; fi
