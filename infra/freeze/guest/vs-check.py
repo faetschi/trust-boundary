@@ -20,7 +20,12 @@ def load(path):
         return json.load(handle)
 
 
+def key_arg(value):
+    return sys.stdin.read().strip() if value == "-" else value
+
+
 def check_inspect(path, key):
+    key = key_arg(key)
     with open(path, encoding="utf-8") as handle:
         text = handle.read()
     if len(key) < 16:
@@ -51,6 +56,7 @@ def check_inspect(path, key):
 
 
 def check_stublog(path, key, count, profile_path):
+    key = key_arg(key)
     profile = load(profile_path)
     want_auth = hashlib.sha256(("Bearer " + key).encode()).hexdigest()
     with open(path, encoding="utf-8") as handle:

@@ -82,6 +82,8 @@ expect_refuse "stublog refuses a count that differs from the V document" "the st
 expect_refuse "stublog refuses another credential" "credential other than the stub key" py "$CHECK" stublog "$T/stub-one.log" "${KEY}x" 1 "$PROFILE"
 sed 's/"max_output_tokens": 4096/"max_output_tokens": 16384/' "$PROFILE" >"$T/profile-other.json"
 expect_refuse "stublog refuses a cap that is not the profile's" "not the profile's shape" py "$CHECK" stublog "$T/stub-one.log" "$KEY" 1 "$T/profile-other.json"
+expect_ok "stublog reads the key from stdin when the key argument is -" bash -c 'printf "%s" "$1" | python3 -I "$2" stublog "$3" - 1 "$4"' _ "$KEY" "$CHECK" "$T/stub-one.log" "$PROFILE"
+expect_refuse "stublog with the key on stdin refuses another credential" "credential other than the stub key" bash -c 'printf "%s" "$1" | python3 -I "$2" stublog "$3" - 1 "$4"' _ "${KEY}x" "$CHECK" "$T/stub-one.log" "$PROFILE"
 
 cat >"$T/mkinspect.py" <<'EOF'
 import json
@@ -117,6 +119,8 @@ expect_refuse "inspect refuses a writable runtime mount" "RW=True" py "$CHECK" i
 expect_refuse "inspect refuses a key file as a mount source" "can hold a key" py "$CHECK" inspect "$T/inspect-key-source.json" "$KEY"
 expect_refuse "inspect refuses a secret-looking environment name" "secret-looking names" py "$CHECK" inspect "$T/inspect-env.json" "$KEY"
 expect_refuse "inspect refuses two containers" "exactly one container" py "$CHECK" inspect "$T/inspect-two.json" "$KEY"
+expect_ok "inspect reads the key from stdin when the key argument is -" bash -c 'printf "%s" "$1" | python3 -I "$2" inspect "$3" -' _ "$KEY" "$CHECK" "$T/inspect-ok.json"
+expect_refuse "inspect with the key on stdin refuses a record that holds it" "stub key appears" bash -c 'printf "%s" "$1" | python3 -I "$2" inspect "$3" -' _ "$KEY" "$CHECK" "$T/inspect-key.json"
 
 cat >"$T/mkdoc.py" <<'EOF'
 import json
@@ -159,6 +163,16 @@ expect_refuse "record refuses an odd number of arguments" "key value pairs" py "
 
 for f in "$K"/guest/34-v-stub-probe.sh "$K"/guest/sign-run.sh "$K"/guest/40-guest-evidence.sh "$K"/guest/glib.sh "$K"/tools/guest-chain.sh; do expect_ok "bash -n ${f#"$K"/}" bash -n "$f"; done
 expect_ok "the stub is started in a brace group, so the ssh stdout closes at once" grep -qF '{ setsid nohup python3 -I stub.py stub.log stub.pid $STUB_HOLD > stub.out 2>&1 < /dev/null & }' "$K/guest/34-v-stub-probe.sh"
+expect_ok "34-v-stub-probe.sh passes the stub key to vs-check.py on stdin, never in a command line" bash -c '! grep -q "vs-check.py.*VS_KEY" "$1"' _ "$K/guest/34-v-stub-probe.sh"
+sed -n '/^research_state() {/,/^}/p' "$K/guest/34-v-stub-probe.sh" | sed -n "/<<'EOS'/,/^EOS\$/p" | sed '1d;$d' >"$T/rstate.sh"
+printf 'genesis\nsecond\n' >"$T/rs-ledger"
+cat >"$T/rs.sh" <<'EOF'
+sudo() { [ "$1" = -n ] && shift; [ -z "${FAKE_NOSUDO:-}" ] || return 1; "$@"; }
+export -f sudo
+bash -s -- "$1" "$2" < "$3"
+EOF
+expect_ok "research_state measures the ledger when sudo works" bash -c '[[ "$(bash "$1" "$2" "$3" "$4")" == "ledger records=2 head="* ]]' _ "$T/rs.sh" "$T/rs-ledger" "$T" "$T/rstate.sh"
+expect_ok "research_state fails, and does not read as absent, when sudo is dead" bash -c '! FAKE_NOSUDO=1 bash "$1" "$2" "$3" "$4"' _ "$T/rs.sh" "$T/rs-ledger" "$T" "$T/rstate.sh"
 mkdir "$T/l"
 cat >"$T/launch.sh" <<'EOF'
 cd "$1" && : > l.log && { setsid nohup sh -c 'echo $$ > p; exec sleep 30' > l.out 2>&1 < /dev/null & }

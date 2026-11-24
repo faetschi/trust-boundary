@@ -12,6 +12,10 @@ C=$FREEZE_COMMIT
 . "$(dirname -- "${BASH_SOURCE[0]}")/../paths.sh"
 cd "$KIT_DIR/guest" || exit 2
 [ -n "${TBA_PW:-}" ] || { echo "export TBA_PW (password sudo) before running"; exit 2; }
+if [ "${V_STUB_PROBE:-0}" = 1 ]; then
+  [ "${CORPUS_PILOT:-0}" = 1 ] || { echo "V_STUB_PROBE=1 needs CORPUS_PILOT=1: the probe runs on the corpus-mode service the pilot cycle leaves"; exit 2; }
+  [ -n "${TBOUND_TRIAL_KEY:-}" ] && [ -f "$TBOUND_TRIAL_KEY" ] || { echo "V_STUB_PROBE=1 needs TBOUND_TRIAL_KEY=<path of the trial forced-command key>"; exit 2; }
+fi
 # GUEST_IP changes after a host restart. Look it up first (PowerShell: Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02) and export it;
 # the values file carries the last seen address. gssh.sh still pins the host key (StrictHostKeyChecking=yes).
 GUEST_IP_DEFAULT=$(sed -n 's/^GUEST_IP=//p' "$VALUES" | head -1)
@@ -48,7 +52,6 @@ if [ "${CORPUS_PILOT:-0}" = 1 ]; then   # optional tail (owner approval): corpus
   [ "$rc" = 0 ] || { echo "STOP rc=$rc at 33-corpus-pilot.sh"; exit "$rc"; }
 fi
 if [ "${V_STUB_PROBE:-0}" = 1 ]; then
-  [ "${CORPUS_PILOT:-0}" = 1 ] || { echo "V_STUB_PROBE=1 needs CORPUS_PILOT=1: the probe runs on the corpus-mode service the pilot cycle leaves"; exit 2; }
   echo "##### 34-v-stub-probe.sh $(date +%T)"
   bash 34-v-stub-probe.sh > "$L/guest-34-v-stub-probe.sh.txt" 2>&1; rc=$?
   tail -6 "$L/guest-34-v-stub-probe.sh.txt"

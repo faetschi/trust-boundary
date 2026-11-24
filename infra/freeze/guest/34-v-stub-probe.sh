@@ -70,9 +70,15 @@ save() { hf_save "$1"; hf_commit "$1"; }
 
 research_state() {
   GI "bash -s -- $RS_LEDGER $RS_DIR" <<'EOS' | tr -d '\r'
+set -euo pipefail
+sudo -n true
 L=$1; D=$2
 if sudo -n test -e "$L"; then
-  echo "ledger records=$(sudo -n wc -l "$L" | cut -d' ' -f1) head=$(sudo -n tail -n 1 "$L" | head -c -1 | sha256sum | cut -c1-64) sha256=$(sudo -n sha256sum "$L" | cut -c1-64)"
+  n=$(sudo -n wc -l "$L" | cut -d' ' -f1)
+  h=$(sudo -n tail -n 1 "$L" | head -c -1 | sha256sum | cut -c1-64)
+  s=$(sudo -n sha256sum "$L" | cut -c1-64)
+  [ -n "$n" ] && [ -n "$h" ] && [ -n "$s" ] || { echo "the research ledger could not be measured" >&2; exit 1; }
+  echo "ledger records=$n head=$h sha256=$s"
 else
   echo "ledger absent"
 fi
@@ -341,7 +347,7 @@ NAMES=$(podsvc "ps -a --format '{{.Names}}'" | tr -d '\r' | grep '^tbound-v-' ||
 [ "$(printf '%s\n' "$NAMES" | grep -c .)" = 1 ] || die "expected exactly one tbound-v- container while the stub holds the reply, found: [$NAMES]"
 note "live V container: $NAMES"
 podsvc "inspect $NAMES" | tr -d '\r' | save vs/inspect.json
-WX python3 -I "$WGA/vs-check.py" inspect "$HG/inspect.json" "$VS_KEY"
+printf '%s' "$VS_KEY" | WBI "python3 -I '$WGA/vs-check.py' inspect '$HG/inspect.json' -"
 for i in $(seq 1 240); do kill -0 "$VJOB" 2>/dev/null || break; sleep 10; done
 if kill -0 "$VJOB" 2>/dev/null; then die "trial v-run did not return in 40 minutes"; fi
 wait "$VJOB" || true
@@ -358,7 +364,7 @@ NREC=$(printf '%s\n' "$DOCOUT" | tail -n 1)
 
 say "8. what the stub saw, the throwaway ledger, the research ledger"
 G "cat $STUB_DIR/stub.log" | tr -d '\r' | save vs/stub.log
-WX python3 -I "$WGA/vs-check.py" stublog "$HG/stub.log" "$VS_KEY" "$NREC" "$HG/research-profile.json"
+printf '%s' "$VS_KEY" | WBI "python3 -I '$WGA/vs-check.py' stublog '$HG/stub.log' - '$NREC' '$HG/research-profile.json'"
 G "sudo -n cat $VS_LEDGER" | save vs/v-stub-ledger.after
 WX python3 -I "$WGA/vs-check.py" ledger "$HG/v-stub-ledger.after" "$GENESIS_HEAD"
 RS_AFTER=$(research_state); printf '%s\n' "$RS_AFTER" | save vs/research-after.txt
