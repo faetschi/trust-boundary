@@ -1,0 +1,10 @@
+narrowed
+tbound-op status 2026-11-24T07:39:52Z pins F=08f3c3ee4043171b55867dfd2dfe5258809cf40b
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:64a6d549f63b64b1 tbound-profile: sha256:e53504b2868d442b
+service=active socket=active
+installed: cfg sha256:f62aa5f06c6670fb7433744b040cbc8f21636722dc886adba13b7d7edf8e234d reg sha256:3ae6cb3d7ae4b8cb prof sha256:7d979c321f02c886 tpl sha256:8c0af56e3e9edbed
+installed config matches state of: pilot
+-- pilot:
+     cfg=sha256:f62aa5f06c6670fb7433744b040cbc8f21636722dc886adba13b7d7edf8e234d
+0

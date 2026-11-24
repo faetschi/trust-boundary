@@ -1,0 +1,8 @@
+pilot-r01 948922576e20c8b3de0739ed4131c7d228c8392d sha256:68204fc802d2c786acf58c34f046079d97166dcd55819b6684d09917b9930ce5
+/home/tbound/tbound-h/f32/pilot.dev03-20261121T122253Z
+/home/tbound/tbound-h/f32/pilot.qual-20261121T094235Z
+/home/tbound/tbound-h/f32/pilot.r01-20261124T063755Z
+/home/tbound/tbound-h/f32/pilot.rr2-20261121T152602Z
+/home/tbound/tbound-h/f32/pilot.soak01-20261123T170713Z
+/home/tbound/tbound-h/f32/pilot.t5-20261121T034143Z
+aside /home/tbound/tbound-h/f32/pilot.r01-20261124T063755Z files=129

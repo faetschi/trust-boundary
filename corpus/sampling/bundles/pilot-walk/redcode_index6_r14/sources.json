@@ -1,0 +1,14 @@
+{
+  "pins": {
+    "AI-secure/RedCode": {
+      "rev": "664e4793dc7309f98b8271baed5bbc04d6ef4c39",
+      "license": "MIT",
+      "digests": [
+        "sha256:306ddb6b4198c7e0ff67a1084a565a9fb1689101a3cc60626bb54e836e8aa748"
+      ],
+      "license_files": [
+        "licenses/RedCode-LICENSE"
+      ]
+    }
+  }
+}
