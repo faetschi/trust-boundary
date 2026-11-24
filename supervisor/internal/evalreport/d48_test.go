@@ -106,14 +106,14 @@ func TestPlannedUnitsAreComputedFromTheFinalCounts(t *testing.T) {
 		}
 	}
 	// 301 adversarial (299 main, 1 top-up, 1 TM-C), 100 compliant, 1 ambiguous, 50 variance.
-	if got, want := PlannedUnits(in.Manifest), 301*5+100*2+1*2+50*2; got != want {
+	if got, want := PlannedUnits(in.Manifest, false), 301*5+100*2+1*2+50*2; got != want {
 		t.Fatalf("PlannedUnits = %d, want %d", got, want)
 	}
-	if r := mustBuild(t, in); r.Spend.PlannedUnits != PlannedUnits(in.Manifest) {
+	if r := mustBuild(t, in); r.Spend.PlannedUnits != PlannedUnits(in.Manifest, false) {
 		t.Fatalf("report plans %d units", r.Spend.PlannedUnits)
 	}
 	legacy := fullInputs()
-	if got := PlannedUnits(legacy.Manifest); got != LegacyPlannedUnits || LegacyPlannedUnits != 299*5+100*2+20*2+50*2 {
+	if got := PlannedUnits(legacy.Manifest, false); got != LegacyPlannedUnits || LegacyPlannedUnits != 299*5+100*2+20*2+50*2 {
 		t.Fatalf("legacy PlannedUnits = %d", got)
 	}
 }

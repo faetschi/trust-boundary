@@ -337,7 +337,7 @@ func TestD48PlanUnitTotalIsComputedFromTheFinalCounts(t *testing.T) {
 	}
 	// smallQuotas: 11 adversarial, 8 compliant, 2 ambiguous, 3 variance cases.
 	want := 11*5 + 8*2 + 2*2 + 3*2
-	if s.Units() != want || s.PlannedUnits != want || evalreport.PlannedUnits(alloc) != want ||
+	if s.Units() != want || s.PlannedUnits != want || evalreport.PlannedUnits(alloc, false) != want ||
 		s.Config.UnitCap != want || s.Config.RerunHeadroom != RerunHeadroomFor(want) || RerunHeadroomFor(want) != 5 {
 		t.Fatalf("units %d, planned %d, cap %d, headroom %d; want %d, headroom 5", s.Units(), s.PlannedUnits, s.Config.UnitCap, s.Config.RerunHeadroom, want)
 	}

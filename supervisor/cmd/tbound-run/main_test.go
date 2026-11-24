@@ -733,3 +733,23 @@ func TestLoadPlanAcceptsUnsignedCorpusWithoutPanel(t *testing.T) {
 		t.Fatalf("unsigned runner plan: %q %v", out, err)
 	}
 }
+
+func TestPlanVNeedsTheImagePinAndRefusesScreening(t *testing.T) {
+	e := newEnv(t)
+	e.cfg["plan_v"] = true
+	delete(e.cfg, "v_image_digest")
+	e.write()
+	if _, err := e.cliCfg(nil, "plan"); err == nil || !strings.Contains(err.Error(), "v_image_digest") {
+		t.Fatalf("a plan with V steps and no image pin: %v", err)
+	}
+	e.cfg["v_image_digest"] = fixtureDigest("cell-image")
+	e.write()
+	if _, err := e.cliCfg(nil, "plan"); err != nil {
+		t.Fatalf("a plan with V steps and the image pin: %v", err)
+	}
+	e.cfg["purpose"], e.cfg["quota_profile"] = string(runner.PurposeScreening), "screening"
+	e.write()
+	if _, err := e.cliCfg(nil, "plan"); err == nil || !strings.Contains(err.Error(), "plan_v") {
+		t.Fatalf("a compliant-screening plan with the V switch: %v", err)
+	}
+}

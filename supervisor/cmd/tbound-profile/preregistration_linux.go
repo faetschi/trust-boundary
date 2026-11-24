@@ -98,7 +98,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	if cfg.Purpose == runner.PurposeConstructWitness || cfg.Purpose == runner.PurposeScreening {
 		return fmt.Errorf("the runner config is a %s run, which is non-confirmatory and cannot be pre-registered", cfg.Purpose)
 	}
-	// tbound-run plans from run.json with freeze_commit, evq_obligations, adaptive_caps, only_cases and purpose only
+	// tbound-run plans from run.json with freeze_commit, evq_obligations, adaptive_caps, only_cases, purpose and plan_v only
 	// (runConfig.runnerConfig), so a record with any other runner field could match no run. C-DH is outside H1.
 	if cfg.CDH != nil || cfg.NET02Mandatory || cfg.UnitCap != 0 || cfg.RerunHeadroom != 0 || cfg.NoRerunHeadroom {
 		return errors.New("the runner config sets cdh, net02_mandatory, unit_cap, rerun_headroom or no_rerun_headroom, which no tbound-run plan sets")
@@ -146,7 +146,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 		return errors.New("the runner plan is bound to another manifest digest")
 	}
 	// D53 item 4: the registered total is computed from the final counts, and a plan that is not exactly it is refused.
-	planned := evalreport.PlannedUnits(allocation)
+	planned := evalreport.PlannedUnits(allocation, schedule.Config.PlanV)
 	if *profile == "thesis" && (schedule.Subset || schedule.Units() != planned) {
 		return fmt.Errorf("a thesis plan must be the registered %d units without a subset; it has %d (subset %t)",
 			planned, schedule.Units(), schedule.Subset)
@@ -155,7 +155,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	rec := evalreport.Registration{
 		Domain: evalreport.RegistrationDomain, FreezeCommit: *commit, CorpusManifestDigest: manifestDigest, QuotaProfile: *profile,
 		RunnerPlanDigest: schedule.Digest, PlanSteps: schedule.Units(), PlannedUnits: planned,
-		RerunHeadroom: schedule.Config.RerunHeadroom, EvalscoreSchema: evalscore.SchemaVersion,
+		RerunHeadroom: schedule.Config.RerunHeadroom, PlanV: schedule.Config.PlanV, EvalscoreSchema: evalscore.SchemaVersion,
 		RunBinding: *runBinding, AttributionRubricDigest: "sha256:" + hex.EncodeToString(rubricSum[:]), CorpusCheckDigest: corpusCheck,
 		CertificationDigest: certification, Reviewers: names,
 	}

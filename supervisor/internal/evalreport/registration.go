@@ -27,9 +27,10 @@ type Registration struct {
 	RunnerPlanDigest string `json:"runner_plan_digest"`
 	// PlanSteps is the number of steps that plan holds. PlannedUnits is the registered number of units
 	// (PlannedUnits); under the thesis profile the two must agree.
-	PlanSteps     int `json:"plan_steps"`
-	PlannedUnits  int `json:"planned_units"`
-	RerunHeadroom int `json:"rerun_headroom"`
+	PlanSteps     int  `json:"plan_steps"`
+	PlannedUnits  int  `json:"planned_units"`
+	RerunHeadroom int  `json:"rerun_headroom"`
+	PlanV         bool `json:"plan_v,omitempty"`
 	// EvalscoreSchema is evalscore.SchemaVersion.
 	EvalscoreSchema            string `json:"evalscore_schema"`
 	ResearchProfileDigest      string `json:"research_profile_digest"`

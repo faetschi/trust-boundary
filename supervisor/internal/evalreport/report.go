@@ -88,34 +88,40 @@ const (
 	// total of a manifest that pins no D48 draw, so those plans and reports keep their digests.
 	LegacyPlannedUnits = 1835
 
+	LegacyPlannedUnitsWithV = LegacyPlannedUnits + 100
+
 	// The planned units of one case, as runner.Plan schedules them: an adversarial case
-	// runs the C trajectory and the static and adaptive P/C replays, a compliant task B and C
-	// (D58 amendment: no V), an ambiguous case B and C, and a variance case two more C repeats.
+	// runs the C trajectory and the static and adaptive P/C replays, a compliant task B and C, and V
+	// too when the plan has V (D61 item 3), an ambiguous case B and C, and a variance case two more C repeats.
 	AdversarialUnits = 5
 	CompliantUnits   = 2
+	CompliantUnitsV  = 3
 	AmbiguousUnits   = 2
 	VarianceUnits    = 2
 )
 
 // PlannedUnits is the registered planned-unit total of an allocated manifest, computed
 // from its final counts (D53 item 4): the main sample, the top-up as drawn, the compliant
-// set, the ambiguous cases as passed, and the variance repeats. D53 item 4 does not name
+// set (with Configuration V when planV is on, D61 item 3), the ambiguous cases as passed, and the variance repeats. D53 item 4 does not name
 // the TM-C set; TM-C cases in the manifest are planned like every adversarial case
 // (runner.Plan), so they are counted here and the total equals the plan. A manifest that
 // pins no D48 draw keeps LegacyPlannedUnits.
-func PlannedUnits(m evalcorpus.Manifest) int {
+func PlannedUnits(m evalcorpus.Manifest, planV bool) int {
 	if m.Pins.DrawDigest == "" {
+		if planV {
+			return LegacyPlannedUnitsWithV
+		}
 		return LegacyPlannedUnits
 	}
 	units := 0
 	for _, c := range m.Cases {
-		units += caseUnits(c)
+		units += caseUnits(c, planV)
 	}
 	return units
 }
 
 // caseUnits is the number of execution units that runner.Plan schedules for one case.
-func caseUnits(c evalcorpus.Case) int {
+func caseUnits(c evalcorpus.Case, planV bool) int {
 	switch c.Kind {
 	case evalcorpus.KindAdversarial:
 		if c.Adversarial != nil && c.Adversarial.VarianceSubset {
@@ -123,6 +129,9 @@ func caseUnits(c evalcorpus.Case) int {
 		}
 		return AdversarialUnits
 	case evalcorpus.KindCompliant:
+		if planV {
+			return CompliantUnitsV
+		}
 		return CompliantUnits
 	case evalcorpus.KindAmbiguous:
 		return AmbiguousUnits
@@ -133,16 +142,16 @@ func caseUnits(c evalcorpus.Case) int {
 // plannedLedgerUnits is the most ledger units a normal run books. The research route books one
 // ledger unit per provider call, so a planned execution unit may book up to its case's
 // max_host_calls. It is never below PlannedUnits, so no report that was unflagged becomes flagged.
-func plannedLedgerUnits(m evalcorpus.Manifest) int {
+func plannedLedgerUnits(m evalcorpus.Manifest, planV bool) int {
 	calls := 0
 	for _, c := range m.Cases {
 		perUnit := 1 // a case without a trial books at least one call per unit
 		if c.Trial != nil {
 			perUnit = max(1, int(min(c.Trial.MaxHostCalls, 1<<24))) // clamp: no overflow
 		}
-		calls += caseUnits(c) * perUnit
+		calls += caseUnits(c, planV) * perUnit
 	}
-	return max(PlannedUnits(m), calls)
+	return max(PlannedUnits(m, planV), calls)
 }
 
 // Inputs are the three artifacts a report binds.
@@ -156,7 +165,8 @@ type Inputs struct {
 	AttributionsDigest      string
 	AttributionRubricDigest string
 	// D48 gives the scenario and mechanism results (Report.Groups); nil leaves them out.
-	D48 *D48Inputs
+	D48   *D48Inputs
+	PlanV bool
 }
 
 // Bindings tie the report to its inputs.
@@ -263,6 +273,7 @@ type Report struct {
 	// them only when there are any.
 	ProviderRetries []evalscore.ProviderRetryTrajectory `json:"provider_retries,omitempty"`
 	Spend           Spend                               `json:"spend"`
+	PlanV           bool                                `json:"plan_v,omitempty"`
 	Flags           []string                            `json:"flags"`
 	Digest          string                              `json:"digest"`
 }

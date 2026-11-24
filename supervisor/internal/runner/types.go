@@ -12,7 +12,7 @@ import (
 type Configuration string
 
 const (
-	// CfgA is native Pi in the cell. Diagnostic only and outside the 1,835 units,
+	// CfgA is native Pi in the cell. Diagnostic only and outside the planned units,
 	// so Plan never emits an A step. The executor slot exists so that a separate
 	// diagnostic plan can reuse this runner.
 	CfgA Configuration = "A"
