@@ -837,6 +837,7 @@ func validateProductionPiServiceConfig(config piServiceConfig) error {
 	if (config.SchemaVersion != piServiceConfigSchema && config.SchemaVersion != piServiceConfigSchemaV3) ||
 		config.SourcePolicy != piServiceSourcePolicy ||
 		(config.ProviderRoute != piruntime.D09ManagedPiProviderRouteEngineering && config.ProviderRoute != piruntime.D09ManagedPiProviderRouteResearch && config.ProviderRoute != piruntime.D09ManagedPiProviderRouteVStub) ||
+		(config.ProviderRoute == piruntime.D09ManagedPiProviderRouteVStub && config.WorkflowAdmissionMode != piServiceAdmissionCorpus) ||
 		!validPiServiceAdmissionEnvelope(config) ||
 		sessionrepo.ValidateOutputScopePaths(config.WorkflowBashOutputPaths) != nil ||
 		config.WorkflowCatalogPath != piServiceWorkflowCatalogPath || config.WorkflowRootDBPath != piServiceWorkflowRootDBPath ||

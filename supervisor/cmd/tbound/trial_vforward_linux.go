@@ -56,7 +56,7 @@ func startVForwarder(ctx context.Context, caseID, requestID string) (vForwarderH
 		return nil, err
 	}
 	stderr := &tailBuffer{max: 2048}
-	cmd := exec.Command(self, "serve", "--pi", "--task-id", caseID, "--attempt", "1", "--role", corpusRoleV, "--task-request-id", requestID)
+	cmd := vForwarderCommand(self, caseID, requestID)
 	cmd.Env, cmd.Dir, cmd.Stderr = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C"}, "/", stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true,
 		Credential: &syscall.Credential{Uid: uint32(socket.AllowedClientUIDs[0]), Gid: uint32(socket.AllowedClientPrimaryGID), Groups: []uint32{}}}
@@ -89,6 +89,11 @@ func startVForwarder(ctx context.Context, caseID, requestID string) (vForwarderH
 	}
 	process.dir = ready.Dir
 	return process, nil
+}
+
+func vForwarderCommand(self, caseID, requestID string) *exec.Cmd {
+	args := append(append([]string(nil), noNewPrivsWrap[1:]...), self, "serve", "--pi", "--task-id", caseID, "--attempt", "1", "--role", corpusRoleV, "--task-request-id", requestID)
+	return exec.Command(noNewPrivsWrap[0], args...)
 }
 
 func vForwarderDirAcceptable(dir string) bool {
@@ -156,9 +161,17 @@ func checkVForwarderDir(dir string, hostUID uint32) error {
 	if !info.IsDir() || !ok || stat.Uid != hostUID || info.Mode().Perm() != 0o700 {
 		return fmt.Errorf("the forwarder directory %s is not a 0700 directory of the service uid", dir)
 	}
-	for _, name := range []string{vrun.SocketName, vrun.TokenName} {
-		if _, err := os.Lstat(filepath.Join(dir, name)); err != nil {
+	for _, entry := range []struct {
+		name, kind string
+		fileType   os.FileMode
+	}{{vrun.SocketName, "socket", os.ModeSocket}, {vrun.TokenName, "regular file", 0}} {
+		info, err := os.Lstat(filepath.Join(dir, entry.name))
+		if err != nil {
 			return err
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || info.Mode().Type() != entry.fileType || info.Mode().Perm() != 0o600 || stat.Uid != hostUID {
+			return fmt.Errorf("%s in the forwarder directory is not a 0600 %s of the service uid", entry.name, entry.kind)
 		}
 	}
 	return nil

@@ -3,8 +3,10 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -457,5 +459,122 @@ func TestVClientRefusesAForwarderDirectoryOutsideTheServiceRuntime(t *testing.T)
 		if vForwarderDirAcceptable(bad) {
 			t.Errorf("%q accepted", bad)
 		}
+	}
+}
+
+func TestVStubRouteIsValidOnlyInCorpusAdmission(t *testing.T) {
+	config := corpusTestServiceConfig(corpusTestDigest("manifest"))
+	config.ProviderRoute = piruntime.D09ManagedPiProviderRouteVStub
+	if err := validateProductionPiServiceConfig(config); err != nil {
+		t.Fatalf("v-stub in corpus mode: %v", err)
+	}
+	for _, mode := range []string{"fresh", "resume"} {
+		single := corpusTestServiceConfig("")
+		single.ProviderRoute, single.WorkflowAdmissionMode = piruntime.D09ManagedPiProviderRouteVStub, mode
+		single.CorpusManifestPath, single.CorpusManifestDigest = "", ""
+		single.WorkflowAdmissionID, single.WorkflowTaskID, single.WorkflowPrompt = "host-task-1", "approved-task", "Read the approved host task."
+		if validateProductionPiServiceConfig(single) == nil {
+			t.Errorf("v-stub in %s mode was accepted", mode)
+		}
+		single.ProviderRoute = piruntime.D09ManagedPiProviderRouteResearch
+		if err := validateProductionPiServiceConfig(single); err != nil {
+			t.Errorf("the research route in %s mode: %v", mode, err)
+		}
+	}
+}
+
+func TestVServiceSyncsTheAdmissionDirectoryAfterTheMarkerIsWritten(t *testing.T) {
+	h := newVTestHarness(t)
+	var synced []string
+	var markers []int
+	real := syncVAdmissions
+	syncVAdmissions = func(dir string) error {
+		entries, _ := os.ReadDir(dir)
+		synced, markers = append(synced, dir), append(markers, len(entries))
+		return real(dir)
+	}
+	t.Cleanup(func() { syncVAdmissions = real })
+	conn, _, _ := openVUnit(t, h, "tbr-v-sync-1", h.caseID)
+	finishVUnit(t, conn)
+	if len(synced) != 1 || synced[0] != h.admissions || markers[0] != 1 {
+		t.Fatalf("directory syncs %q with %v markers present", synced, markers)
+	}
+}
+
+func TestVServiceOpensNoUnitWhenTheAdmissionMarkerIsNotDurable(t *testing.T) {
+	h := newVTestHarness(t)
+	real := syncVAdmissions
+	syncVAdmissions = func(string) error { return errors.New("the disk refused the sync") }
+	t.Cleanup(func() { syncVAdmissions = real })
+	response := roundTripPiServiceRequest(t, h.server.path, vRequest("tbr-v-sync-2", h.caseID))
+	if response.Status != "refused" || response.ErrorCode != "v-forwarder-unavailable" {
+		t.Fatalf("response %+v", response)
+	}
+	if entries, err := os.ReadDir(h.service.unitsDir); err == nil && len(entries) != 0 {
+		t.Fatalf("a unit directory was opened: %v", entries)
+	}
+	if h.upstream.requests.Load() != 0 {
+		t.Fatal("the provider was reached")
+	}
+}
+
+func TestVServerBoundsHeadersAndConnections(t *testing.T) {
+	server := newVServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok") }))
+	if server.ReadTimeout != 2*time.Minute || server.IdleTimeout != 30*time.Second || server.MaxHeaderBytes != 16<<10 || server.ReadHeaderTimeout == 0 {
+		t.Fatalf("server limits %v %v %d %v", server.ReadTimeout, server.IdleTimeout, server.MaxHeaderBytes, server.ReadHeaderTimeout)
+	}
+	socket := filepath.Join(privateGovernedTestRoot(t), "v.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = server.Serve(limitVConnections(listener, vMaxConnections)) }()
+	t.Cleanup(func() { _ = server.Close() })
+	status := func(extra string) (net.Conn, string, error) {
+		conn, err := net.DialTimeout("unix", socket, 5*time.Second)
+		if err != nil {
+			return nil, "", err
+		}
+		_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+		_, _ = io.WriteString(conn, "GET / HTTP/1.1\r\nHost: v\r\n"+extra+"\r\n")
+		line, err := bufio.NewReader(conn).ReadString('\n')
+		return conn, line, err
+	}
+	conn, line, err := status("X-Pad: " + strings.Repeat("a", 32<<10) + "\r\n")
+	if err != nil || !strings.Contains(line, "431") {
+		t.Fatalf("oversized header: %q %v", line, err)
+	}
+	_ = conn.Close()
+	served := func() net.Conn {
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			conn, line, err := status("")
+			if err == nil && strings.Contains(line, "200") {
+				return conn
+			}
+			if conn != nil {
+				_ = conn.Close()
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("a connection was not served: %q %v", line, err)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	var held []net.Conn
+	for i := 0; i < 8; i++ {
+		held = append(held, served())
+	}
+	conn, line, err = status("")
+	if conn != nil {
+		_ = conn.Close()
+	}
+	if err == nil {
+		t.Fatalf("a ninth connection was served: %q", line)
+	}
+	_ = held[0].Close()
+	held[0] = served()
+	for _, c := range held {
+		_ = c.Close()
 	}
 }

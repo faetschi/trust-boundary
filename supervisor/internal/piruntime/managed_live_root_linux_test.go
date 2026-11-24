@@ -461,7 +461,7 @@ func TestD09ManagedPiServiceConfigProviderRouteIsARequiredEnum(t *testing.T) {
 		D09ManagedPiProviderCredentialPath != "/etc/tbound/provider/opencode-go.key" {
 		t.Fatalf("fixed credential paths drifted: %q %q", D09ManagedPiProviderCredentialPath, D09ManagedPiResearchCredentialPath)
 	}
-	for _, route := range []string{D09ManagedPiProviderRouteEngineering, D09ManagedPiProviderRouteResearch, D09ManagedPiProviderRouteVStub} {
+	for _, route := range []string{D09ManagedPiProviderRouteEngineering, D09ManagedPiProviderRouteResearch} {
 		config := testD09ManagedPiServiceConfig()
 		config.ProviderRoute = route
 		if err := config.Validate(); err != nil {

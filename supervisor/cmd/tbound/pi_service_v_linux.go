@@ -158,7 +158,65 @@ func (s *vForwardService) claim(admissionID string) error {
 		return err
 	}
 	_, writeErr := marker.WriteString(admissionID + "\n")
-	return errors.Join(writeErr, marker.Sync(), marker.Close())
+	if err := errors.Join(writeErr, marker.Sync(), marker.Close()); err != nil {
+		return err
+	}
+	return syncVAdmissions(s.admissions)
+}
+
+var syncVAdmissions = func(dir string) error {
+	handle, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	return errors.Join(handle.Sync(), handle.Close())
+}
+
+const (
+	vMaxConnections       = 8
+	vServerReadTimeout    = 2 * time.Minute
+	vServerIdleTimeout    = 30 * time.Second
+	vServerMaxHeaderBytes = 16 << 10
+)
+
+func newVServer(handler http.Handler) *http.Server {
+	return &http.Server{Handler: handler, ReadHeaderTimeout: 15 * time.Second, ReadTimeout: vServerReadTimeout,
+		IdleTimeout: vServerIdleTimeout, MaxHeaderBytes: vServerMaxHeaderBytes}
+}
+
+type vConnectionLimiter struct {
+	net.Listener
+	open atomic.Int32
+	max  int32
+}
+
+type vLimitedConn struct {
+	net.Conn
+	release func()
+}
+
+func (c *vLimitedConn) Close() error {
+	c.release()
+	return c.Conn.Close()
+}
+
+func limitVConnections(listener net.Listener, limit int32) net.Listener {
+	return &vConnectionLimiter{Listener: listener, max: limit}
+}
+
+func (l *vConnectionLimiter) Accept() (net.Conn, error) {
+	for {
+		conn, err := l.Listener.Accept()
+		if err != nil {
+			return nil, err
+		}
+		if l.open.Add(1) > l.max {
+			l.open.Add(-1)
+			_ = conn.Close()
+			continue
+		}
+		return &vLimitedConn{Conn: conn, release: sync.OnceFunc(func() { l.open.Add(-1) })}, nil
+	}
 }
 
 type vUnit struct {
@@ -197,8 +255,8 @@ func (s *vForwardService) open(admissionID string) (*vUnit, error) {
 		_ = listener.Close()
 		return fail(err)
 	}
-	server := &http.Server{Handler: fwd, ReadHeaderTimeout: 15 * time.Second}
-	go func() { _ = server.Serve(listener) }()
+	server := newVServer(fwd)
+	go func() { _ = server.Serve(limitVConnections(listener, vMaxConnections)) }()
 	return &vUnit{dir: dir, server: server, fwd: fwd}, nil
 }
 

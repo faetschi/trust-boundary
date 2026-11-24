@@ -127,10 +127,11 @@ func newVTestEnv(t *testing.T) *vTestEnv {
 	if err := os.Mkdir(fwdDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for name, content := range map[string]string{vrun.SocketName: "", vrun.TokenName: vTestUnitCredential} {
-		if err := os.WriteFile(filepath.Join(fwdDir, name), []byte(content), 0o600); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.WriteFile(filepath.Join(fwdDir, vrun.TokenName), []byte(vTestUnitCredential), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mknod(filepath.Join(fwdDir, vrun.SocketName), syscall.S_IFSOCK|0o600, 0); err != nil {
+		t.Fatal(err)
 	}
 	e.forwarder = &fakeForwarder{dir: fwdDir, podman: e.podman,
 		totals: researchroute.ForwardTotals{Booked: 2, Settled: 2, TokensIn: 200, TokensOut: 50, CostMicroUSD: 350}}

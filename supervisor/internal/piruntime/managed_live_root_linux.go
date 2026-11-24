@@ -206,6 +206,7 @@ func (c D09ManagedPiServiceConfig) Validate() error {
 	if (c.SchemaVersion != D09ManagedPiServiceConfigSchema && c.SchemaVersion != D09ManagedPiServiceConfigSchemaV3) ||
 		c.SourcePolicy != "current-managed-live-root/v1" ||
 		(c.ProviderRoute != D09ManagedPiProviderRouteEngineering && c.ProviderRoute != D09ManagedPiProviderRouteResearch && c.ProviderRoute != D09ManagedPiProviderRouteVStub) ||
+		(c.ProviderRoute == D09ManagedPiProviderRouteVStub && c.WorkflowAdmissionMode != D09ManagedPiWorkflowAdmissionCorpus) ||
 		!c.validWorkflowAdmissionEnvelope() ||
 		!validD09WorkflowBashPaths(c.WorkflowBashOutputPaths) ||
 		c.WorkflowCatalogPath != D09ManagedPiWorkflowCatalogPath || c.WorkflowRootDBPath != D09ManagedPiWorkflowRootDBPath ||

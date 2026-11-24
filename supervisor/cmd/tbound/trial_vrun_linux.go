@@ -178,8 +178,10 @@ type podmanRunner interface {
 // command prefix (setpriv in production, to set no_new_privs once the identity is dropped).
 type execPodmanRunner struct{ wrap []string }
 
+var noNewPrivsWrap = []string{"/usr/bin/setpriv", "--no-new-privs", "--"}
+
 func productionPodmanRunner() podmanRunner {
-	return execPodmanRunner{wrap: []string{"/usr/bin/setpriv", "--no-new-privs", "--"}}
+	return execPodmanRunner{wrap: noNewPrivsWrap}
 }
 
 func (r execPodmanRunner) Run(ctx context.Context, inv podmanInvocation) (int, error) {

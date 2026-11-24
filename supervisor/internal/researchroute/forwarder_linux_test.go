@@ -338,7 +338,7 @@ func TestForwarderSettlesTheUnitAfterTheClientHasGone(t *testing.T) {
 	proceed := make(chan struct{})
 	up.handler = func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n")
+		_, _ = io.WriteString(w, ": "+strings.Repeat("k", 100)+"\n\n")
 		w.(http.Flusher).Flush()
 		<-proceed
 		_, _ = io.WriteString(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":3,\"cost\":0.000002}}\n\ndata: [DONE]\n\n")
