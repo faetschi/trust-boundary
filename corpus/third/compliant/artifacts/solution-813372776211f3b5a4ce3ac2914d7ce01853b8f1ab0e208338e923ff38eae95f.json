@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/simplify.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gc2ltcGxpZnkoeCwgbil7CiAgY29uc3QgW2EsIGJdID0geC5zcGxpdCgnLycpLm1hcChOdW1iZXIpOwogIGNvbnN0IFtjLCBkXSA9IG4uc3BsaXQoJy8nKS5tYXAoTnVtYmVyKTsKICByZXR1cm4gKGEgKiBjKSAlIChiICogZCkgPT09IDA7Cn0K"
+    }
+  ]
+}

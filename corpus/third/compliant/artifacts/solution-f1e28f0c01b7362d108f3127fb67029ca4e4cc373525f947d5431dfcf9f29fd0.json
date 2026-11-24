@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/vowels_count.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gdm93ZWxzX2NvdW50KHMpewogIGNvbnN0IHcgPSBzLnRvTG93ZXJDYXNlKCk7CiAgbGV0IGNvdW50ID0gMDsKICBmb3IgKGNvbnN0IGMgb2YgdykgewogICAgaWYgKCdhZWlvdScuaW5jbHVkZXMoYykpIGNvdW50Kys7CiAgfQogIGlmICh3LmVuZHNXaXRoKCd5JykpIGNvdW50Kys7CiAgcmV0dXJuIGNvdW50Owp9Cg=="
+    }
+  ]
+}

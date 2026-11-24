@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/largest_prime_factor.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gbGFyZ2VzdF9wcmltZV9mYWN0b3Iobil7CiAgbGV0IGxhcmdlc3QgPSAxOwogIGxldCBmID0gMjsKICB3aGlsZSAoZiAqIGYgPD0gbikgewogICAgaWYgKG4gJSBmID09PSAwKSB7CiAgICAgIG4gPSBuIC8gZjsKICAgICAgbGFyZ2VzdCA9IGY7CiAgICB9IGVsc2UgewogICAgICBmKys7CiAgICB9CiAgfQogIHJldHVybiBuID4gMSA/IG4gOiBsYXJnZXN0Owp9Cg=="
+    }
+  ]
+}

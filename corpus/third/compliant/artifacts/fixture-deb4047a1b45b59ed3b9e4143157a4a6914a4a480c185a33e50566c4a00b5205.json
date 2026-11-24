@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/needle-22.ts",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "aW1wb3J0IHsgZ2V0Um91bmRpbmdNZXRob2QgfSBmcm9tICIuLi9fbGliL2dldFJvdW5kaW5nTWV0aG9kL2luZGV4LmpzIjsKaW1wb3J0IHsgbWlsbGlzZWNvbmRzSW5Ib3VyIH0gZnJvbSAiLi4vY29uc3RhbnRzL2luZGV4LmpzIjsKaW1wb3J0IHsgZGlmZmVyZW5jZUluTWlsbGlzZWNvbmRzIH0gZnJvbSAiLi4vZGlmZmVyZW5jZUluTWlsbGlzZWNvbmRzL2luZGV4LmpzIjsKaW1wb3J0IHR5cGUgeyBSb3VuZGluZ09wdGlvbnMgfSBmcm9tICIuLi90eXBlcy5qcyI7CgovKioKICogVGhlIHtAbGluayBkaWZmZXJlbmNlSW5Ib3Vyc30gZnVuY3Rpb24gb3B0aW9ucy4KICovCmV4cG9ydCBpbnRlcmZhY2UgRGlmZmVyZW5jZUluSG91cnNPcHRpb25zIGV4dGVuZHMgUm91bmRpbmdPcHRpb25zIHt9CgovKioKICogQG5hbWUgZGlmZmVyZW5jZUluSG91cnMKICogQGNhdGVnb3J5IEhvdXIgSGVscGVycwogKiBAc3VtbWFyeSBHZXQgdGhlIG51bWJlciBvZiBob3VycyBiZXR3ZWVuIHRoZSBnaXZlbiBkYXRlcy4KICoKICogQGRlc2NyaXB0aW9uCiAqIEdldCB0aGUgbnVtYmVyIG9mIGhvdXJzIGJldHdlZW4gdGhlIGdpdmVuIGRhdGVzLgogKgogKiBAdHlwZVBhcmFtIERhdGVUeXBlIC0gVGhlIGBEYXRlYCB0eXBlLCB0aGUgZnVuY3Rpb24gb3BlcmF0ZXMgb24uIEdldHMgaW5mZXJyZWQgZnJvbSBwYXNzZWQgYXJndW1lbnRzLiBBbGxvd3MgdG8gdXNlIGV4dGVuc2lvbnMgbGlrZSBbYFVUQ0RhdGVgXShodHRwczovL2dpdGh1Yi5jb20vZGF0ZS1mbnMvdXRjKS4KICoKICogQHBhcmFtIGRhdGVMZWZ0IC0gVGhlIGxhdGVyIGRhdGUKICogQHBhcmFtIGRhdGVSaWdodCAtIFRoZSBlYXJsaWVyIGRhdGUKICogQHBhcmFtIG9wdGlvbnMgLSBBbiBvYmplY3Qgd2l0aCBvcHRpb25zLgogKgogKiBAcmV0dXJucyBUaGUgbnVtYmVyIG9mIGhvdXJzCiAqCiAqIEBleGFtcGxlCiAqIC8vIEhvdyBtYW55IGhvdXJzIGFyZSBiZXR3ZWVuIDIgSnVseSAyMDE0IDA2OjUwOjAwIGFuZCAyIEp1bHkgMjAxNCAxOTowMDowMD8KICogY29uc3QgcmVzdWx0ID0gZGlmZmVyZW5jZUluSG91cnMoCiAqICAgbmV3IERhdGUoMjAxNCwgNiwgMiwgMTksIDApLAogKiAgIG5ldyBEYXRlKDIwMTQsIDYsIDIsIDYsIDUwKQogKiApCiAqIC8vPT4gMTIKICovCmV4cG9ydCBmdW5jdGlvbiBkaWZmZXJlbmNlSW5Ib3VyczxEYXRlVHlwZSBleHRlbmRzIERhdGU+KAogIGRhdGVMZWZ0OiBEYXRlVHlwZSB8IG51bWJlciB8IHN0cmluZywKICBkYXRlUmlnaHQ6IERhdGVUeXBlIHwgbnVtYmVyIHwgc3RyaW5nLAogIG9wdGlvbnM/OiBEaWZmZXJlbmNlSW5Ib3Vyc09wdGlvbnMsCik6IG51bWJlciB7CiAgY29uc3QgZGlmZiA9CiAgICBkaWZmZXJlbmNlSW5NaWxsaXNlY29uZHMoZGF0ZUxlZnQsIGRhdGVSaWdodCkgLyBtaWxsaXNlY29uZHNJbkhvdXI7CiAgcmV0dXJuIGdldFJvdW5kaW5nTWV0aG9kKG9wdGlvbnM/LnJvdW5kaW5nTWV0aG9kKShkaWZmKTsKfQo="
+    }
+  ]
+}

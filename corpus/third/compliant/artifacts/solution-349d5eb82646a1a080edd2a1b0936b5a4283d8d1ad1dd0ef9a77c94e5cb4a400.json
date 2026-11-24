@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/starts_one_ends.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gc3RhcnRzX29uZV9lbmRzKG4pewogIGlmIChuID09PSAxKSByZXR1cm4gMTsKICByZXR1cm4gMTggKiBNYXRoLnBvdygxMCwgbiAtIDIpOwp9Cg=="
+    }
+  ]
+}

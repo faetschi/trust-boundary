@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/sort_third.spec.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Ly9UaGlzIGZ1bmN0aW9uIHRha2VzIGFuIGFycmF5IGwgYW5kIHJldHVybnMgYW4gYXJyYXkgbCcgc3VjaCB0aGF0Ci8vIGwnIGlzIGlkZW50aWNhbCB0byBsIGluIHRoZSBpbmRpY2llcyB0aGF0IGFyZSBub3QgZGl2aXNpYmxlIGJ5IHRocmVlLCB3aGlsZSBpdHMgdmFsdWVzIGF0IHRoZSBpbmRpY2llcyB0aGF0IGFyZSBkaXZpc2libGUgYnkgdGhyZWUgYXJlIGVxdWFsCi8vIHRvIHRoZSB2YWx1ZXMgb2YgdGhlIGNvcnJlc3BvbmRpbmcgaW5kaWNpZXMgb2YgbCwgYnV0IHNvcnRlZC4KLy8gPj4+IHNvcnRfdGhpcmQoWzEsIDIsIDNdKQovLyBbMSwgMiwgM10KLy8gPj4+IHNvcnRfdGhpcmQoWzUsIDYsIDMsIDQsIDgsIDksIDJdKQovLyBbMiwgNiwgMywgNCwgOCwgOSwgNV0KZnVuY3Rpb24gc29ydF90aGlyZChsKXsK"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

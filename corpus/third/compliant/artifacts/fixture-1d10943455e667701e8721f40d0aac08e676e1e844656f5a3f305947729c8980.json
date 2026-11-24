@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/parse_music.spec.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Ly9JbnB1dCB0byB0aGlzIGZ1bmN0aW9uIGlzIGEgc3RyaW5nIHJlcHJlc2VudGluZyBtdXNpY2FsIG5vdGVzIGluIGEgc3BlY2lhbCBBU0NJSSBmb3JtYXQuCi8vIFlvdXIgdGFzayBpcyB0byBwYXJzZSB0aGlzIHN0cmluZyBhbmQgcmV0dXJuIGFycmF5IG9mIGludGVnZXJzIGNvcnJlc3BvbmRpbmcgdG8gaG93IG1hbnkgYmVhdHMgZG9lcyBlYWNoCi8vIG5vdCBsYXN0LgovLyBIZXJlIGlzIGEgbGVnZW5kOgovLyAnbycgLSB3aG9sZSBub3RlLCBsYXN0cyBmb3VyIGJlYXRzCi8vICdvfCcgLSBoYWxmIG5vdGUsIGxhc3RzIHR3byBiZWF0cwovLyAnLnwnIC0gcXVhdGVyIG5vdGUsIGxhc3RzIG9uZSBiZWF0Ci8vID4+PiBwYXJzZV9tdXNpYygibyBvfCAufCBvfCBvfCAufCAufCAufCAufCBvIG8iKQovLyBbNCwgMiwgMSwgMiwgMiwgMSwgMSwgMSwgMSwgNCwgNF0KZnVuY3Rpb24gcGFyc2VfbXVzaWMobXVzaWNfc3RyaW5nKXsK"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

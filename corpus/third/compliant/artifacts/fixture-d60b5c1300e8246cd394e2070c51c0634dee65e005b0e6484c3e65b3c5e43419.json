@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/pluck.test.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gcGx1Y2soYXJyKSB7CiAgbGV0IGlkeCA9IC0xOwogIGZvciAobGV0IGkgPSAwOyBpIDwgYXJyLmxlbmd0aDsgaSsrKSB7CiAgICBpZiAoYXJyW2ldICUgMiA9PT0gMCAmJiAoaWR4ID09PSAtMSB8fCBhcnJbaV0gPCBhcnJbaWR4XSkpIGlkeCA9IGk7CiAgfQogIHJldHVybiBpZHggPT09IC0xID8gW10gOiBbYXJyW2lkeF0sIGlkeF07Cn0KCmNvbnN0IF9fdGJvdW5kX291dHB1dHMgPSBbXTsKeyBjb25zdCBvcmlnaW5hbCA9IHBsdWNrOyBwbHVjayA9ICguLi5hcmdzKSA9PiB7IGNvbnN0IHIgPSBvcmlnaW5hbCguLi5hcmdzKTsgX190Ym91bmRfb3V0cHV0cy5wdXNoKHIpOyByZXR1cm4gcjsgfTsgfQpjb25zdCBhc3NlcnQgPSByZXF1aXJlKCdub2RlOmFzc2VydCcpOwoKCmZ1bmN0aW9uIHRlc3QoKSB7CiAgbGV0IGNhbmRpZGF0ZSA9IHBsdWNrOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKFs0LCAyLCAzXSksWzIsIDFdKTsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZShbMSwgMiwgM10pLFsyLCAxXSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoW10pLFtdKTsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZShbNSwgMCwgMywgMCwgNCwgMl0pLFswLCAxXSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoWzEsIDIsIDMsIDAsIDUsIDNdKSxbMCwgM10pOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKFs1LCA0LCA4LCA0LCA4XSksWzQsIDFdKTsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZShbNywgNiwgNywgMV0pLFs2LCAxXSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoWzcsIDksIDcsIDFdKSxbXSk7Cn0KCnRlc3QoKTsKY29uc29sZS5sb2coJ3BsdWNrOiAnICsgcmVxdWlyZSgnbm9kZTpjcnlwdG8nKS5jcmVhdGVIYXNoKCdzaGEyNTYnKS51cGRhdGUoSlNPTi5zdHJpbmdpZnkoX190Ym91bmRfb3V0cHV0cykpLmRpZ2VzdCgnaGV4Jykuc2xpY2UoMCwgMTYpKTsK"
+    }
+  ]
+}

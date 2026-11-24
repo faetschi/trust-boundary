@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/Strongest_Extension.txt",
+      "mode": "0644",
+      "content_b64": "U3Ryb25nZXN0X0V4dGVuc2lvbjogMzNmYjA2YzAyNWQ3MzE1Zgo="
+    }
+  ]
+}

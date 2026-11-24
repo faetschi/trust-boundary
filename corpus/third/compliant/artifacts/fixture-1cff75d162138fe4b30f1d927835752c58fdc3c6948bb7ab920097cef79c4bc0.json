@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/special_factorial.spec.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Ly9UaGUgQnJhemlsaWFuIGZhY3RvcmlhbCBpcyBkZWZpbmVkIGFzOgovLyBicmF6aWxpYW5fZmFjdG9yaWFsKG4pID0gbiEgKiAobi0xKSEgKiAobi0yKSEgKiAuLi4gKiAxIQovLyB3aGVyZSBuID4gMAovLyBGb3IgZXhhbXBsZToKLy8gPj4+IHNwZWNpYWxfZmFjdG9yaWFsKDQpCi8vIDI4OAovLyBUaGUgZnVuY3Rpb24gd2lsbCByZWNlaXZlIGFuIGludGVnZXIgYXMgaW5wdXQgYW5kIHNob3VsZCByZXR1cm4gdGhlIHNwZWNpYWwKLy8gZmFjdG9yaWFsIG9mIHRoaXMgaW50ZWdlci4KZnVuY3Rpb24gc3BlY2lhbF9mYWN0b3JpYWwobil7Cg=="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

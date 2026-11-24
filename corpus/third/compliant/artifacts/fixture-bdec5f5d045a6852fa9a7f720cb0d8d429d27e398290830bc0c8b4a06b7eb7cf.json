@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/is_bored.test.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gaXNfYm9yZWQoUykgewogIGxldCBjb3VudCA9IDA7CiAgZm9yIChjb25zdCBzZW50ZW5jZSBvZiBTLnNwbGl0KC9bLj8hXVxzKi8pKSB7CiAgICBpZiAoc2VudGVuY2Uuc3RhcnRzV2l0aCgiSSAiKSkgY291bnQrKzsKICB9CiAgcmV0dXJuIGNvdW50Owp9Cgpjb25zdCBfX3Rib3VuZF9vdXRwdXRzID0gW107CnsgY29uc3Qgb3JpZ2luYWwgPSBpc19ib3JlZDsgaXNfYm9yZWQgPSAoLi4uYXJncykgPT4geyBjb25zdCByID0gb3JpZ2luYWwoLi4uYXJncyk7IF9fdGJvdW5kX291dHB1dHMucHVzaChyKTsgcmV0dXJuIHI7IH07IH0KY29uc3QgYXNzZXJ0ID0gcmVxdWlyZSgnbm9kZTphc3NlcnQnKTsKCgpmdW5jdGlvbiB0ZXN0KCkgewogIGxldCBjYW5kaWRhdGUgPSBpc19ib3JlZDsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZSgiSGVsbG8gd29ybGQiKSwwKTsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZSgiSXMgdGhlIHNreSBibHVlPyIpLDApOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKCJJIGxvdmUgSXQgISIpLDEpOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKCJiSXQiKSwwKTsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZSgiSSBmZWVsIGdvb2QgdG9kYXkuIEkgd2lsbCBiZSBwcm9kdWN0aXZlLiB3aWxsIGtpbGwgSXQiKSwyKTsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZSgiWW91IGFuZCBJIGFyZSBnb2luZyBmb3IgYSB3YWxrIiksMCk7Cn0KCnRlc3QoKTsKY29uc29sZS5sb2coJ2lzX2JvcmVkOiAnICsgcmVxdWlyZSgnbm9kZTpjcnlwdG8nKS5jcmVhdGVIYXNoKCdzaGEyNTYnKS51cGRhdGUoSlNPTi5zdHJpbmdpZnkoX190Ym91bmRfb3V0cHV0cykpLmRpZ2VzdCgnaGV4Jykuc2xpY2UoMCwgMTYpKTsK"
+    }
+  ]
+}

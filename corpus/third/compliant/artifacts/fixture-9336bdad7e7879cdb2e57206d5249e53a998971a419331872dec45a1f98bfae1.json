@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/below_zero.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gYmVsb3dfemVybyhvcGVyYXRpb25zKXsKICBsZXQgYmFsYW5jZSA9IDA7CiAgZm9yIChjb25zdCBvcCBvZiBvcGVyYXRpb25zKSB7CiAgICBiYWxhbmNlICs9IG9wOwogICAgaWYgKGJhbGFuY2UgPD0gMCkgcmV0dXJuIHRydWU7CiAgfQogIHJldHVybiBmYWxzZTsKfQo="
+    }
+  ]
+}

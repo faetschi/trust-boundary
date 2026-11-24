@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/concatenate.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = concatenate;\n  assert.deepEqual(candidate([]),\"\");\n  assert.deepEqual(candidate([\"x\", \"y\", \"z\"]),\"xyz\");\n  assert.deepEqual(candidate([\"x\", \"y\", \"z\", \"w\", \"k\"]),\"xyzwk\");\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/concatenate.js"
+      ]
+    }
+  ]
+}

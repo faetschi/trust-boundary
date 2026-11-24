@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/intersection.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gaW50ZXJzZWN0aW9uKGludGVydmFsMSwgaW50ZXJ2YWwyKXsKICBjb25zdCBsZW4gPSBNYXRoLm1pbihpbnRlcnZhbDFbMV0sIGludGVydmFsMlsxXSkgLSBNYXRoLm1heChpbnRlcnZhbDFbMF0sIGludGVydmFsMlswXSk7CiAgaWYgKGxlbiA8IDIpIHJldHVybiAiTk8iOwogIGZvciAobGV0IGkgPSAyOyBpICogaSA8PSBsZW47IGkrKykgewogICAgaWYgKGxlbiAlIGkgPT09IDApIHJldHVybiAiTk8iOwogIH0KICByZXR1cm4gIllFUyI7Cn0K"
+    }
+  ]
+}

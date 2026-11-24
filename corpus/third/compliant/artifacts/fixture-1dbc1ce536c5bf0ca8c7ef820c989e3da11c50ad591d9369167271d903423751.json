@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/max_element.spec.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Ly9SZXR1cm4gbWF4aW11bSBlbGVtZW50IGluIHRoZSBhcnJheS4KLy8gPj4+IG1heF9lbGVtZW50KFsxLCAyLCAzXSkKLy8gMwovLyA+Pj4gbWF4X2VsZW1lbnQoWzUsIDMsIC01LCAyLCAtMywgMywgOSwgMCwgMTIzLCAxLCAtMTBdKQovLyAxMjMKZnVuY3Rpb24gbWF4X2VsZW1lbnQobCl7Cg=="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

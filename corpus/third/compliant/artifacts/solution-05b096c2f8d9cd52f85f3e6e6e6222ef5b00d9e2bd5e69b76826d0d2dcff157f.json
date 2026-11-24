@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/smallest_change.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gc21hbGxlc3RfY2hhbmdlKGFycil7CiAgbGV0IGNoYW5nZXMgPSAwOwogIGZvciAobGV0IGkgPSAwOyBpIDwgTWF0aC5mbG9vcihhcnIubGVuZ3RoIC8gMik7IGkrKykgewogICAgaWYgKGFycltpXSAhPT0gYXJyW2Fyci5sZW5ndGggLSAxIC0gaV0pIGNoYW5nZXMrKzsKICB9CiAgcmV0dXJuIGNoYW5nZXM7Cn0K"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/needle-14.txt",
+      "mode": "0644",
+      "content_b64": "bmV3T2JqZWN0Cg=="
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/sum_to_n.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gc3VtX3RvX24obil7CiAgcmV0dXJuIG4gKiAobiArIDEpIC8gMjsKfQo="
+    }
+  ]
+}
