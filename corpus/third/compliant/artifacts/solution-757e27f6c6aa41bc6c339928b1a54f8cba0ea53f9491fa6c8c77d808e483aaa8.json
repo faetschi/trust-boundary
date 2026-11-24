@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/count_nums.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gY291bnRfbnVtcyhhcnIpewogIGNvbnN0IGRpZ2l0U3VtID0gbiA9PiB7CiAgICBjb25zdCBkID0gU3RyaW5nKE1hdGguYWJzKG4pKS5zcGxpdCgnJykubWFwKE51bWJlcik7CiAgICBpZiAobiA8IDApIGRbMF0gPSAtZFswXTsKICAgIHJldHVybiBkLnJlZHVjZSgocywgdikgPT4gcyArIHYsIDApOwogIH07CiAgcmV0dXJuIGFyci5maWx0ZXIobiA9PiBkaWdpdFN1bShuKSA+IDApLmxlbmd0aDsKfQo="
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/sort_third.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gc29ydF90aGlyZChsKXsKICBjb25zdCB0aGlyZHMgPSBsLmZpbHRlcigoXywgaSkgPT4gaSAlIDMgPT09IDApLnNvcnQoKGEsIGIpID0+IGEgLSBiKTsKICBsZXQgayA9IDA7CiAgcmV0dXJuIGwubWFwKCh2LCBpKSA9PiBpICUgMyA9PT0gMCA/IHRoaXJkc1trKytdIDogdik7Cn0K"
+    }
+  ]
+}

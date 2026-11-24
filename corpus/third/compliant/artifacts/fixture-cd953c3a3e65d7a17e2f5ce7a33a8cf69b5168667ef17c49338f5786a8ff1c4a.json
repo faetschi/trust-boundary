@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/fruit_distribution.spec.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Ly9JbiB0aGlzIHRhc2ssIHlvdSB3aWxsIGJlIGdpdmVuIGEgc3RyaW5nIHRoYXQgcmVwcmVzZW50cyBhIG51bWJlciBvZiBhcHBsZXMgYW5kIG9yYW5nZXMgCi8vIHRoYXQgYXJlIGRpc3RyaWJ1dGVkIGluIGEgYmFza2V0IG9mIGZydWl0IHRoaXMgYmFza2V0IGNvbnRhaW5zIAovLyBhcHBsZXMsIG9yYW5nZXMsIGFuZCBtYW5nbyBmcnVpdHMuIEdpdmVuIHRoZSBzdHJpbmcgdGhhdCByZXByZXNlbnRzIHRoZSB0b3RhbCBudW1iZXIgb2YgCi8vIHRoZSBvcmFuZ2VzIGFuZCBhcHBsZXMgYW5kIGFuIGludGVnZXIgdGhhdCByZXByZXNlbnQgdGhlIHRvdGFsIG51bWJlciBvZiB0aGUgZnJ1aXRzIAovLyBpbiB0aGUgYmFza2V0IHJldHVybiB0aGUgbnVtYmVyIG9mIHRoZSBtYW5nbyBmcnVpdHMgaW4gdGhlIGJhc2tldC4KLy8gZm9yIGV4YW1ibGU6Ci8vID4+PiBmcnVpdF9kaXN0cmlidXRpb24oIjUgYXBwbGVzIGFuZCA2IG9yYW5nZXMiLCAxOSkKLy8gOAovLyA+Pj4gZnJ1aXRfZGlzdHJpYnV0aW9uKCIwIGFwcGxlcyBhbmQgMSBvcmFuZ2VzIiwgMykKLy8gMgovLyA+Pj4gZnJ1aXRfZGlzdHJpYnV0aW9uKCIyIGFwcGxlcyBhbmQgMyBvcmFuZ2VzIiwgMTAwKQovLyA5NQovLyA+Pj4gZnJ1aXRfZGlzdHJpYnV0aW9uKCIxMDAgYXBwbGVzIGFuZCAxIG9yYW5nZXMiLCAxMjApCi8vIDE5CmZ1bmN0aW9uIGZydWl0X2Rpc3RyaWJ1dGlvbihzLCBuKXsK"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

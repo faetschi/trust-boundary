@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/derivative.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gZGVyaXZhdGl2ZSh4cyl7CiAgcmV0dXJuIHhzLnNsaWNlKDEpLm1hcCgoeCwgaSkgPT4geCAqIGkpOwp9Cg=="
+    }
+  ]
+}

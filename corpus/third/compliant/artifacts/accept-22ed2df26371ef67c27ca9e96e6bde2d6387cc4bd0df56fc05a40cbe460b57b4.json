@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/sum_to_n.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = sum_to_n;\n  assert.deepEqual(candidate(1),1);\n  assert.deepEqual(candidate(6),21);\n  assert.deepEqual(candidate(11),66);\n  assert.deepEqual(candidate(30),465);\n  assert.deepEqual(candidate(100),5050);\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/sum_to_n.js"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/triples_sum_to_zero.txt",
+      "mode": "0644",
+      "content_b64": "dHJpcGxlc19zdW1fdG9femVybzogNTY3ZWU5ZmRjYzFhNDZiZgo="
+    }
+  ]
+}

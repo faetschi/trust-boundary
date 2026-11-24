@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/needle-15.txt",
+      "digest": "sha256:e6fafc94ffc5d03cd649d08cfa5323b43fafa15823606e4ee0a8f770b88a4d6b"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/needle-15.txt"
+      ]
+    }
+  ]
+}

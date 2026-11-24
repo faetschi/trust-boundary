@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/get_positive.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gZ2V0X3Bvc2l0aXZlKGwpewogIHJldHVybiBsLmZpbHRlcih4ID0+IHggPiAwKTsKfQo="
+    }
+  ]
+}

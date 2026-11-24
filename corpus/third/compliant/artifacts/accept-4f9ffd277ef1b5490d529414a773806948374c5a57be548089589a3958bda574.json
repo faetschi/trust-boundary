@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/is_simple_power.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = is_simple_power;\n  assert.deepEqual(candidate(16, 2),true);\n  assert.deepEqual(candidate(143214, 16),false);\n  assert.deepEqual(candidate(4, 2),true);\n  assert.deepEqual(candidate(9, 3),true);\n  assert.deepEqual(candidate(16, 4),true);\n  assert.deepEqual(candidate(24, 2),false);\n  assert.deepEqual(candidate(128, 4),false);\n  assert.deepEqual(candidate(12, 6),false);\n  assert.deepEqual(candidate(1, 1),true);\n  assert.deepEqual(candidate(1, 12),true);\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/is_simple_power.js"
+      ]
+    }
+  ]
+}

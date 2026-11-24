@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/hex_key.test.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gaGV4X2tleShudW0pIHsKICBsZXQgY291bnQgPSAwOwogIGZvciAoY29uc3QgYyBvZiBudW0pIGlmICgiMjM1N0JEIi5pbmNsdWRlcyhjKSkgY291bnQrKzsKICByZXR1cm4gY291bnQ7Cn0KCmNvbnN0IF9fdGJvdW5kX291dHB1dHMgPSBbXTsKeyBjb25zdCBvcmlnaW5hbCA9IGhleF9rZXk7IGhleF9rZXkgPSAoLi4uYXJncykgPT4geyBjb25zdCByID0gb3JpZ2luYWwoLi4uYXJncyk7IF9fdGJvdW5kX291dHB1dHMucHVzaChyKTsgcmV0dXJuIHI7IH07IH0KY29uc3QgYXNzZXJ0ID0gcmVxdWlyZSgnbm9kZTphc3NlcnQnKTsKCgpmdW5jdGlvbiB0ZXN0KCkgewogIGxldCBjYW5kaWRhdGUgPSBoZXhfa2V5OwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKCJBQiIpLDEpOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKCIxMDc3RSIpLDIpOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKCJBQkVEMUEzMyIpLDQpOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKCIyMDIwIiksMik7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoIjEyMzQ1Njc4OUFCQ0RFRjAiKSw2KTsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZSgiMTEyMjMzNDQ1NTY2Nzc4ODk5QUFCQkNDRERFRUZGMDAiKSwxMik7Cn0KCnRlc3QoKTsKY29uc29sZS5sb2coJ2hleF9rZXk6ICcgKyByZXF1aXJlKCdub2RlOmNyeXB0bycpLmNyZWF0ZUhhc2goJ3NoYTI1NicpLnVwZGF0ZShKU09OLnN0cmluZ2lmeShfX3Rib3VuZF9vdXRwdXRzKSkuZGlnZXN0KCdoZXgnKS5zbGljZSgwLCAxNikpOwo="
+    }
+  ]
+}
