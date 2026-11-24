@@ -183,5 +183,69 @@ expect_ok "glib.sh WGA_FILES lists vs-check.py" grep -q 'guest/vs-check.py' "$K/
 expect_ok "the v-stub service config template differs from the pilot one in provider_route only" bash -c 'diff <(tr -d "\r" < "$1") <(tr -d "\r" < "$2") | grep "^[<>]" | tr "\n" "|" | grep -qx "<   \"provider_route\": \"engineering\",|>   \"provider_route\": \"v-stub\",|"' _ "$ROOT/infra/guest/serve-pi-service.corpus-pilot.json" "$ROOT/infra/guest/serve-pi-service.v-stub.json"
 expect_ok "the frozen research profile bytes of RA-2 come from the committed profile" bash -c '[ "$(tr -d "\r" < "$1" | sed "s|\"frozen_at\": null|\"frozen_at\": \"2026-11-21T13:35:13Z\"|" | sha256sum | cut -c1-64)" = 3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357 ]' _ "$PROFILE"
 
+V34=$K/guest/34-v-stub-probe.sh
+fn() { local f; for f in "$@"; do sed -n "/^$f() {/,/^}/p" "$V34"; done; }
+cat >"$T/td-head.sh" <<'EOS'
+die() { echo "FATAL: $*" >&2; exit 1; }
+say() { :; }
+TORN_DOWN=0 TD_RC=0 VRUN=0 STUB_UP=0 SWAPPED=0 THROWAWAY=0 VERIFY=0
+td_job() { :; }
+td_vclean() { echo VCLEAN; }
+td_stub() { echo STUB; }
+td_delete() { echo DELETE; }
+td_restore() { echo RESTORE; }
+td_verify() { echo VERIFY; }
+EOS
+fn tstep vs_teardown >"$T/td-fns.sh"
+run_td() { bash -c ". '$T/td-head.sh'; . '$T/td-fns.sh'; $1; vs_teardown; echo \"rc=\$?\"" 2>&1; }
+res=$(run_td 'SWAPPED=1 THROWAWAY=1; td_stop_service() { return 1; }')
+expect_ok "teardown stops after a failed svc stop: STOP message, rc=1, no delete, no restore" bash -c '[[ $1 == *"STOP: svc stop failed"* && $1 == *"rc=1"* && $1 != *DELETE* && $1 != *RESTORE* && $1 != *VERIFY* ]]' _ "$res"
+res=$(run_td 'SWAPPED=1 THROWAWAY=1; td_stop_service() { return 0; }')
+expect_ok "teardown with a working svc stop deletes, restores and verifies" bash -c '[[ $1 == *DELETE* && $1 == *RESTORE* && $1 == *VERIFY* && $1 == *"rc=0"* ]]' _ "$res"
+res=$(run_td 'VRUN=1 SWAPPED=1 THROWAWAY=1; td_vkill() { return 1; }; td_stop_service() { echo STOPSVC; }')
+expect_ok "teardown stops at a v-run it cannot kill: STOP message, nothing else touched" bash -c '[[ $1 == *"STOP: the trial v-run could not be shown dead"* && $1 == *"rc=1"* && $1 != *VCLEAN* && $1 != *STOPSVC* && $1 != *DELETE* && $1 != *RESTORE* ]]' _ "$res"
+
+cat >"$T/cat-head.sh" <<'EOS'
+die() { echo "FATAL: $*" >&2; exit 1; }
+ok() { echo "OK $*"; }
+eq() { [ "$2" = "$3" ] || die "$1 mismatch: got '$2' want '$3'"; ok "$1"; }
+EOS
+fn catalog_extends >"$T/cat-fns.sh"
+printf 'one\ntwo\n' >"$T/cat-before"
+printf 'one\ntwo\nthree\n' >"$T/cat-grown"
+printf 'one\nXwo\nthree\n' >"$T/cat-changed"
+printf 'one\n' >"$T/cat-shrunk"
+BSHA=$(sha256sum <"$T/cat-before" | cut -c1-64)
+BSIZE=$(wc -c <"$T/cat-before" | tr -d ' ')
+cat_run() { bash -c ". '$T/cat-head.sh'; . '$T/cat-fns.sh'; catalog_extends \"\$@\"" _ "$@" 2>&1; }
+prefix_of() { head -c "$BSIZE" "$1" | sha256sum | cut -c1-64; }
+size_of() { wc -c <"$1" | tr -d ' '; }
+expect_ok "catalog_extends accepts an appended catalog and reports the appended bytes" bash -c '[[ $1 == *"6 bytes appended"* ]]' _ "$(cat_run "$BSHA" "$BSIZE" "$(size_of "$T/cat-grown")" "$(prefix_of "$T/cat-grown")")"
+expect_ok "catalog_extends accepts an unchanged catalog, 0 bytes appended" bash -c '[[ $1 == *"0 bytes appended"* ]]' _ "$(cat_run "$BSHA" "$BSIZE" "$BSIZE" "$(prefix_of "$T/cat-before")")"
+expect_refuse "catalog_extends refuses a catalog that shrank" "is smaller after the probe" cat_run "$BSHA" "$BSIZE" "$(size_of "$T/cat-shrunk")" "$(prefix_of "$T/cat-shrunk")"
+expect_refuse "catalog_extends refuses a catalog whose old part changed" "mismatch" cat_run "$BSHA" "$BSIZE" "$(size_of "$T/cat-changed")" "$(prefix_of "$T/cat-changed")"
+
+fn require_kill_pattern pilot_meta >"$T/rk-fns.sh"
+sed -n '/^readonly VKILL_PATTERN=/p' "$V34" >"$T/rk-head.sh"
+printf '%s\n' 'PILOT_FILES="a:a b:b c:c d:d e:e f:f"' 'G() { printf "%s" "$FAKE_OUT"; return "${FAKE_RC:-0}"; }' >>"$T/rk-head.sh"
+rk_run() { FAKE_OUT=$1 FAKE_RC=$2 bash -c ". '$T/cat-head.sh'; . '$T/rk-head.sh'; . '$T/rk-fns.sh'; $3" 2>&1; }
+SIX=$(printf 'a r:r 644\nb r:r 644\nc r:r 644\nd r:r 644\ne r:r 644\nf r:r 644')
+FIVE=$(printf 'a r:r 644\nb r:r 644\nc r:r 644\nd r:r 644\ne r:r 644')
+expect_refuse "require_kill_pattern refuses a pattern that matches nothing (pgrep -c prints 0 and exits 1)" "kill pattern matches no process" rk_run 0 1 require_kill_pattern
+expect_refuse "require_kill_pattern refuses an ssh failure with no answer" "kill pattern matches no process" rk_run "" 255 require_kill_pattern
+expect_ok "require_kill_pattern accepts one live match" bash -c '[[ $1 == *"matches 1 live"* ]]' _ "$(rk_run 1 0 require_kill_pattern)"
+expect_refuse "pilot_meta refuses five files" "expected six pilot files" rk_run "$FIVE" 0 pilot_meta
+expect_ok "pilot_meta passes six lines through" bash -c '[ "$1" = "$2" ]' _ "$(rk_run "$SIX" 0 pilot_meta)" "$SIX"
+
+KP=$(sed -n "s/^readonly VKILL_PATTERN='\(.*\)'\$/\1/p" "$V34")
+expect_ok "td_vkill and the live check both use VKILL_PATTERN" bash -c '[ -n "$1" ] && grep -q "sudo -n bash -s -- .\$VKILL_PATTERN." "$2" && grep -q "pgrep -u 0 -fc .\$VKILL_PATTERN." "$2"' _ "$KP" "$V34"
+bash -c 'exec -a "/usr/local/bin/tbound trial ssh-original-command" sleep 30' &
+KPID=$!
+sleep 0.5
+expect_ok "the kill pattern matches a process whose command line is the forced command, and not its own pgrep" bash -c '[ "$(pgrep -u "$(id -u)" -fc "$1")" = 1 ]' _ "$KP"
+kill "$KPID" 2>/dev/null || true
+wait "$KPID" 2>/dev/null || true
+expect_ok "the kill pattern matches nothing once that process is gone" bash -c '[ "$(pgrep -u "$(id -u)" -fc "$1" || true)" = 0 ]' _ "$KP"
+
 if [ "$FAILS" -ne 0 ]; then printf '%d FAIL\n' "$FAILS"; exit 1; fi
 echo "all passed"

@@ -25,8 +25,9 @@ readonly FROZEN_AT=2026-11-21T13:35:13Z
 readonly FROZEN_PROFILE_SHA=sha256:3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357
 readonly VWORK=/var/lib/tbound/v-work
 readonly OUT=/var/tmp/tbound-op
+readonly VKILL_PATTERN='[t]bound trial ssh-original-command'
 readonly THROWAWAY_PATHS="$VS $VS_LEDGER $VS_ADMISSIONS $VS_SCRATCH $STUB_DIR"
-SESSION_OPEN=0 SWAPPED=0 THROWAWAY=0 STUB_UP=0 VRUN=0 VERIFY=0 TORN_DOWN=0 TD_RC=0 VJOB="" VWORK_PRE="" VWORK_DEL="" DEL_PATHS="" CAT_BEFORE=""
+SESSION_OPEN=0 SWAPPED=0 THROWAWAY=0 STUB_UP=0 VRUN=0 VERIFY=0 TORN_DOWN=0 TD_RC=0 VJOB="" VWORK_PRE="" VWORK_DEL="" DEL_PATHS="" CAT_SHA_BEFORE="" CAT_SIZE_BEFORE="" PILOT_META_BEFORE=""
 VS_CASE="" VS_KEY="" PILOT_FILES="serve-pi-service.json:serve-pi-service.json managed-live-root.json:managed-live-root.json managed-live-root.ed25519:managed-live-root.ed25519 pi-host-profile.signed.json:pi-host-profile.json pi-host-profile.ed25519:pi-host-profile.ed25519 d09-cell.json:d09-cell.json"
 
 session_close() {
@@ -38,12 +39,39 @@ session_close() {
 }
 
 pilot_status() { G "$OP status pilot" | tr -d '\r'; }
-catalog_sha() {
-  local h
+catalog_state() {
+  local h n
   op "collect catalog" > /dev/null || die "tbound-op collect catalog failed"
   h=$(G "sha256sum $OUT/_/catalog.jsonl" | cut -d' ' -f1 | tr -d '\r')
   [[ $h =~ ^[0-9a-f]{64}$ ]] || die "no sha256 of the collected catalog: '$h'"
+  n=$(G "stat -c %s $OUT/_/catalog.jsonl" | tr -d '\r')
+  [[ $n =~ ^[0-9]+$ ]] || die "no size of the collected catalog: '$n'"
+  printf '%s %s' "$h" "$n"
+}
+catalog_prefix_sha() {
+  local h
+  h=$(G "head -c $1 $OUT/_/catalog.jsonl | sha256sum" | cut -d' ' -f1 | tr -d '\r')
+  [[ $h =~ ^[0-9a-f]{64}$ ]] || die "no sha256 of the first $1 bytes of the collected catalog: '$h'"
   printf '%s' "$h"
+}
+catalog_extends() {
+  local bsha=$1 bsize=$2 asize=$3 psha=$4
+  [ "$asize" -ge "$bsize" ] || die "the workflow catalog is smaller after the probe ($asize bytes) than before ($bsize bytes)"
+  eq "workflow catalog: first $bsize bytes after the probe == the catalog before (sha256)" "$psha" "$bsha"
+  ok "workflow catalog: $((asize - bsize)) bytes appended by the service since before the swap"
+}
+pilot_meta() {
+  local pair paths="" m
+  for pair in $PILOT_FILES; do paths="$paths /etc/tbound/${pair##*:}"; done
+  m=$(G "sudo -n stat -c '%n %U:%G %a' $paths" | tr -d '\r') || die "cannot stat the pilot files on the guest"
+  [ "$(printf '%s\n' "$m" | grep -c .)" = 6 ] || die "expected six pilot files with owner and mode, got: $m"
+  printf '%s' "$m"
+}
+require_kill_pattern() {
+  local n
+  n=$(G "sudo -n pgrep -u 0 -fc '$VKILL_PATTERN'" | tr -d '\r') || true
+  [[ $n =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] || die "the kill pattern matches no process (got '$n'): td_vkill would read a live v-run as dead"
+  ok "the kill pattern matches $n live process(es) while the unit runs"
 }
 pilot_installed() {
   local s pair
@@ -111,9 +139,9 @@ v_leftovers() {
 }
 td_job() { if [ -n "$VJOB" ] && kill -0 "$VJOB" 2>/dev/null; then kill "$VJOB" || true; fi; }
 td_vkill() {
-  GI 'sudo -n bash -s' <<'EOS' || die "a trial v-run process is still running on the guest after SIGKILL"
+  GI "sudo -n bash -s -- '$VKILL_PATTERN'" <<'EOS' || die "a trial v-run process is still running on the guest after SIGKILL"
 set -u
-P='[t]bound trial ssh-original-command'
+P=$1
 pkill -TERM -u 0 -f "$P" || true
 for i in $(seq 1 30); do pgrep -u 0 -f "$P" > /dev/null || exit 0; sleep 1; done
 pkill -KILL -u 0 -f "$P" || true
@@ -158,6 +186,7 @@ td_delete() {
 td_restore() {
   local pair
   for pair in $PILOT_FILES; do gput 0644 root:root "$HF/pilot/${pair%%:*}" "/etc/tbound/${pair##*:}"; done
+  eq "owner and mode of the six pilot files after the restore == before the swap" "$(pilot_meta)" "$PILOT_META_BEFORE"
   op "svc start" || die "tbound-op svc start failed"
   local s; s=$(pilot_status)
   [[ $s == *"installed config matches state of: pilot"* ]] || die "after the restore the installed chain does not match the pilot state (tbound-op status pilot)"
@@ -165,17 +194,19 @@ td_restore() {
   ok "pilot chain restored from $HF/pilot and started: installed config matches state of pilot, service and socket active"
 }
 td_verify() {
-  local l2 csha chk
+  local l2 cstate csha csize psha chk
   l2=$(op "diag l2" 2>&1 | tr -d '\r') || die "diag l2 failed: $l2"
   printf '%s\n' "$l2" | head -40
   l2_check "$l2" || die "diag l2 does not show the expected L2 state after the restore (see above; PROVISIONING-SIGNING.md L2)"
   eq "live cgroup-root digest (diag l2) == recorded CGROUP_ROOT_DIGEST" "$L2_ROOT_DIGEST" "$(hf_get CGROUP_ROOT_DIGEST)"
   hf_has vs/diag-l2-restored.txt || printf '%s\n' "$l2" | save vs/diag-l2-restored.txt
-  csha=$(catalog_sha) || die "cannot hash the workflow catalog after the restore"
-  eq "workflow catalog sha256 after the probe == before" "$csha" "$CAT_BEFORE"
+  cstate=$(catalog_state) || die "cannot measure the workflow catalog after the restore"
+  read -r csha csize <<<"$cstate"
+  psha=$(catalog_prefix_sha "$CAT_SIZE_BEFORE") || die "cannot hash the catalog prefix after the restore"
+  catalog_extends "$CAT_SHA_BEFORE" "$CAT_SIZE_BEFORE" "$csize" "$psha"
   chk=$(trial "reset $VS_CASE --check" | tr -d '\r') || die "trial reset $VS_CASE --check refused after the restore: $chk"
   [[ $chk == *tbound-trial-reset/v1* && $chk == *'"check":true'* ]] || die "trial reset --check did not print a check document after the restore: $chk"
-  ok "pilot chain verified after the restore: diag l2 as the pilot cycle left it, catalog unchanged, trial reset --check answers"
+  ok "pilot chain verified after the restore: diag l2 as the pilot cycle left it, catalog extends the one before, pilot file owners and modes as before, trial reset --check answers"
 }
 tstep() {
   if ( "$@" ); then return 0; fi
@@ -188,9 +219,14 @@ vs_teardown() {
   TD_RC=0
   say "teardown: stub, v-stub service, throwaway files, pilot chain"
   tstep td_job
-  if [ "$VRUN" = 1 ]; then tstep td_vkill || return 1; tstep td_vclean && VRUN=0; fi
+  if [ "$VRUN" = 1 ]; then
+    tstep td_vkill || { echo "STOP: the trial v-run could not be shown dead. Nothing else was touched: the v-stub service config is still installed and the service may still run, the stub, the throwaway files and the key are still on the guest, the pilot files are not reinstalled. The owner recovers by hand (PROVISIONING-SIGNING.md, V probe, manual recovery)." >&2; return 1; }
+    tstep td_vclean && VRUN=0
+  fi
   if [ "$STUB_UP" = 1 ]; then tstep td_stub && STUB_UP=0; fi
-  if [ "$SWAPPED" = 1 ]; then tstep td_stop_service; fi
+  if [ "$SWAPPED" = 1 ]; then
+    tstep td_stop_service || { echo "STOP: svc stop failed. The v-stub service config may still be installed and loaded and the service may still run. The throwaway files, the stub key and the throwaway ledger were NOT deleted and the six pilot files were NOT reinstalled. The owner recovers by hand (PROVISIONING-SIGNING.md, V probe, manual recovery)." >&2; return 1; }
+  fi
   if [ "$THROWAWAY" = 1 ]; then tstep td_delete && THROWAWAY=0; fi
   if [ "$SWAPPED" = 1 ]; then tstep td_restore && SWAPPED=0 && VERIFY=1; fi
   if [ "$VERIFY" = 1 ]; then tstep td_verify && VERIFY=0; fi
@@ -256,8 +292,11 @@ eq "config differs from the pilot config in provider_route only" \
 
 say "3. stop the pilot service, install the v-stub config and measure the registration (RA-5, RA-6)"
 pilot_installed
-CAT_BEFORE=$(catalog_sha)
-printf '%s\n' "$CAT_BEFORE" | save vs/catalog-before.sha256
+PILOT_META_BEFORE=$(pilot_meta)
+printf '%s\n' "$PILOT_META_BEFORE" | save vs/pilot-meta-before.txt
+cstate=$(catalog_state)
+read -r CAT_SHA_BEFORE CAT_SIZE_BEFORE <<<"$cstate"
+printf '%s %s\n' "$CAT_SHA_BEFORE" "$CAT_SIZE_BEFORE" | save vs/catalog-before.sha256
 THROWAWAY=1
 SWAPPED=1
 op "svc stop"
@@ -345,6 +384,7 @@ for i in $(seq 1 75); do
   sleep 2
 done
 [ "$SEEN" = 1 ] || die "no request reached the stub (v-run: $(head -c 600 "$LOCAL_TMP/verr.txt" 2>/dev/null))"
+require_kill_pattern
 NAMES=$(podsvc "ps -a --format '{{.Names}}'" | tr -d '\r' | grep '^tbound-v-' || true)
 [ "$(printf '%s\n' "$NAMES" | grep -c .)" = 1 ] || die "expected exactly one tbound-v- container while the stub holds the reply, found: [$NAMES]"
 note "live V container: $NAMES"
