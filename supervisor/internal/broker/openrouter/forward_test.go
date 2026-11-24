@@ -75,3 +75,74 @@ func TestForwardedRequestKeepsToolChoice(t *testing.T) {
 		t.Fatalf("%s %v", built.Body(), err)
 	}
 }
+
+func forwardedBody(messages, tools string) string {
+	body := `{"model":"deepseek/deepseek-v4.1-flash","stream":true,"messages":` + messages
+	if tools != "" {
+		body += `,"tools":` + tools
+	}
+	return body + `}`
+}
+
+func TestForwardedRequestRebuildsToolsAndMessagesFromTheirTypedMembers(t *testing.T) {
+	route := researchTestRoute(t)
+	messages := `[{"role":"system","content":"s"},{"role":"user","content":[{"type":"text","text":"a"},{"type":"text","text":"b"}]},` +
+		`{"role":"assistant","content":null,"reasoning":"r","tool_calls":[{"id":"c1","type":"function","function":{"name":"read","arguments":"{\"path\":\"x\"}"}},{"id":"c2","type":"function","function":{"name":"bash","arguments":"{}"}}]},` +
+		`{"role":"tool","tool_call_id":"c1","name":"read","content":"out"},{"role":"tool","tool_call_id":"c2","content":[{"type":"text","text":"o"}]}]`
+	tools := `[{"type":"function","function":{"name":"read","description":"d","parameters":{"type":"object"}}}]`
+	built, err := BuildForwardedRequest(route, []byte(forwardedBody(messages, tools)), 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"model":"deepseek/deepseek-v4.1-flash","messages":[{"role":"system","content":"s"},{"role":"user","content":[{"type":"text","text":"a"},{"type":"text","text":"b"}]},` +
+		`{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"read","arguments":"{\"path\":\"x\"}"}},{"id":"c2","type":"function","function":{"name":"bash","arguments":"{}"}}],"reasoning":"r"},` +
+		`{"role":"tool","content":"out","tool_call_id":"c1","name":"read"},{"role":"tool","content":[{"type":"text","text":"o"}],"tool_call_id":"c2"}],` +
+		`"tools":` + tools + `,"stream":true,"max_completion_tokens":4096,` + researchTestMembers[1:]
+	if string(built.Body()) != want {
+		t.Fatalf("body\n%s\nwant\n%s", built.Body(), want)
+	}
+}
+
+func TestForwardedRequestRefusesMembersThatCouldBeBilledOutsideTheSizeGate(t *testing.T) {
+	route := researchTestRoute(t)
+	const user = `{"role":"user","content":"hi"}`
+	tool := func(extra string) string {
+		return `[{"type":"function","function":{"name":"read","description":"d","parameters":{"type":"object"}` + extra + `}}]`
+	}
+	for name, body := range map[string]string{
+		"provider server tool":         forwardedBody(`[`+user+`]`, `[{"type":"openrouter:web_search"}]`),
+		"server tool with parameters":  forwardedBody(`[`+user+`]`, `[{"type":"openrouter:web_search","parameters":{"max_results":100}}]`),
+		"tool without a type":          forwardedBody(`[`+user+`]`, `[{"function":{"name":"read","description":"d","parameters":{}}}]`),
+		"extra tool member":            forwardedBody(`[`+user+`]`, `[{"type":"function","cache_control":{"type":"ephemeral"},"function":{"name":"read","description":"d","parameters":{}}}]`),
+		"extra function member":        forwardedBody(`[`+user+`]`, tool(`,"strict":false`)),
+		"function without description": forwardedBody(`[`+user+`]`, `[{"type":"function","function":{"name":"read","parameters":{}}}]`),
+		"function with a bad name":     forwardedBody(`[`+user+`]`, `[{"type":"function","function":{"name":"","description":"d","parameters":{}}}]`),
+		"parameters not an object":     forwardedBody(`[`+user+`]`, `[{"type":"function","function":{"name":"read","description":"d","parameters":"x"}}]`),
+		"tool not an object":           forwardedBody(`[`+user+`]`, `["read"]`),
+		"image part":                   forwardedBody(`[{"role":"user","content":[{"type":"image_url","image_url":{"url":"https://example.com/a.png"}}]}]`, ""),
+		"file part":                    forwardedBody(`[{"role":"user","content":[{"type":"file","file":{"file_data":"https://example.com/a.pdf"}}]}]`, ""),
+		"audio part":                   forwardedBody(`[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"AAAA","format":"wav"}}]}]`, ""),
+		"text part with extra member":  forwardedBody(`[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral"}}]}]`, ""),
+		"text part without text":       forwardedBody(`[{"role":"user","content":[{"type":"text"}]}]`, ""),
+		"empty parts":                  forwardedBody(`[{"role":"user","content":[]}]`, ""),
+		"content a number":             forwardedBody(`[{"role":"user","content":5}]`, ""),
+		"content an object":            forwardedBody(`[{"role":"user","content":{"type":"text","text":"a"}}]`, ""),
+		"extra message member":         forwardedBody(`[{"role":"user","content":"hi","audio":{"id":"a"}}]`, ""),
+		"reasoning_content member":     forwardedBody(`[{"role":"assistant","content":"hi","reasoning_content":"r"}]`, ""),
+		"message without a role":       forwardedBody(`[{"content":"hi"}]`, ""),
+		"unknown role":                 forwardedBody(`[{"role":"function","content":"hi"}]`, ""),
+		"user message with tool calls": forwardedBody(`[{"role":"user","content":"hi","tool_calls":[{"id":"c","type":"function","function":{"name":"read","arguments":"{}"}}]}]`, ""),
+		"reasoning on a user message":  forwardedBody(`[{"role":"user","content":"hi","reasoning":"r"}]`, ""),
+		"tool result without an id":    forwardedBody(`[{"role":"tool","content":"x"}]`, ""),
+		"tool call of another type":    forwardedBody(`[{"role":"assistant","content":null,"tool_calls":[{"id":"c","type":"custom","function":{"name":"read","arguments":"{}"}}]}]`, ""),
+		"tool call extra member":       forwardedBody(`[{"role":"assistant","content":null,"tool_calls":[{"id":"c","type":"function","index":0,"function":{"name":"read","arguments":"{}"}}]}]`, ""),
+		"tool call extra function":     forwardedBody(`[{"role":"assistant","content":null,"tool_calls":[{"id":"c","type":"function","function":{"name":"read","arguments":"{}","extra":1}}]}]`, ""),
+		"tool arguments not a string":  forwardedBody(`[{"role":"assistant","content":null,"tool_calls":[{"id":"c","type":"function","function":{"name":"read","arguments":{}}}]}]`, ""),
+		"repeated tool call id":        forwardedBody(`[{"role":"assistant","content":null,"tool_calls":[{"id":"c","type":"function","function":{"name":"read","arguments":"{}"}},{"id":"c","type":"function","function":{"name":"read","arguments":"{}"}}]}]`, ""),
+		"empty message name":           forwardedBody(`[{"role":"tool","tool_call_id":"c","name":"","content":"x"}]`, ""),
+	} {
+		if _, err := BuildForwardedRequest(route, []byte(body), 4096); !errors.Is(err, ErrForwardedRequest) {
+			t.Errorf("%s: err = %v, want ErrForwardedRequest", name, err)
+		}
+	}
+}
