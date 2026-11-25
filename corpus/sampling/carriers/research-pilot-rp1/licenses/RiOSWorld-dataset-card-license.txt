@@ -1,0 +1,7 @@
+Excerpt (license metadata) of the RiOSWorld dataset card, README.md at Hugging Face revision
+96bb09d9e922fad590603cc8468c602fbc788d95 (https://huggingface.co/datasets/JY-Young/RiOSWorld). The repository has no
+separate LICENSE file; the card declares Apache-2.0, whose text is in Apache-2.0.txt.
+
+---
+license: apache-2.0
+...
