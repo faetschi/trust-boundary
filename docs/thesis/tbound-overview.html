@@ -153,9 +153,9 @@
   <ul>
     <li><b>Different threat model.</b> governator states that it governs cooperative coding agents, and that an approved run is no proof that code is safe. The thesis assumes that the agent is already fooled.</li>
     <li><b>No single decision point.</b> Its tool list and rule check depend on each agent harness: native settings, and a pre-call hook where the harness has one. An effect cannot always be traced to one decision. tbound sends every tool call through one gate.</li>
-    <li><b>No measurement yet.</b> Its red-team rounds found and fixed bugs in its own code. They give no rate of attacks that get through, and they do not count blocked normal work.</li>
+    <li><b>No rate against a fooled agent.</b> Its red-team corpus has 25 attack tests, written from its own audit findings, and all 25 pass after the fixes. This is a regression check: no AI model runs in it, the cases were not chosen apart from the fixes, and it does not count blocked normal work.</li>
   </ul>
-  <p class="small">Source: governator README, v1.0.2, sections "Threat model" and "Sol redteam repair program". The thesis has listed governator as the closest artifact since September 2026 and does not claim the mechanisms as new because of it.</p>
+  <p class="small">Source: governator README, v1.0.2, sections "Threat model" and "Sol redteam repair program", and docs/security.md. The thesis has listed governator as the closest artifact since September 2026 and does not claim the mechanisms as new because of it.</p>
 </div>
 <p>The thesis treats this gap as provisional. It holds only for the sources that the documented literature search found. Other systems may do more than this table shows.</p>
 <h3>Why the usual protections fall short</h3>
