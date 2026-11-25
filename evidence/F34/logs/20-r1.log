@@ -1,0 +1,82 @@
+== 20-r1 start 2026-11-24T22:27:36Z guest=172.29.57.244
+OK   FROZEN-COMMIT = 8627adeb4ab3fb01728136d8b4995bf8d7c07b41
+OK   F23 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+OK   F23 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468
+OK   F23 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:9b7499bc356810b74bc2e5ce0bfea5e66f5918ac9c2031096f80f22b5c2aa3f4
+OK   F23 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:da00b275241e06c23b49e7bd064eb3573f52f4de136c1293157e7938f520eb95
+OK   F23 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1
+OK   F23 record IMGDIGEST == PREV_IMGDIGEST = sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f
+OK   F23 record CFG == PREV_CFG = sha256:2656d410f2b5b8dd40cce326f3c3f73affdd5154fc85fa9a190cbe4d4e2f7731
+OK   F23 record BASE_TD == PREV_BASE_TD = sha256:0179bdd920627ce28ee7041c67c924df7dfcaefeb046270de54ec3b65e2e8fce
+OK   F23 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:ae38be168c42f8c9d2d4d24adda02672432b886670736028a70540911fb7aac3
+OK   F23 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F23 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F23 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:72274bf50b9977652d540999940fc9791444ed675302cb9f609c703aad5a86b9
+OK   F23 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:e29b6f8b22e3c38a01274b628bf24a239b116648a00f2c32d994b8a854a5f4d6
+OK   F23 FROZEN-COMMIT record == PREV_COMMIT = 13ed11939c06e552a2d8662fb752bf2b3640ac68
+OK   F23 g1/RID record == PREV_G1_RID = g1-req-20261108T183243Z
+OK   F23 rp/RID record == PREV_RP_RID = rp-req-20261108T183452Z
+OK   F23 dr/RID record == PREV_DR_RID = dr-req-20261108T183711Z
+OK   F23 dr/RUNID record == PREV_DR_RUNID = production-run-85c9eb7a114561a194560496
+OK   F23 dr/CHECKS_OK record == 'ok' = ok
+OK   F23 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-11-08d
+OK   IMGDIGEST (session-env == HF) = sha256:f10e4972d43ed7130f83a4f07d10e7a71e6051e5e5028e06676f3a963bbcde28
+OK   frozen commit 8627adeb4ab3fb01728136d8b4995bf8d7c07b41; HF=/home/tbound/tbh/f34
+OK   admin.key size/mode = 64 600
+OK   admin.pub digest == HF ADMIN_PUB_DIGEST = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   admin.pub digest == F0 = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   cosign.pub digest == HF COSIGN_PUB_DIGEST = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+OK   cosign.pub digest == F0 = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+
+== preflight: guest 172.29.57.244 (pinned host key, StrictHostKeyChecking=yes)
+guest address: GUEST_IP=172.29.57.244 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', or 'ip -4 addr' on the guest console, then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n works
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-24T22:27:42Z 
+
+== R1 verify-and-reuse (default; R1_REMEASURE=1 for the full procedure)
+OK   guest tbound-profile is the F34 build = sha256:561f5ecf1d03bda7e162cab942a1ca9b1e25a17eedb084ad04f796c1c983bde6
+OK   guest trust anchor == ADMIN_PUB_DIGEST = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+
+== read-only measures in the service context (records xattr-measure-runtime.json, XATTR_MOPT, XATTR_MAGIC)
+OK   BUNDLE_DIGEST (guest, service context) = sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1
+{"filesystem_magic":61267,"mount_options_digest":"sha256:4ae60254afe183f9f8b49d2956ca8ee68ba00380a20111b8ccb12fed35581cb3","scan_uid":995,"scan_gid":986,"scan_privilege_profile":"service-nonroot-no-extra-groups-empty-caps-nnp-initial-userns/v1","effective_capabilities":"0000000000000000","no_new_privs":true,"initial_user_namespace":true,"read_only":true,"root_owned":true}
+OK   xattr-measure output lines = 1
+OK   read_only true, root_owned true
+OK   filesystem magic (0xef63 ext4) = 61267
+OK   mount_options_digest == F0 value sha256:4ae60254afe183f9f8b49d2956ca8ee68ba00380a20111b8ccb12fed35581cb3
+OK   XATTR_MOPT == F23
+OK   xattr-measure-runtime.json already recorded: {"filesystem_magic":61267,"mount_options_digest":"sha256:4ae60254afe183f9f8b49d2956ca8ee68ba00380a20111b8ccb12fed35581cb3","scan_uid":995,"scan_gid":986,"scan_privilege_profile":"service-nonroot-no-extra-groups-empty-caps-nnp-initial-userns/v1","effective_capabilities":"0000000000000000","no_new_privs":true,"initial_user_namespace":true,"read_only":true,"root_owned":true}
+OK   XATTR_MOPT already recorded: sha256:4ae60254afe183f9f8b49d2956ca8ee68ba00380a20111b8ccb12fed35581cb3
+OK   XATTR_MAGIC already recorded: 61267
+OK   live root fixture is canonical (no non-canonical entries) = 0
+OK   guest /etc/tbound/d09-xattr-enumeration-calibration-readonly.json == F23 file = sha256:f7731b28adfb36c4444fcfe598be8d7e8cc89b97134a21c4a3b7771243f6463c
+cp: warning: behavior of -n is non-portable and may change in future; use --update=none instead
+OK   copied d09-xattr-enumeration-calibration-readonly.json into HF = sha256:f7731b28adfb36c4444fcfe598be8d7e8cc89b97134a21c4a3b7771243f6463c
+OK   guest /etc/tbound/d09-xattr-enumeration-calibration-readonly.ed25519 == F23 file = sha256:9fd48873a1e5ed2461e2fdb11c36d4d36db722491041c67ad7efa14e1b558ef5
+cp: warning: behavior of -n is non-portable and may change in future; use --update=none instead
+OK   copied d09-xattr-enumeration-calibration-readonly.ed25519 into HF = sha256:9fd48873a1e5ed2461e2fdb11c36d4d36db722491041c67ad7efa14e1b558ef5
+verified separately signed xattr enumeration calibration sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+verified separately signed xattr enumeration calibration sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   CAL_RO_DIGEST: owner (F34 tbound-profile) digest == F23 record = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   CAL_RO_DIGEST: owner digest == PREV_CAL_RO_DIGEST constant = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   CAL_RO_DIGEST: guest digest == owner digest = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   recorded CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   guest /etc/tbound/d09-xattr-enumeration-calibration.json == F23 file = sha256:cc070043730a715924a2f58e2afc702129dbf280b706d7a3977ad3a983f720f4
+cp: warning: behavior of -n is non-portable and may change in future; use --update=none instead
+OK   copied d09-xattr-enumeration-calibration.json into HF = sha256:cc070043730a715924a2f58e2afc702129dbf280b706d7a3977ad3a983f720f4
+OK   guest /etc/tbound/d09-xattr-enumeration-calibration.ed25519 == F23 file = sha256:66b211449f0be2c915e9f11ccd033250eac4d7ad257a4bf0c5c35a1995012858
+cp: warning: behavior of -n is non-portable and may change in future; use --update=none instead
+OK   copied d09-xattr-enumeration-calibration.ed25519 into HF = sha256:66b211449f0be2c915e9f11ccd033250eac4d7ad257a4bf0c5c35a1995012858
+verified separately signed xattr enumeration calibration sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+verified separately signed xattr enumeration calibration sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   CAL_RW_DIGEST: owner (F34 tbound-profile) digest == F23 record = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   CAL_RW_DIGEST: owner digest == PREV_CAL_RW_DIGEST constant = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   CAL_RW_DIGEST: guest digest == owner digest = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   recorded CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+cp: warning: behavior of -n is non-portable and may change in future; use --update=none instead
+cp: warning: behavior of -n is non-portable and may change in future; use --update=none instead
+OK   recorded R1-MODE = reused-from-f23: calibrations carry no frozen-commit binding; F23 files copied, installed copies verified under the F34 tbound-profile
+NOTE CAL_RW_DIGEST is what the G1 registration binds (reg-measure reads /etc/tbound/d09-xattr-enumeration-calibration.json)
+
+== DONE 20-r1.sh 2026-11-24T22:27:54Z

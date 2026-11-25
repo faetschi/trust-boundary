@@ -1,0 +1,23 @@
+HEAD 94c71e4dce561021687d64fc5da0788a6c29bf42 dirty=0 cr=0
+start 2026-11-24T17:07:15Z green
+--- PASS: TestVServiceServesOneUnitAndEverythingIsDeadAfterwards (0.08s)
+--- PASS: TestVServiceRefusesTheRequestAfterTheCaseMaxHostCalls (0.11s)
+--- PASS: TestVServiceCapIsBoundedByTheProfile (0.08s)
+--- PASS: TestVServiceAdmitsACaseOnce (0.06s)
+--- PASS: TestVServiceHoldsTheTaskSlotForTheUnit (0.06s)
+--- PASS: TestVServiceEndsTheUnitWhenTheClientDisappears (0.07s)
+--- PASS: TestVServiceEndsTheUnitAtTheCaseDeadlinePlusSlack (0.11s)
+--- PASS: TestVServiceEndsTheUnitWhenTheServiceStops (0.05s)
+--- PASS: TestServeVRequestHoldsTheSlotAndTheMaintenanceLockOnlyForTheUnit (0.00s)
+--- PASS: TestVRoleAdmission (0.05s)
+--- PASS: TestVForwarderCommandRequestPassesTheCorpusAdmissionScreen (0.05s)
+--- PASS: TestVServiceSyncsTheAdmissionDirectoryAfterTheMarkerIsWritten (0.06s)
+--- PASS: TestVServiceOpensNoUnitWhenTheAdmissionMarkerIsNotDurable (0.05s)
+--- PASS: TestVForwarderClientRunsUnderNoNewPrivs (0.00s)
+PASS
+ok  	tbound/supervisor/cmd/tbound	1.907s
+rc=0
+ok  	tbound/supervisor/internal/researchroute	3.655s
+ok  	tbound/supervisor/internal/broker/openrouter	6.361s
+rc=0
+end 2026-11-24T17:07:38Z

@@ -1,0 +1,2 @@
+verified signed managed live-root policy tbound-managed-live-root-registration/v1 for /var/lib/tbound/live/root (service tbound-pi, digest sha256:2f08e4080ec1ebbec0da066370fdee2b1c84f3cd079c7391125804d2ddd790ef, runner sha256:f9d4b4cad7bf0e7f70e2b11ce6d8805e32cfbaa328935bbff3f9d25ff872ed01)
+This verifies policy/signature only; it is not a live-root quiescence permit.

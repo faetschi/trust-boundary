@@ -1,0 +1,7 @@
+== 00-session-sudo start 2026-11-24T07:43:00Z guest=172.29.57.244
+OK   ssh identity = tboundadmin
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-24T07:43:01Z 
+operator: Admin mode=close
+
+== remove the drop-in
+FATAL: TBA_PW is not set (read -rs TBA_PW; export TBA_PW)

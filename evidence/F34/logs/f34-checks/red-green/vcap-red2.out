@@ -1,0 +1,26 @@
+HEAD 8c036e64169309813d9de2f14ad1ce41bf88cda8 dirty=0 cr=0
+start 2026-11-24T17:06:48Z red2
+--- PASS: TestVServiceServesOneUnitAndEverythingIsDeadAfterwards (0.08s)
+    pi_service_v_linux_test.go:268: request max_host_calls+1 = 10: status 200, want 429
+    pi_service_v_linux_test.go:271: the upstream saw 10 requests, want max_host_calls 9
+    pi_service_v_linux_test.go:274: booked 10, want max_host_calls 9
+--- FAIL: TestVServiceRefusesTheRequestAfterTheCaseMaxHostCalls (0.11s)
+--- PASS: TestVServiceAdmitsACaseOnce (0.06s)
+--- PASS: TestVServiceHoldsTheTaskSlotForTheUnit (0.07s)
+--- PASS: TestVServiceEndsTheUnitWhenTheClientDisappears (0.10s)
+--- PASS: TestVServiceEndsTheUnitAtTheCaseDeadlinePlusSlack (0.11s)
+--- PASS: TestVServiceEndsTheUnitWhenTheServiceStops (0.06s)
+--- PASS: TestServeVRequestHoldsTheSlotAndTheMaintenanceLockOnlyForTheUnit (0.00s)
+--- PASS: TestVRoleAdmission (0.05s)
+--- PASS: TestVForwarderCommandRequestPassesTheCorpusAdmissionScreen (0.05s)
+--- PASS: TestVServiceSyncsTheAdmissionDirectoryAfterTheMarkerIsWritten (0.06s)
+--- PASS: TestVServiceOpensNoUnitWhenTheAdmissionMarkerIsNotDurable (0.06s)
+--- PASS: TestVForwarderClientRunsUnderNoNewPrivs (0.00s)
+FAIL
+FAIL	tbound/supervisor/cmd/tbound	0.897s
+FAIL
+rc=1
+ok  	tbound/supervisor/internal/researchroute	3.363s
+ok  	tbound/supervisor/internal/broker/openrouter	6.073s
+rc=0
+end 2026-11-24T17:07:09Z

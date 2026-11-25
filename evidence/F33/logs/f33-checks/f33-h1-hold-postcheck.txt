@@ -1,0 +1,35 @@
+# F33 hold post-check after the pre-F31 restore (read-only), host time 2026-11-24T14:35:43Z
+2026-11-24T14:35:44Z
+2026-11-19 11:50:42
+7.0.0-38-generic
+== holds
+linux-generic-hwe-24.04
+linux-headers-generic-hwe-24.04
+linux-image-7.0.0-38-generic
+linux-image-generic-hwe-24.04
+== linux-image
+hi  linux-image-7.0.0-38-generic 7.0.0-38.38~24.04.4
+ii  linux-image-7.0.0-43-generic 7.0.0-43.43~24.04.1
+hi  linux-image-generic-hwe-24.04 7.0.0-43.43~24.04.1
+== timers
+disabled
+disabled
+disabled
+inactive
+inactive
+== apt periodic
+APT::Periodic::Update-Package-Lists "0";
+APT::Periodic::Unattended-Upgrade "0";
+== needrestart
+$nrconf{restart} = 'l';
+== grub.d
+GRUB_DEFAULT="gnulinux-advanced-4b840140-df63-48a3-adf5-1400444e8232>gnulinux-7.0.0-38-generic-advanced-4b840140-df63-48a3-adf5-1400444e8232"
+== dpkg.log entries dated 2026-11-20 or later
+0
+== sudo narrowed
+sudo: a password is required
+== openrouter.key (existence only)
+absent
+drwxr-xr-x 2 root root 4096 Oct 20 16:57 /etc/tbound/provider
+== research ledger (existence only)
+absent
