@@ -95,7 +95,7 @@
 </ul>
 
 <h2 id="s2">2. The research gap</h2>
-<p>Many tools already provide several specific agentic safeguards below. The thesis asks what happens when multiple different safeguarding approaches are combined, tested under one test plan that is fixed in advance.</p>
+<p>Many tools already provide the safeguards below, and some combine several of them. What is missing is evidence. Single defenses have been tested against attacks together with their effect on normal tasks. No study found in the documented literature search tests a combination of these safeguards that way, at the level of real effects and under a test plan that is fixed in advance. The thesis produces that evidence for one fixed setup.</p>
 <div class="parts">
   <div class="part"><b>1 Fixed tool list</b>The model can only use tools we declare.</div>
   <div class="part"><b>2 Outside rule check</b>A separate program says ALLOW or DENY. No AI decides.</div>
@@ -148,7 +148,15 @@
 </svg>
 <p class="legend"><span class="item"><span class="dot full"></span>provided</span> <span class="item"><span class="dot half"></span>partly (e.g. only inside the agent harness)</span> <span class="item"><span class="dot"></span>not established</span><br><span class="item"><span class="dot me"></span>in the tbound design</span></p>
 <p class="small">This is a simplified reading of the thesis's own comparison table, not a full survey. An empty cell means the thesis does not claim that safeguard for the tool. It does not mean the tool lacks it.</p>
-<p>No approach in the table provides all five. The closest, governator, provides three of them. It covers the fixed tool list and the outside rule check only partly, through each agent harness's own settings and hooks. The thesis does not claim any single safeguard as new. Its proposed contribution is the integration of all five behind one external, deterministic enforcement point that every tool call must pass: A program outside the agent loop, and it gives the same verdict for the same request under the same rules.</p>
+<p>No approach in the table provides all five, but the count is not the gap. The closest, governator, provides three of them. It covers the fixed tool list and the outside rule check only partly, through each agent harness's own settings and hooks. The thesis does not claim any single safeguard, or their combination, as new. The gap is evidence: no combination found in the search has a published, independent test against attacks that also measures blocked normal work. The thesis builds tbound to produce that evidence. tbound puts all five behind one external, deterministic enforcement point that every tool call must pass: a program outside the agent loop that gives the same verdict for the same request under the same rules. Because each call gets one decision, each observed effect can be traced to the decision that allowed it.</p>
+<div class="card"><b>Why not just evaluate governator?</b>
+  <ul>
+    <li><b>Different threat model.</b> governator states that it governs cooperative coding agents. It also warns: "Never treat an approved run as proof that arbitrary third-party code is safe." The thesis assumes that the agent is already fooled.</li>
+    <li><b>Its rule check is not on every call.</b> governator has one rule engine, but governed runs reach it only where the harness allows. Codex has no pre-call hook, and governed Pi runs disable extensions, so the engine sees no Pi call. An effect cannot always be traced to one decision. tbound sends every tool call through one gate.</li>
+    <li><b>No rate against a fooled agent.</b> Its red-team corpus is large: 420 cases in the v1.0.2 manifest, written from successive audits of its own code, and it must pass before each release. This is a regression check: no AI model runs in it, the cases were not chosen apart from the fixes, and it does not count blocked normal work.</li>
+  </ul>
+  <p class="small">Source: governator README, v1.0.2, sections "Threat model" and "Sol redteam repair program", docs/security.md, docs/backends.md and internal/redteam/manifest.yaml. The thesis has listed governator as the closest artifact since September 2026 and does not claim the mechanisms as new because of it.</p>
+</div>
 <p>The thesis treats this gap as provisional. It holds only for the sources that the documented literature search found. Other systems may do more than this table shows.</p>
 <h3>Why the usual protections fall short</h3>
 <style>
@@ -419,7 +427,7 @@
   <text x="518" y="332" text-anchor="middle" font-size="11"><tspan font-weight="bold">When work becomes real</tspan> (staged publish).</text>
 </svg>
 <p class="legend"><span class="item"><span class="dot s3-red"></span>untrusted</span> <span class="item"><span class="dot s3-green"></span>trusted (part of tbound)</span> <span class="item"><span class="dot s3-box"></span>the governance box</span><br><span class="item"><span class="dot s3-dash"></span>observers outside the box</span> <span class="item"><span class="dot s3-dots"></span>optional outer layer</span></p>
-<p>tbound does not claim to be the only system that protects credentials or controls network access. Its difference is the combination of all five safeguards.</p>
+<p>tbound does not claim to be the only system that protects credentials or controls network access. Its distinguishing design choice is one per-call gate in front of all five safeguards. The planned test of that combination is the contribution.</p>
 <p class="small">Based on the <a href="https://github.com/anthropic-experimental/sandbox-runtime">sandbox-runtime documentation</a> and the <a href="https://code.claude.com/docs/en/sandboxing">Claude Code sandbox documentation</a>, checked 2026-11-10. Only main test runs on one fixed virtual machine count for the thesis. Runs on a plain Linux computer count only as replications.</p>
 
 <h3 id="sec-box">Idea of tbound in one picture</h3>
