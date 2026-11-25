@@ -1,0 +1,5 @@
+ledger absent
+/etc/tbound/provider/openrouter.key absent
+/etc/tbound/provider/research-profile.json absent
+/etc/tbound/provider/research-ledger.json absent
+/etc/tbound/provider/research-ledger-checkpoint.json absent

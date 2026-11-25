@@ -1,0 +1,4 @@
+signed host profile: /home/tbound/tbh/f34/vs/pi-host-profile.signed.json
+Digest: sha256:a7dcaf7fa00645f3b035dd186dd6ffcb3ee7f751654200b9f5b98c5a26382a05
+Public key (hex): 1fc6faa24be42d32c9e522947a392c19ceb454b4dddfe2e1c0c5d703b4ac079e
+Signature: /home/tbound/tbh/f34/vs/pi-host-profile.ed25519

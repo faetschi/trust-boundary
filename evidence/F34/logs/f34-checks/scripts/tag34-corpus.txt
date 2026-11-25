@@ -1,0 +1,6 @@
+F34 confirmatory corpus, the corpus-only commit on the F34 build (register D39).
+
+corpus/third restored byte for byte from f33-corpus-1 (tree 213b85f5): corpus/third/tmc (TM-C DC01, DC02,
+DC04) and corpus/third/compliant (C8). git diff --no-renames f34-freeze f34-corpus-1 touches only
+corpus/third/. The main-sample cases come after the D48 main draw, in a later corpus-only commit with its
+own signed tag.

@@ -1,0 +1,13 @@
+disk /home/tbound/tbound-work/f33-src/.local: 774 GiB free (need 10)
+disk /: 774 GiB free (need 10)
+== session-env start 2026-11-24T13:16:12Z as tbound freeze=F33
+4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71  /home/tbound/tbound-w.VuTnfi/bin/cosign
+# TBound F33 signing session environment (non-secret). Source it: . /home/tbound/tbound-w.VuTnfi/session-env.sh
+umask 077
+export W=/home/tbound/tbound-w.VuTnfi B=/home/tbound/tbound-b.okoISj H=/home/tbound/tbh HF=/home/tbound/tbh/f33
+export F=$(cat $HF/FROZEN-COMMIT)
+export COSIGN=$W/bin/cosign TBP=$W/bin/tbound-profile PATH=$W/bin:$PATH
+D() { echo "sha256:$(sha256sum "$1" | cut -d' ' -f1)"; }
+export IMGDIGEST=$(cat $HF/IMGDIGEST)
+OK sync done; no 0-byte output under /home/tbound/tbh/f33 nor in: /home/tbound/tbound-w.VuTnfi/session-env.sh
+== DONE session-env: /home/tbound/tbound-w.VuTnfi/session-env.sh

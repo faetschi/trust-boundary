@@ -1,0 +1,24 @@
+HEAD 7f600eb569629f09ccceb7325145e7e5177d42a6 dirty=0 cr=0
+start 2026-11-24T17:05:33Z red
+--- PASS: TestVServiceServesOneUnitAndEverythingIsDeadAfterwards (0.08s)
+    pi_service_v_linux_test.go:261: Post "http://forwarder/v1/chat/completions": http: server closed idle connection
+--- FAIL: TestVServiceRefusesTheRequestAfterTheCaseMaxHostCalls (0.10s)
+--- PASS: TestVServiceAdmitsACaseOnce (0.06s)
+--- PASS: TestVServiceHoldsTheTaskSlotForTheUnit (0.06s)
+--- PASS: TestVServiceEndsTheUnitWhenTheClientDisappears (0.07s)
+--- PASS: TestVServiceEndsTheUnitAtTheCaseDeadlinePlusSlack (0.10s)
+--- PASS: TestVServiceEndsTheUnitWhenTheServiceStops (0.06s)
+--- PASS: TestServeVRequestHoldsTheSlotAndTheMaintenanceLockOnlyForTheUnit (0.00s)
+--- PASS: TestVRoleAdmission (0.05s)
+--- PASS: TestVForwarderCommandRequestPassesTheCorpusAdmissionScreen (0.05s)
+--- PASS: TestVServiceSyncsTheAdmissionDirectoryAfterTheMarkerIsWritten (0.06s)
+--- PASS: TestVServiceOpensNoUnitWhenTheAdmissionMarkerIsNotDurable (0.06s)
+--- PASS: TestVForwarderClientRunsUnderNoNewPrivs (0.00s)
+FAIL
+FAIL	tbound/supervisor/cmd/tbound	0.845s
+FAIL
+rc=1
+ok  	tbound/supervisor/internal/researchroute	3.535s
+ok  	tbound/supervisor/internal/broker/openrouter	6.018s
+rc=0
+end 2026-11-24T17:06:00Z

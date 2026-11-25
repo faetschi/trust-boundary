@@ -1,0 +1,2 @@
+Nov 24 22:52:22 tbound-abi8-seed systemd[1]: Started tbound-pi.service - TBound managed Pi service (socket-activated, one fixed workflow).
+Nov 24 22:52:22 tbound-abi8-seed tbound[513739]: abandoned requests not yet closed in the workflow catalog: request "dr-req-20261124T223331Z" is abandoned but its workflow is no longer reconciled: the workflow behind the unknown Pi service request is not reconciled: the request is not an unknown terminal of a configured service

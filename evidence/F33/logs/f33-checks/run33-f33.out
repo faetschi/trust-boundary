@@ -1,0 +1,22 @@
+##### 33-corpus-pilot.sh 2026-11-24T15:22:05Z
+NOTE host side: tbound-run evq/route-report take --artifact guest-capability=<file> etc. from /home/tbound/tbh/f33/evq (copy to the host /home/tbound/tbh/ga names as the runbook wants); --guest-binary-sha256 = TBP_DIGEST.
+
+== DONE 40-guest-evidence.sh 2026-11-24T15:23:38Z
+OK   netsink envelope fetched: /home/tbound/tbh/f33/evq/netsink.json
+NOTE the pilot service is left running. Close-out: sudo -n true must still fail. Next (owner): rerun tbound-run evq with the new netsink.json (report 01 step 12b).
+NOTE NOT PROVEN: a pilot request admission (corpus mode with a real request, the Go admission path). M3 should start with ONE run with --max-steps 1 before the full pilot.
+
+== DONE 33-corpus-pilot.sh 2026-11-24T15:23:40Z
+rc=0 2026-11-24T15:23:41Z
+##### 34-v-stub-probe.sh 2026-11-24T15:23:41Z
+
+User tboundadmin may run the following commands on tbound-abi8-seed:
+    (ALL : ALL) ALL
+    (root) NOPASSWD: /opt/tbound/operator/tbound-op
+sudoers.d: 50-tbound-op README 
+OK   narrowed: only the tbound-op NOPASSWD rule plus password (ALL : ALL) ALL
+
+== DONE 00-session-sudo.sh 2026-11-24T15:25:15Z
+rc=1 2026-11-24T15:25:16Z
+STOP rc=1 at 34-v-stub-probe.sh
+EXIT=1

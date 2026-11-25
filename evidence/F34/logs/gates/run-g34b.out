@@ -1,0 +1,10 @@
+cfe2b381118467e480df4e084e472d515817636f4e8b479c1311db89d4ea9f24  /home/tbound/tbound-work/g34b.tar
+BLOBS checked=4625 mismatched=0 extra_files=0
+GATE_TOOL kf19 == freeze tree
+meta load=0.08 0.03 0.43 start=2026-11-24T19:07:18Z
+GATE_RC=1 end=2026-11-24T19:33:46Z
+TEST_RC=1
+boot 3f4883e2-0222-48fc-b1a4-a15c0aa0d84f 2026-11-24T19:33:46Z
+FAIL tbound/supervisor/internal/netoracle TestCollectorArrivalInTheCanaryWindowIsAnEffect
+tests {'pass': 7883, 'skip': 52, 'fail': 1} packages {'skip': 4, 'pass': 58, 'fail': 1}
+EXIT=0
