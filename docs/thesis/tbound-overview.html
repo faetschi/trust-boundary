@@ -1210,7 +1210,6 @@
   .t .tool-yes { color: var(--good); font-weight: 700; }
   .t .tool-no { color: var(--bad); font-weight: 700; }
 </style>
-<p>The thesis paper uses the IMRaD: Introduction, Methods, Results and Discussion. The four parts below follow these four chapters.</p>
 <div class="parts">
   <div class="part"><b>4.1 Question and claim</b>Introduction</div>
   <div class="part"><b>4.2 How it is tested</b>Methods</div>
@@ -1270,16 +1269,20 @@
 </div>
 
 <h3 class="ph" id="s4-tested">4.2 How it is tested</h3>
-<p>The thesis follows design science research (DSR) after Hevner et al. (2004), with the six-step process model of Peffers et al. (2007). The thesis designs and builds an artifact, tbound, for a stated problem and then evaluates it in a controlled experiment that follows a protocol fixed before the main run.</p>
+<p>The thesis tests tbound for one fixed scope. The claims hold for this setup only; another harness, model or operating system needs its own run.</p>
 <div class="s4-grid s4-scope">
   <div><svg class="s4-ico" viewBox="0 0 40 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="34" height="26" rx="3"/><path d="M3 13h34"/><path d="M9 20l5 4-5 4M17 28h8"/></svg>
     <span><b>1x pinned Pi version</b>One protected Pi profile. A new version needs fresh checks.</span></div>
   <div><svg class="s4-ico" viewBox="0 0 40 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="10" y="10" width="20" height="20" rx="3"/><rect x="16" y="16" width="8" height="8"/><path d="M15 4v6M20 4v6M25 4v6M15 30v6M20 30v6M25 30v6M4 15h6M4 20h6M4 25h6M30 15h6M30 20h6M30 25h6"/></svg>
     <span><b>1x fixed AI model</b>Model and provider settings are pinned in the test plan.</span></div>
   <div><svg class="s4-ico" viewBox="0 0 40 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><ellipse cx="20" cy="22" rx="11" ry="14"/><ellipse cx="20" cy="26" rx="6" ry="8"/><circle cx="16.5" cy="14" r="1.4" fill="currentColor"/><circle cx="23.5" cy="14" r="1.4" fill="currentColor"/><path d="M17.5 18h5l-2.5 3z" fill="var(--warn)" stroke="var(--warn)"/><path d="M11 36h7M22 36h7" stroke="var(--warn)"/></svg>
-    <span><b>Linux only</b>One declared Linux capability profile. Other systems are out of scope.</span></div>
+    <span><b>Linux only</b>One declared Linux capability profile. On Windows, tbound runs inside a Linux VM; the main runs use one fixed VM.</span></div>
+  <div><svg class="s4-ico" viewBox="0 0 40 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M24.5 10.5a1.7 1.7 0 0 0 0 2.4l2.6 2.6a1.7 1.7 0 0 0 2.4 0l6.3-6.3a10 10 0 0 1-13.2 13.2L11 34a3.5 3.5 0 0 1-5-5l11.6-11.6a10 10 0 0 1 13.2-13.2z"/></svg>
+    <span><b>4 tools</b>read, write, edit and bash. Pi&#39;s own tools are removed, and each stand-in tool only sends a proposal to tbound.</span></div>
   <div><svg class="s4-ico" viewBox="0 0 40 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 18v-5a7 7 0 0 1 14 0v5"/><rect x="8" y="18" width="24" height="18" rx="3"/><circle cx="20" cy="26" r="2.5"/><path d="M20 28.5v3"/></svg>
     <span><b>Test plan frozen</b>Fixed before the main run with signed Git tags in the trust-boundary repository (build and test cases). The thesis repository records the SHA-256 digests with the test plan. Each draw commitment is a public Zenodo record.</span></div>
+  <div><svg class="s4-ico" viewBox="0 0 40 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 35h30"/><path d="M10 30v-8M18 30V14M26 30V6"/></svg>
+    <span><b>Fixed sample sizes</b>299 drawn attack cases and 100 normal tasks, set before the main run.</span></div>
 </div>
 <h4>How do we know the observers work?</h4>
 <p>A log that says "denied" is not proof, so independent observers check the real result. A replay with one protection off checks that each observer can see the effect.</p>
@@ -1579,7 +1582,7 @@
   <tr><td>3 G1 feasibility check</td><td><span class="tag ok">workflow passed</span></td><td>G1 is an early checkpoint that asks whether the design can run at all on the real test machine. It first passed on build F13 (2026-10-24), where Pi read a file, edited it and ran a <code>bash</code> command with a real AI model, it passed again on F32, and it passed once more on F34, the final build. This is not an H1 result, and the final containment test is step 5.</td></tr>
   <tr><td>4 RQ1 conformance check</td><td><span class="tag ok">passed on F34</span></td><td>RQ1 is the automated conformance check of 22 requirements, for example that Pi sees only the tools of tbound and that recovery works. All 22 passed on earlier builds. Only the run on the final build F34 counts, and it passed 22 of 22 (D59, D62; <a href="https://github.com/faetschi/trust-boundary/pull/301">trust-boundary PR #301</a>).</td></tr>
   <tr><td>5 Containment</td><td><span class="tag wip">guest chain passed</span></td><td>Containment means that a command in its locked-down cell cannot reach files, network or processes outside it. Checks on the test machine exist (builds F11 and F12). On the final build F34, which is qualified (D62), the guest chain passed. It covered G1, the probe runs and the V route probe (<a href="https://github.com/faetschi/trust-boundary/pull/301">trust-boundary PR #301</a>).</td></tr>
-  <tr><td>6 Pilots and cases</td><td><span class="tag wip">pilot walk done</span></td><td>The pilot walk is done (2026-11-24), and the draw of 11 attack cases (9 TM-A and 2 TM-B, drand round 6667847) reproduces exactly from the committed inputs. Two screening rounds on the guest, on F32, with no provider spend, completed all 22 static P units (11 per round), and round 1 showed every registered effect. The walk recorded 13 decisions (11 PASS and 2 F-FIXTURE) and found no issue in tbound's own runtime (<a href="https://github.com/faetschi/trust-boundary/pull/285">trust-boundary PR #285</a>). F34 is qualified, and the static-P re-witness of the 11 pilot cases on F34 passed 11 of 11 in both rounds (<a href="https://github.com/faetschi/trust-boundary/pull/301">trust-boundary PR #301</a>). The research pilot on F34 is next, then a full dress rehearsal on development cases before the registration (D60). All research spend is capped at US$10 (D59).</td></tr>
+  <tr><td>6 Pilots and cases</td><td><span class="tag wip">pilot walk done</span></td><td>The pilot walk is done (2026-11-24), and the draw of 11 attack cases (9 TM-A and 2 TM-B, drand round 6667847) reproduces exactly from the committed inputs. Two screening rounds on the guest, on F32, with no provider spend, completed all 22 static P units (11 per round), and round 1 showed every registered effect. The walk recorded 13 decisions (11 PASS and 2 F-FIXTURE) and found no issue in tbound's own runtime (<a href="https://github.com/faetschi/trust-boundary/pull/285">trust-boundary PR #285</a>). F34 is qualified, and the static-P re-witness of the 11 pilot cases on F34 passed 11 of 11 in both rounds (<a href="https://github.com/faetschi/trust-boundary/pull/301">trust-boundary PR #301</a>). The research pilot on F34 is next, then a full practice run on development cases before the registration (D60). All research spend is capped at US$10 (D59).</td></tr>
   <tr><td><b>7 Main run (H1)</b></td><td><span class="tag no">not run</span></td><td>The run that tests H1. It has not started, so no results exist.</td></tr>
 </table>
 
