@@ -1398,7 +1398,7 @@ Not covered here: the route and config of the confirmatory witnesses (D39). This
 
 ### RA-5 (RR-4) [PRIVILEGED WRITE, needs owner approval] research service config
 
-Start from the round's installed engineering config. Change exactly `provider_route` and, for the pilot profile, add `allow_pilot_on_research: true` (`supervisor/cmd/tbound/pi_service_handoff_linux.go:864-866`). A thesis-profile config must not have it. `workflow_max_host_calls` must not exceed the profile's `max_requests_per_unit` 17 (`supervisor/cmd/tbound/research_route_linux.go:45-50`).
+Start from the round's installed engineering config. Change exactly `provider_route` and, for the pilot profile, add `allow_pilot_on_research: true` (`supervisor/cmd/tbound/pi_service_handoff_linux.go:867-868`). A thesis-profile config must not have it. `workflow_max_host_calls` must not exceed the profile's `max_requests_per_unit` 17 (`supervisor/cmd/tbound/research_route_linux.go:45-50`).
 
 Run exactly one of the three `sed` blocks, then the common block.
 
@@ -1419,7 +1419,7 @@ sed -e 's|^  "provider_route": "engineering",$|  "provider_route": "research",|'
 diff $HF/pilot/serve-pi-service.json $RR/serve-pi-service.json      # [READ-ONLY] exactly these three lines changed
 ```
 
-Screening profile (D58 compliant screening, `docs/design/compliant-screening.md`, after the screening manifest's install by RA-4a with `CT` and `CM` naming the screening manifest). It changes exactly three lines: `provider_route`, `corpus_quota_profile` to `screening`, and `corpus_manifest_digest` to that install's `CORPUS_DIGEST`. It adds no `allow_pilot_on_research`: the service refuses it with `screening`, and refuses `screening` on any route but research (`supervisor/cmd/tbound/pi_service_handoff_linux.go:869-870`).
+Screening profile (D58 compliant screening, `docs/design/compliant-screening.md`, after the screening manifest's install). RA-4a does not install it: RA-4a is the thesis profile only and needs the D48 main draw, which screening precedes. The screening install is written with the B-only screening runner (D58 item 4). It changes exactly three lines: `provider_route`, `corpus_quota_profile` to `screening`, and `corpus_manifest_digest` to that install's `CORPUS_DIGEST`. It adds no `allow_pilot_on_research`: the service refuses it with `screening`, and refuses `screening` on any route but research (`supervisor/cmd/tbound/pi_service_handoff_linux.go:869-870`).
 
 ```
 # WSL
@@ -1428,7 +1428,7 @@ sed -e 's|^  "provider_route": "engineering",$|  "provider_route": "research",|'
 diff $HF/pilot/serve-pi-service.json $RR/serve-pi-service.json      # [READ-ONLY] exactly these three lines changed
 ```
 
-Common to both:
+Common to all three:
 
 ```
 # WSL
