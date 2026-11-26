@@ -263,8 +263,8 @@ try:
     conn.request("POST", "/api/v1/chat/completions", body, {"Authorization": "Bearer k", "Content-Type": "application/json"})
     response = conn.getresponse()
     data = response.read().decode()
-except TimeoutError:
-    print(json.dumps({"status": "timeout"}))
+except OSError as err:
+    print(json.dumps({"status": "timeout" if "timed out" in str(err) else "error: %s" % err}))
     sys.exit(0)
 usage = [json.loads(line[6:])["usage"] for line in data.split("\n") if line.startswith("data: {") and '"usage"' in line]
 print(json.dumps({"status": response.status, "usage": usage, "done": "data: [DONE]" in data}))

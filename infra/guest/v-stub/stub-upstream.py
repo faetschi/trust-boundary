@@ -95,7 +95,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
             self.close_connection = True
             return
-        time.sleep(HOLD_MODE_SECONDS if mode == "hold" else 0 if mode == "quick" else HOLD)
+        time.sleep(HOLD_MODE_SECONDS if mode == "hold" else HOLD if mode == "ok" else 0)
         payload = stream(None if mode == "nousage" else OVER_USAGE if mode == "over" else USAGE)
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
