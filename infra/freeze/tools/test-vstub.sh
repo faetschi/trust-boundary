@@ -247,5 +247,40 @@ kill "$KPID" 2>/dev/null || true
 wait "$KPID" 2>/dev/null || true
 expect_ok "the kill pattern matches nothing once that process is gone" bash -c '[ "$(pgrep -u "$(id -u)" -fc "$1" || true)" = 0 ]' _ "$KP"
 
+MPORT=$(py -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+python3 -I "$STUB" "$T/mstub.log" "$T/mstub.pid" 5 "$MPORT" "$T/mode" >"$T/mstub.out" 2>&1 </dev/null &
+MSTUB_PID=$!
+for _ in $(seq 1 50); do py -c 'import socket,sys; socket.create_connection(("127.0.0.1", int(sys.argv[1])), 1)' "$MPORT" 2>/dev/null && break; sleep 0.1; done
+cat >"$T/mode.py" <<'EOF'
+import http.client
+import json
+import sys
+
+port, timeout = int(sys.argv[1]), float(sys.argv[2])
+body = json.dumps({"model": "deepseek/deepseek-v4.1-flash", "stream": True, "max_completion_tokens": 4096, "messages": [{"role": "user", "content": "hi"}]})
+conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+try:
+    conn.request("POST", "/api/v1/chat/completions", body, {"Authorization": "Bearer k", "Content-Type": "application/json"})
+    response = conn.getresponse()
+    data = response.read().decode()
+except TimeoutError:
+    print(json.dumps({"status": "timeout"}))
+    sys.exit(0)
+usage = [json.loads(line[6:])["usage"] for line in data.split("\n") if line.startswith("data: {") and '"usage"' in line]
+print(json.dumps({"status": response.status, "usage": usage, "done": "data: [DONE]" in data}))
+EOF
+mode() { if [ "$1" = none ]; then rm -f "$T/mode"; else printf '%s\n' "$1" >"$T/mode"; fi; py "$T/mode.py" "$MPORT" "$2"; }
+expect_ok "mode quick: 200, one usage chunk, no hold" bash -c '[[ $1 == *"\"status\": 200"* && $1 == *"\"cost\": 2e-06"* && $1 == *"\"done\": true"* ]]' _ "$(mode quick 2)"
+expect_ok "mode fail500: 500 and no stream" bash -c '[[ $1 == *"\"status\": 500"* && $1 == *"\"usage\": []"* ]]' _ "$(mode fail500 2)"
+expect_ok "mode nousage: 200, a finished stream, no usage chunk" bash -c '[[ $1 == *"\"status\": 200"* && $1 == *"\"usage\": []"* && $1 == *"\"done\": true"* ]]' _ "$(mode nousage 2)"
+expect_ok "mode over: 200 and cost 0.06 USD, above the 44,237 micro-USD worst case of one request" bash -c '[[ $1 == *"\"status\": 200"* && $1 == *"\"cost\": 0.06"* ]]' _ "$(mode over 2)"
+expect_ok "mode hold: no answer within 3 s" bash -c '[[ $1 == *"\"status\": \"timeout\""* ]]' _ "$(mode hold 3)"
+expect_ok "an unknown mode is refused with 400, never served as ok" bash -c '[[ $1 == *"\"status\": 400"* ]]' _ "$(mode bogus 2)"
+expect_ok "no mode file: ok with the hold given on the command line" bash -c '[[ $1 == *"\"status\": \"timeout\""* ]]' _ "$(mode none 2)"
+expect_ok "mode ok: 200 after the command-line hold" bash -c '[[ $1 == *"\"status\": 200"* && $1 == *"\"cost\": 2e-06"* ]]' _ "$(mode ok 8)"
+kill "$MSTUB_PID" 2>/dev/null || true
+wait "$MSTUB_PID" 2>/dev/null || true
+expect_ok "the stub log records each request's mode in order" bash -c '[ "$(python3 -I -c "import json,sys; print(\" \".join(json.loads(l)[\"mode\"] for l in open(sys.argv[1]) if l.strip()))" "$1")" = "quick fail500 nousage over hold bogus ok ok" ]' _ "$T/mstub.log"
+
 if [ "$FAILS" -ne 0 ]; then printf '%d FAIL\n' "$FAILS"; exit 1; fi
 echo "all passed"
