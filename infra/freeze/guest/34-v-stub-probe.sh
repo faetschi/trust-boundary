@@ -28,8 +28,8 @@ readonly OUT=/var/tmp/tbound-op
 readonly VKILL_PATTERN='[t]bound trial ssh-original-command'
 readonly THROWAWAY_PATHS="$VS $VS_LEDGER $VS_ADMISSIONS $VS_SCRATCH $STUB_DIR"
 RESEARCH_E2E=${RESEARCH_E2E:-0}
-E2E_CASES="" B_CASE="" E2E_SUMMARY=""
-SESSION_OPEN=0 B_OPEN=0 SWAPPED=0 THROWAWAY=0 STUB_UP=0 VRUN=0 VERIFY=0 TORN_DOWN=0 TD_RC=0 VJOB="" VWORK_PRE="" VWORK_DEL="" DEL_PATHS="" CAT_SHA_BEFORE="" CAT_SIZE_BEFORE="" PILOT_META_BEFORE=""
+E2E_CASES="" B_CASE="" P_CASE="" P_SUMMARY="" E2E_SUMMARY=""
+SESSION_OPEN=0 B_OPEN=0 P_OPEN=0 SWAPPED=0 THROWAWAY=0 STUB_UP=0 VRUN=0 VERIFY=0 TORN_DOWN=0 TD_RC=0 VJOB="" VWORK_PRE="" VWORK_DEL="" DEL_PATHS="" CAT_SHA_BEFORE="" CAT_SIZE_BEFORE="" PILOT_META_BEFORE=""
 VS_CASE="" VS_KEY="" PILOT_FILES="serve-pi-service.json:serve-pi-service.json managed-live-root.json:managed-live-root.json managed-live-root.ed25519:managed-live-root.ed25519 pi-host-profile.signed.json:pi-host-profile.json pi-host-profile.ed25519:pi-host-profile.ed25519 d09-cell.json:d09-cell.json"
 
 session_close() {
@@ -232,7 +232,7 @@ vs_teardown() {
   if [ "$THROWAWAY" = 1 ]; then tstep td_delete && THROWAWAY=0; fi
   if [ "$SWAPPED" = 1 ]; then tstep td_restore && SWAPPED=0 && VERIFY=1; fi
   if [ "$VERIFY" = 1 ]; then tstep td_verify && VERIFY=0; fi
-  [ "$B_OPEN" = 0 ] || never_abandon
+  [ "$B_OPEN" = 0 ] && [ "$P_OPEN" = 0 ] || never_abandon
   [ "$TD_RC" != 0 ] || TORN_DOWN=1
   return "$TD_RC"
 }
@@ -246,6 +246,13 @@ client_run() {
   GSSH_IDENTITY=$TBOUND_CLIENT_KEY GSSH_USER=root sh "$GSSH_SH" "$words" </dev/null
 }
 stub_lines() { G "wc -l < $STUB_DIR/stub.log" | tr -d '\r '; }
+p_case_check() {
+  WX python3 -I -c 'import json,sys
+c=[c for c in json.load(open(sys.argv[1],encoding="utf-8"))["cases"] if c["case_id"]==sys.argv[2]]
+t=c[0]["trial"] if c else {}
+ok=len(c)==1 and c[0]["kind"]=="adversarial" and bool(t.get("script")) and bool(t.get("pivots")) and t.get("p_delta") in ("none","admit-all/v1","net-sink/v1","no-reap/v1","net-sink+admit-all/v1")
+print("ok" if ok else "no")' "$1" "$2" | tr -d '\r\n'
+}
 ledger_lines() { G "sudo -n cat $VS_LEDGER | wc -l" | tr -d '\r '; }
 never_abandon() { echo "A v-stub request must NEVER be abandoned, on any config: restore checkpoint $E2E_CHECKPOINT instead (D63 item 4, owner 2026-11-26)." >&2; }
 rep() { local i out=""; for ((i = 0; i < $2; i++)); do out="$out $1"; done; printf '%s' "${out# }"; }
@@ -316,6 +323,10 @@ case $RESEARCH_E2E in
       [[ $c =~ ^PILOT-CMP-[A-Za-z0-9-]+$ ]] || die "case '$c' is not a development case without a suffix: it could share an admission id with a research-pilot (.rp1) case"
     done
     B_CASE=${E2E_ALL[1]}; E2E_CASES="${E2E_ALL[2]} ${E2E_ALL[3]} ${E2E_ALL[4]}"
+    P_CASE=${P_CASE_OVERRIDE:-PILOT-ADV-A-01}
+    [[ $P_CASE =~ ^PILOT-ADV-[A-Za-z0-9-]+$ ]] || die "P case '$P_CASE' is not a development adversarial case without a suffix: it could share an admission id with a research-pilot (.rp1) case"
+    [ "$(p_case_check "$HF/pilot/manifest.json" "$P_CASE")" = ok ] || die "P case $P_CASE is not an adversarial case with a script, a pivot table and an implemented P delta in the installed manifest"
+    ok "research-route check: P units $P_CASE/p-static-replay/1 and $P_CASE/p-adaptive-replay/1 (scripted roles: no provider request, nothing booked)"
     ok "research-route check: B unit $B_CASE/b-compliant/1, V units for the forwarder checks $E2E_CASES; no id carries a suffix, so none equals a research-pilot (.rp1) admission; recovery point: checkpoint $E2E_CHECKPOINT"
     never_abandon;;
   *) die "RESEARCH_E2E must be 0 or 1";;
@@ -465,6 +476,30 @@ print(r.get("status"), r.get("error_code") or "-")' "$HG/e2e-b-response.jsonl" |
   printf '%s' "$VS_KEY" | WBI "python3 -I '$WGA/vs-check.py' stublog '$HG/stub-b.log' - '$B_CALLS' '$HG/research-profile.json'"
   G "rm -f $STUB_DIR/mode"
   ok "B unit: begin passed with the DR prior present, $B_CALLS call(s) booked and settled in the throwaway ledger, workflow terminal:completed"
+
+  say "6d. P units $P_CASE/p-static-replay/1 and $P_CASE/p-adaptive-replay/1 on the v-stub route: admission with the DR prior present, the workflow ends, nothing is booked or sent"
+  for P_ROLE in p-static-replay p-adaptive-replay; do
+    never_abandon
+    P_RID=vse2e-${P_ROLE%-replay}-$(date -u +%Y%m%dT%H%M%SZ)
+    P_LINES=$(ledger_lines); P_STUB=$(stub_lines)
+    trial "reset $P_CASE" > /dev/null || die "trial reset $P_CASE refused before the $P_ROLE unit"
+    P_OPEN=1; rc=0; client_run "$P_CASE" "$P_ROLE" "$P_RID" > "$LOCAL_TMP/$P_ROLE.out" 2> "$LOCAL_TMP/$P_ROLE.err" || rc=$?
+    [ -s "$LOCAL_TMP/$P_ROLE.out" ] || { never_abandon; die "the $P_ROLE client printed nothing (exit $rc): $(head -c 600 "$LOCAL_TMP/$P_ROLE.err")"; }
+    tr -d '\r' < "$LOCAL_TMP/$P_ROLE.out" | save "vs/e2e-$P_ROLE-response.jsonl"
+    read -r P_STATUS P_CODE <<<"$(WX python3 -I -c 'import json,sys
+r=[json.loads(l) for l in open(sys.argv[1]) if l.strip().startswith("{")][-1]
+print(r.get("status"), r.get("error_code") or "-")' "$HG/e2e-$P_ROLE-response.jsonl" | tr -d '\r')"
+    [ "$P_STATUS" = completed ] || { never_abandon; die "the $P_ROLE unit answered '$P_STATUS' ($P_CODE, client exit $rc), not completed: see $HG/e2e-$P_ROLE-response.jsonl"; }
+    P_OPEN=0
+    op "collect catalog" > /dev/null || die "tbound-op collect catalog failed"
+    G "cat $OUT/_/catalog.jsonl" | tr -d '\r' | save "vs/e2e-catalog-after-$P_ROLE.jsonl"
+    P_STATE=$(workflow_state "$HG/e2e-catalog-after-$P_ROLE.jsonl" "$P_CASE/$P_ROLE/1")
+    [[ $P_STATE == terminal:* ]] || die "workflow $P_CASE/$P_ROLE/1 is '$P_STATE' in the catalog, not terminal"
+    eq "throwaway ledger lines after $P_ROLE (a scripted role books nothing)" "$(ledger_lines)" "$P_LINES"
+    eq "stub requests after $P_ROLE (a scripted role sends nothing)" "$(stub_lines)" "$P_STUB"
+    P_SUMMARY="$P_SUMMARY ${P_ROLE}_request $P_RID ${P_ROLE}_state $P_STATE"
+    ok "$P_ROLE unit: admitted with the DR prior present, workflow $P_STATE, nothing booked or sent"
+  done
 fi
 V_STUB_FROM=$(stub_lines)
 
@@ -535,7 +570,7 @@ if [ "$RESEARCH_E2E" = 1 ]; then
   G "sudo -n cat $VS_LEDGER" | save vs/e2e-ledger-2.jsonl
   WX python3 -I "$WGA/vs-check.py" ledgerseq "$HG/e2e-ledger-2.jsonl" "$GENESIS2_HEAD" 0 "genesis reserve overage" | head -n 1
   ok "overage: the call settled above its reservation, the ledger refused every later request before sending"
-  E2E_SUMMARY="b_case $B_CASE b_request $B_RID b_calls $B_CALLS dr_prior $DR_RID recipe_cases $C2,$C3,$C4 recipe_request_prefix $RID stop_remaining_micro_usd $STOP_REMAINING genesis2_head $GENESIS2_HEAD e2e_checkpoint $E2E_CHECKPOINT"
+  E2E_SUMMARY="b_case $B_CASE b_request $B_RID b_calls $B_CALLS p_case $P_CASE$P_SUMMARY dr_prior $DR_RID recipe_cases $C2,$C3,$C4 recipe_request_prefix $RID stop_remaining_micro_usd $STOP_REMAINING genesis2_head $GENESIS2_HEAD e2e_checkpoint $E2E_CHECKPOINT"
 fi
 
 RS_AFTER=$(research_state); printf '%s\n' "$RS_AFTER" | save vs/research-after.txt
@@ -555,5 +590,5 @@ WX python3 -I "$WGA/vs-check.py" record commit "$F" freeze "$FREEZE" case "$VS_C
 hf_put vs/CHECKS_OK ok
 WX cat "$HG/record.json"
 note "the probe is complete: nothing was booked in the research ledger, the throwaway files are deleted, the pilot chain is running again. Next: 40-guest-evidence.sh v-stub"
-[ "$RESEARCH_E2E" = 0 ] || { never_abandon; note "after 40-guest-evidence.sh v-stub, restore checkpoint $E2E_CHECKPOINT: the B unit's admission $B_CASE/b-compliant/1 and its requests stay in the catalog until then"; }
+[ "$RESEARCH_E2E" = 0 ] || { never_abandon; note "after 40-guest-evidence.sh v-stub, restore checkpoint $E2E_CHECKPOINT: the admissions $B_CASE/b-compliant/1, $P_CASE/p-static-replay/1 and $P_CASE/p-adaptive-replay/1 and their requests stay in the catalog until then"; }
 done_step
