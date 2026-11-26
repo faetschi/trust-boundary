@@ -232,7 +232,6 @@ vs_teardown() {
   if [ "$THROWAWAY" = 1 ]; then tstep td_delete && THROWAWAY=0; fi
   if [ "$SWAPPED" = 1 ]; then tstep td_restore && SWAPPED=0 && VERIFY=1; fi
   if [ "$VERIFY" = 1 ]; then tstep td_verify && VERIFY=0; fi
-  [ "$B_OPEN" = 0 ] && [ "$P_OPEN" = 0 ] || never_abandon
   [ "$TD_RC" != 0 ] || TORN_DOWN=1
   return "$TD_RC"
 }
@@ -254,6 +253,14 @@ ok=len(c)==1 and c[0]["kind"]=="adversarial" and bool(t.get("script")) and bool(
 print("ok" if ok else "no")' "$1" "$2" | tr -d '\r\n'
 }
 ledger_lines() { G "sudo -n cat $VS_LEDGER | wc -l" | tr -d '\r '; }
+e2e_open_guard() {
+  [ "$B_OPEN" = 0 ] && [ "$P_OPEN" = 0 ] && return 0
+  never_abandon
+  echo "FATAL: a v-stub B or P request was still open at exit: step 34 fails, whatever the exit path was" >&2
+  [ -z "$LOCAL_TMP" ] || rm -rf "$LOCAL_TMP"
+  sleep 1
+  exit 1
+}
 never_abandon() { echo "A v-stub request must NEVER be abandoned, on any config: restore checkpoint $E2E_CHECKPOINT instead (D63 item 4, owner 2026-11-26)." >&2; }
 rep() { local i out=""; for ((i = 0; i < $2; i++)); do out="$out $1"; done; printf '%s' "${out# }"; }
 recipe() {
@@ -333,6 +340,7 @@ case $RESEARCH_E2E in
 esac
 WX mkdir -m 0700 "$HG"
 local_tmp
+cleanup_add e2e_open_guard
 cleanup_add session_close
 cleanup_add vs_teardown
 SESSION_OPEN=1
