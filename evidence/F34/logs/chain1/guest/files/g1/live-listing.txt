@@ -1,0 +1,66 @@
+== image root
+image-root: owner must look: .tbound-publication-00eda1b1aec73c7ea8688ef3b2457690
+image-root: owner must look: .tbound-publication-0acadcb49e09a730aa3e0955c6c734d3
+image-root: owner must look: .tbound-publication-14035be357dd5bb77c11818e4f9ddfec
+image-root: owner must look: .tbound-publication-16549bc832ac2967b910600e5bf8e696
+image-root: owner must look: .tbound-publication-2050d2b007715c4f897784f476a92ecc
+image-root: owner must look: .tbound-publication-219dac493841bb7bda361b884af8a449
+image-root: owner must look: .tbound-publication-2a9a8e060961bf4d869946e8ebcfdbf3
+image-root: owner must look: .tbound-publication-2bbd909bd296034aaa5cf0dc112296fc
+image-root: owner must look: .tbound-publication-2e9df91dd75f29477c3e0b45a6fcce31
+image-root: owner must look: .tbound-publication-3006d8bcd257d356c0dcf97e10223c0d
+image-root: owner must look: .tbound-publication-35608fb7a3c284837ef63d980744dc8b
+image-root: owner must look: .tbound-publication-3c8e2136c4db26bab865c4566d24d491
+image-root: owner must look: .tbound-publication-40bcf109711b524ce8eddb9f45f033c4
+image-root: owner must look: .tbound-publication-449aaa737846b5ff192529e8caef8b9e
+image-root: owner must look: .tbound-publication-467e86fbdb71cf9b70dd57142e05c6d5
+image-root: owner must look: .tbound-publication-4b0ba1a8388fb9d847b50cb6f2148ce5
+image-root: owner must look: .tbound-publication-4efd57cfa0272139760e498f6050976c
+image-root: owner must look: .tbound-publication-5103904ea4d8934884bad74cc3bc3e63
+image-root: owner must look: .tbound-publication-5ddb1ce3618a99c1acc08f227a09cbb0
+image-root: owner must look: .tbound-publication-659bbb6956e021ff9c9714563e5d52c9
+image-root: owner must look: .tbound-publication-676aa9264733112d06ee18b8787de347
+image-root: owner must look: .tbound-publication-717fa21985a0df0a123690dec60c0801
+image-root: owner must look: .tbound-publication-7f60defa5a46968817f223138e1f1a88
+image-root: owner must look: .tbound-publication-80144dcb4d704a6b3fc6c5cd5f636bf2
+image-root: owner must look: .tbound-publication-86d21af989ddc4ac477cd9ff033c3ae2
+image-root: owner must look: .tbound-publication-8bd20ddb0373d67cf1a73188159d1b37
+image-root: owner must look: .tbound-publication-8e4650488051c5672504f1e50c11d682
+image-root: owner must look: .tbound-publication-8e827c7933fb564701ef71f39b93b3cf
+image-root: owner must look: .tbound-publication-9845d51318ded1f24fb398dafe02c927
+image-root: owner must look: .tbound-publication-9cddc17623c667ad329bd8946f2ffc35
+image-root: owner must look: .tbound-publication-9d01b694d80031f5e95c84c1b966f617
+image-root: owner must look: .tbound-publication-9d59ebaf71c1e9889e7c7528046f375b
+image-root: owner must look: .tbound-publication-9e1e08e9ba634e19dd7c006dc2e4a940
+image-root: owner must look: .tbound-publication-a6b9004315d5e3cb13bd79f523f22a9a
+image-root: owner must look: .tbound-publication-a945b0d9bf261c15b349ba5f4cc54700
+image-root: owner must look: .tbound-publication-a971520b6611320694d8283c0a98438b
+image-root: owner must look: .tbound-publication-add992b2dab0d72d7285ee0a62351a10
+image-root: owner must look: .tbound-publication-b14a4069d0785c33af9eb1a7f6612aaf
+image-root: owner must look: .tbound-publication-bbba360b27b06f8428cd4c3d6352a502
+image-root: owner must look: .tbound-publication-bbcc335a60f5ddd16356ad3dfbada3bb
+image-root: owner must look: .tbound-publication-bc1798f7d9ea7c94861f1ca8eb29809e
+image-root: owner must look: .tbound-publication-bea259a49282b0e72285b8e2b8b52f3e
+image-root: owner must look: .tbound-publication-c44dc3e2ceab5231dc95bdd12fdd1e33
+image-root: owner must look: .tbound-publication-c4a378e7153a320665540efb1026aac6
+image-root: owner must look: .tbound-publication-c4a63359c6a6c8dfeb3024a3301f776c
+image-root: owner must look: .tbound-publication-cda3365088b70e6163e34afdcd761842
+image-root: owner must look: .tbound-publication-cdac23c1ae374b95df9a7fe0741650ef
+image-root: owner must look: .tbound-publication-cdcd6f77f6e8102b42934c263d6974ca
+image-root: owner must look: .tbound-publication-d35d0d51b90c7067baa422dee934ba9c
+image-root: owner must look: .tbound-publication-d49b364d897d63a09652131b6b94c602
+image-root: owner must look: .tbound-publication-d6ec52a140c1e28576971b90a34a0873
+image-root: owner must look: .tbound-publication-d8ab0c25b8c30bf9fac6472f4e3d903d
+image-root: owner must look: .tbound-publication-e147aab0dea37626000f60d48925c114
+image-root: owner must look: .tbound-publication-e4f1ab824fe2795e99f948412ab4c1ef
+image-root: owner must look: .tbound-publication-e9c7d81202f58986e9efba1a648b1ed0
+image-root: owner must look: .tbound-publication-eb6872bdc69cf969add4cb24118492cd
+image-root: owner must look: .tbound-publication-ec11fb0b4e108e1185faf8fd79f567d6
+image-root: owner must look: .tbound-publication-f42894202a503291cd093d8c21a056fd
+== listing
+d 755 995:986 lost+found
+d 755 995:986 out
+d 755 995:986 src
+f 644 995:986 src/release.txt
+== census
+{"counts": {"dir": 4, "file": 1, "other": 0, "symlink": 0}, "cross_device_pruned": [], "entries": 5, "errors": {"getxattr": 0, "listxattr": 0, "lstat": [], "readlink": 0, "scandir": []}, "record": "summary", "root": "/var/lib/tbound/live/root", "xattr_names_by_namespace": {}}

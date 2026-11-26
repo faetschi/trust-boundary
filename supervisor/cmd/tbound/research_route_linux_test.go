@@ -5,6 +5,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,6 +142,36 @@ func TestProviderRouteIsARequiredEnumInTheServiceConfig(t *testing.T) {
 	if piServiceConfigSchema != "tbound-pi-service-config/v4" {
 		t.Fatalf("service config schemas differ or were not bumped: %q %q", piServiceConfigSchema, piruntime.D09ManagedPiServiceConfigSchema)
 	}
+}
+
+func TestVStubRouteOpensOnlyTheStubPathsAndEndpoint(t *testing.T) {
+	stub, research := researchroute.StubPaths(), researchroute.DefaultPaths()
+	for _, s := range []string{stub.Profile, stub.LedgerConfig, stub.Ledger, stub.Checkpoint, stub.Key} {
+		for _, r := range []string{research.Profile, research.LedgerConfig, research.Ledger, research.Checkpoint, research.Key} {
+			if s == r {
+				t.Fatalf("the v-stub path %s is a research path", s)
+			}
+		}
+	}
+	endpoint, err := url.Parse(researchroute.VStubEndpoint)
+	if err != nil || endpoint.Scheme != "http" || endpoint.User != nil || net.ParseIP(endpoint.Hostname()) == nil || !net.ParseIP(endpoint.Hostname()).IsLoopback() {
+		t.Fatalf("the v-stub endpoint %q is not a loopback http endpoint", researchroute.VStubEndpoint)
+	}
+	if _, err := os.Stat(stub.Profile); err == nil {
+		t.Skip("a v-stub install exists on this host")
+	}
+	paths := researchRoutePaths(t)
+	researchRouteGenesis(t, paths)
+	route, err := openProductionProviderRoute(piServiceConfig{ProviderRoute: piruntime.D09ManagedPiProviderRouteVStub, WorkflowMaxHostCalls: 4}, paths)
+	if err == nil {
+		_ = route.Close()
+		t.Fatal("the v-stub route opened without a v-stub install, so it read the research paths it was given")
+	}
+	opened, err := researchroute.Open(paths)
+	if err != nil {
+		t.Fatalf("the research ledger is not free after the v-stub route was opened: %v", err)
+	}
+	_ = opened.Close()
 }
 
 func TestResearchRouteOpensWithAFrozenProfileKeyAndGenesisLedger(t *testing.T) {

@@ -1,0 +1,94 @@
+== 2026-11-24T22:23:14Z cgroup
+cells
+runner
+-- cells
+cgroup.controllers
+cgroup.events
+cgroup.freeze
+cgroup.kill
+cgroup.max.depth
+cgroup.max.descendants
+cgroup.pressure
+cgroup.procs
+cgroup.stat
+cgroup.stat.local
+cgroup.subtree_control
+cgroup.threads
+cgroup.type
+cpu.idle
+cpu.max
+cpu.max.burst
+cpu.pressure
+cpu.stat
+cpu.stat.local
+cpu.uclamp.max
+cpu.uclamp.min
+cpu.weight
+cpu.weight.nice
+cpuset.cpus
+cpuset.cpus.effective
+cpuset.cpus.exclusive
+cpuset.cpus.exclusive.effective
+cpuset.cpus.partition
+cpuset.mems
+cpuset.mems.effective
+io.max
+io.pressure
+io.prio.class
+io.stat
+io.weight
+memory.current
+memory.events
+memory.events.local
+memory.high
+memory.low
+memory.max
+memory.min
+memory.numa_stat
+memory.oom.group
+memory.peak
+memory.pressure
+memory.reclaim
+memory.stat
+memory.swap.current
+memory.swap.events
+memory.swap.high
+memory.swap.max
+memory.swap.peak
+memory.zswap.current
+memory.zswap.max
+memory.zswap.writeback
+pids.current
+pids.events
+pids.events.local
+pids.max
+pids.peak
+-- cells/cgroup.procs
+== podman ps -a
+CONTAINER ID  IMAGE       COMMAND     CREATED     STATUS      PORTS       NAMES
+== mounts below podman-storage or /run/tbound-pi in any mount namespace
+      2 /run/tbound-pi
+      2 /var/lib/tbound/podman-storage/graphroot
+== requests
+4 /var/lib/tbound/audit/serve-pi-requests.jsonl
+{"version":1,"sequence":1,"previous_hash":"","event":{"kind":"pi_service_request_accepted","id":"pi-service-request-536507b727d8842ae3629b14d4d337d6495c0eeea1f628a497cb856a208b373f","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtYWNjZXB0ZWQvdjEiLCJjbGllbnRfdWlkIjo5OTQsImNsaWVudF9naWQiOjk4NSwiY2xpZW50X3BpZCI6NDg1NTk3LCJyZXF1ZXN0X2lkIjoiZzEtcmVxLTIwMjYxMTI0VDIxNTQyOVoiLCJ0YXNrX2lkIjoiZzEtcmVhZC1lZGl0LWJhc2gtcmVhZCIsInBheWxvYWRfZGlnZXN0Ijoic2hhMjU2OmVhMjhkZWUwMzM3NGMxNGQ2OTJiYm
+{"version":1,"sequence":2,"previous_hash":"5b6f9f0748b476c11df5b40488016b44dc993eab142fa44c2c64142442a86123","event":{"kind":"pi_service_request_terminal","id":"pi-service-request-536507b727d8842ae3629b14d4d337d6495c0eeea1f628a497cb856a208b373f/terminal","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtdGVybWluYWwvdjEiLCJjbGllbnRfdWlkIjo5OTQsInJlcXVlc3RfaWQiOiJnMS1yZXEtMjAyNjExMjRUMjE1NDI5WiIsInBheWxvYWRfZGlnZXN0Ijoic2hhMjU2OmVhMjhkZWUwMzM3NGMxNGQ2OTJiYmU4NWUxMWI2NDI2MDhmYmJlO
+{"version":1,"sequence":3,"previous_hash":"0d95f01bd14f724417487f304b30252fb8f44e95834d49de3b41670d2fa893fc","event":{"kind":"pi_service_request_accepted","id":"pi-service-request-85f67a40d3a8f42c2a534f12f6bff178f1ec919aeab398a520c5a179b8d4cfce","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtYWNjZXB0ZWQvdjEiLCJjbGllbnRfdWlkIjo5OTQsImNsaWVudF9naWQiOjk4NSwiY2xpZW50X3BpZCI6NDkyODgxLCJyZXF1ZXN0X2lkIjoicnAtcmVxLTIwMjYxMTI0VDIxNTY0NVoiLCJ0YXNrX2lkIjoicm91dGUtcHJvYmUtYmFzaC12aWV3Ii
+{"version":1,"sequence":4,"previous_hash":"9d77dac92fbc95a6e9ae04d4d4296a796cb9b97b372ff64079d74152d728870f","event":{"kind":"pi_service_request_terminal","id":"pi-service-request-85f67a40d3a8f42c2a534f12f6bff178f1ec919aeab398a520c5a179b8d4cfce/terminal","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtdGVybWluYWwvdjEiLCJjbGllbnRfdWlkIjo5OTQsInJlcXVlc3RfaWQiOiJycC1yZXEtMjAyNjExMjRUMjE1NjQ1WiIsInBheWxvYWRfZGlnZXN0Ijoic2hhMjU2OjcxNWI5YWRhM2QxZDdjMGMxNTM4YjBlY2FkMjk0MTJmNjZiMDI5M
+== catalog
+16 /var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl
+drained=2 unexposed_true=0
+== audit files
+total 520
+-rw------- 1 tbound-pi tbound-pi  10139 Nov 24 21:54 production-run-17a51f41fddc4d2a75870579-command-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi 162459 Nov 24 21:55 production-run-17a51f41fddc4d2a75870579-provider-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  43830 Nov 24 21:54 production-run-17a51f41fddc4d2a75870579-session-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi   9723 Nov 24 21:57 production-run-dcf2532f6d0997dae8ba0f8e-command-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi 183399 Nov 24 21:57 production-run-dcf2532f6d0997dae8ba0f8e-provider-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  28731 Nov 24 21:57 production-run-dcf2532f6d0997dae8ba0f8e-session-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  28482 Nov 24 21:57 publication-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi   8010 Nov 24 21:57 serve-pi-requests.jsonl
+-rw------- 1 tbound-pi tbound-pi  16223 Nov 24 21:55 tbound-workflow-17a51f41fddc4d2a75870579-e04-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  13567 Nov 24 21:57 tbound-workflow-dcf2532f6d0997dae8ba0f8e-e04-audit.jsonl
+== maintenance lock
+lock-free

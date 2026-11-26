@@ -1,0 +1,6 @@
+/etc/tbound/serve-pi-service.json root:root 644
+/etc/tbound/managed-live-root.json root:root 644
+/etc/tbound/managed-live-root.ed25519 root:root 644
+/etc/tbound/pi-host-profile.json root:root 644
+/etc/tbound/pi-host-profile.ed25519 root:root 644
+/etc/tbound/d09-cell.json root:root 644

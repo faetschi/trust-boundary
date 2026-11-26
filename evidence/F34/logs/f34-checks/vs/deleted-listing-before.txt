@@ -1,0 +1,10 @@
+/etc/tbound/v-stub d 4096 0:0 755
+/etc/tbound/v-stub/research-ledger.json f 169 0:0 644
+/etc/tbound/v-stub/research-profile.json f 890 0:0 644
+/etc/tbound/v-stub/stub.key f 57 995:986 400
+/etc/tbound/v-stub/research-ledger-checkpoint.json f 98 0:0 644
+/var/lib/tbound/sessions/v-stub-ledger f 547 995:986 600
+/var/lib/tbound/sessions/v-stub-admissions d 4096 995:986 700
+/var/lib/tbound/sessions/v-stub-admissions/08b34c8edc633b583c2618cbc8ce485a9555eac43619093b7f2b363655b55b16 f 22 995:986 600
+/var/tmp/tbound-vs d 4096 0:0 700
+/var/tmp/tbound-vs/managed-live-root.unsigned.json f 3410 0:0 600

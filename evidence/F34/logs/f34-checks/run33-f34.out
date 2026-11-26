@@ -1,0 +1,32 @@
+##### 33-corpus-pilot.sh 2026-11-24T22:50:10Z
+NOTE host side: tbound-run evq/route-report take --artifact guest-capability=<file> etc. from /home/tbound/tbh/f34/evq (copy to the host /home/tbound/tbh/ga names as the runbook wants); --guest-binary-sha256 = TBP_DIGEST.
+
+== DONE 40-guest-evidence.sh 2026-11-24T22:51:29Z
+OK   netsink envelope fetched: /home/tbound/tbh/f34/evq/netsink.json
+NOTE the pilot service is left running. Close-out: sudo -n true must still fail. Next (owner): rerun tbound-run evq with the new netsink.json (report 01 step 12b).
+NOTE NOT PROVEN: a pilot request admission (corpus mode with a real request, the Go admission path). M3 should start with ONE run with --max-steps 1 before the full pilot.
+
+== DONE 33-corpus-pilot.sh 2026-11-24T22:51:31Z
+rc=0 2026-11-24T22:51:32Z
+##### 34-v-stub-probe.sh 2026-11-24T22:51:32Z
+  "td": "sha256:6e9ae6b069f132d4ae19923b080fa7a1ba0e5d735f8007e9f66c6957c8e25e2b",
+  "throwaway_dir": "/etc/tbound/v-stub",
+  "throwaway_ledger": "/var/lib/tbound/sessions/v-stub-ledger",
+  "unit_ledger_records": "1"
+}
+NOTE the probe is complete: nothing was booked in the research ledger, the throwaway files are deleted, the pilot chain is running again. Next: 40-guest-evidence.sh v-stub
+
+== DONE 34-v-stub-probe.sh 2026-11-24T22:53:22Z
+rc=0 2026-11-24T22:53:24Z
+##### 40-guest-evidence.sh v-stub 2026-11-24T22:53:24Z
+-rw-r----- 1 root tboundadmin   1113 Nov 24 22:51 evidence-netsink.json
+-rw-r----- 1 root tboundadmin  16664 Nov 24 22:30 evidence-procoracle.json
+-rw-r----- 1 root tboundadmin   3385 Nov 24 22:30 evidence-provider.json
+-rw-r----- 1 root tboundadmin   4124 Nov 24 22:32 evidence-route-bash-view.json
+-rw-r----- 1 root tboundadmin   9222 Nov 24 22:34 evidence-route-direct-runtime.json
+NOTE host side: tbound-run evq/route-report take --artifact guest-capability=<file> etc. from /home/tbound/tbh/f34/evq (copy to the host /home/tbound/tbh/ga names as the runbook wants); --guest-binary-sha256 = TBP_DIGEST.
+
+== DONE 40-guest-evidence.sh 2026-11-24T22:53:33Z
+rc=0 2026-11-24T22:53:34Z
+TAIL_OK 2026-11-24T22:53:34Z
+EXIT=0

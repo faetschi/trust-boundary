@@ -419,6 +419,24 @@ func TestUnknownReconcilerComposesTheOwnerPublicationAndProviderEvidence(t *test
 	}
 }
 
+func TestAbandonedPriorIsRecheckedOnTheRouteItsRecordBinds(t *testing.T) {
+	r, state := newReconcileFixture(t, reconcileTestEntry())
+	r.route = piruntime.D09ManagedPiProviderRouteEngineering
+	evidence, err := r.Reconcile(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	abandoned, err := newPiServiceRequestAbandonedEvent(state, "DR drill", evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.abandoned = &abandoned
+	r.route = piruntime.D09ManagedPiProviderRouteResearch
+	if err := (&piServiceRequestJournal{}).recheckAbandoned(context.Background(), r, state); err != nil {
+		t.Fatalf("an engineering-route abandon record keeps the barrier under the research service: %v", err)
+	}
+}
+
 func TestUnknownReconcilerListsEveryUnreconciledKindAndRefusesNonUnknownRequests(t *testing.T) {
 	r, state := newReconcileFixture(t, reconcileTestEntry())
 	r.owner = func(context.Context, piServiceWorkflowEntry) (piServiceOwnerReconciliation, error) {

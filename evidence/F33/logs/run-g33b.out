@@ -1,0 +1,10 @@
+07cea1d78fd533ff0d35a600641cdf6032969ce7a78f84955b333b5403466fae  /home/tbound/tbound-work/g33b.tar
+BLOBS checked=4622 mismatched=0 extra_files=0
+GATE_TOOL kf19 == freeze tree
+meta load=0.73 0.77 0.73 start=2026-11-24T10:58:08Z
+GATE_RC=0 end=2026-11-24T11:21:09Z
+BOUNDARY_OK
+TEST_RC=0
+boot 3f4883e2-0222-48fc-b1a4-a15c0aa0d84f 2026-11-24T11:21:08Z
+tests {'pass': 7879, 'skip': 52} packages {'skip': 4, 'pass': 59}
+EXIT=0

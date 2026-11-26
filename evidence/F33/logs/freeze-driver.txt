@@ -1,0 +1,36 @@
+##### 10-freeze.sh 4e8ac37d8f2cbb5a67a8a5c8b965c8345ece4e36 14:14:23
+drwx------ 72 tbound tbound 4096 Nov 24 14:14 ..
+-rw-------  1 tbound tbound   41 Nov 24 14:14 FROZEN-COMMIT
+OK sync done; no 0-byte output under /home/tbound/tbh/f33 nor in: /home/tbound/tbound-work/env.sh
+== DONE 10-freeze: F33=4e8ac37d8f2cbb5a67a8a5c8b965c8345ece4e36
+##### 20-p1.sh 14:14:23
+TBOUND_DIGEST: sha256:f9d4b4cad7bf0e7f70e2b11ce6d8805e32cfbaa328935bbff3f9d25ff872ed01  (NEW; F23 was sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31)
+TBP_DIGEST: sha256:29edda9cc252dac9af0164ad8c65a414c82c3efb61353529a6c302aa3cce53c5  (NEW; F23 was sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468)
+ENTRYPOINT_P1_DIGEST: sha256:65f6fccf6b0fa4df022073a8d02f9dc828d4067ce1efe07f4998f39fd46b002e  (NEW; F23 was sha256:9b7499bc356810b74bc2e5ce0bfea5e66f5918ac9c2031096f80f22b5c2aa3f4)
+SRC_DIGEST: sha256:04edc81f3d07753903f8ba043d9f1c00c7b7e68ff0b121ee49dd29f2db87d262  (NEW; F23 was sha256:da00b275241e06c23b49e7bd064eb3573f52f4de136c1293157e7938f520eb95)
+##### 25-p2-rebuild.sh 14:15:19
+disk /: 774 GiB free (need 10)
+TAR=/home/tbound/tbound-w.VuTnfi/p2-rebuild/runtime-bundle-4e8ac37d-lf.tar sha256:54138a98860a4f868d54a5e856201b79c4850f7e39e2072d6f8b3e0dd18ea951 (429660160 bytes)
+== DONE 25-p2-rebuild: BUNDLE_DIGEST=sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1 (two offline builds identical)
+OK sync done; no 0-byte output under /home/tbound/tbh/f33 nor in: /home/tbound/tbound-w.VuTnfi/p2-rebuild/runtime-bundle-4e8ac37d-lf.tar /home/tbound/tbound-w.VuTnfi/p2-rebuild/runtime-bundle-4e8ac37d-lf.tar.sha256 /home/tbound/tbound-w.VuTnfi/p2-rebuild/out/build1/find.txt /home/tbound/tbound-w.VuTnfi/p2-rebuild/out/build2/find.txt /home/tbound/tbound-w.VuTnfi/p2-rebuild/out/build1/sha256.txt /home/tbound/tbound-w.VuTnfi/p2-rebuild/out/build2/sha256.txt /home/tbound/tbound-w.VuTnfi/p2-rebuild/out/build1/measure.out /home/tbound/tbound-w.VuTnfi/p2-rebuild/out/build2/measure.out
+##### 30-p3.sh 14:16:08
+CFG=sha256:cc0bfe7546590800677150dcf36a6d7774575dbbe119c633b7c0c46534814beb
+ENTRYPOINT_DIGEST=sha256:65f6fccf6b0fa4df022073a8d02f9dc828d4067ce1efe07f4998f39fd46b002e
+BASH_DIGEST=sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf
+NODE_DIGEST=sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c
+##### session-env.sh 14:16:12
+D() { echo "sha256:$(sha256sum "$1" | cut -d' ' -f1)"; }
+export IMGDIGEST=$(cat $HF/IMGDIGEST)
+OK sync done; no 0-byte output under /home/tbound/tbh/f33 nor in: /home/tbound/tbound-w.VuTnfi/session-env.sh
+== DONE session-env: /home/tbound/tbound-w.VuTnfi/session-env.sh
+##### 35-evq-capture.sh 14:16:12
+TEST_ENTRYPOINT: sha256:64208821cb96e97db985674beec7eda22a310cecf80c5f90822343af021fc24b  (NEW; F23 was sha256:e29b6f8b22e3c38a01274b628bf24a239b116648a00f2c32d994b8a854a5f4d6)
+capture_sha256 file digest: sha256:f45c298fa1230715f164b8cb0048b04f533bed5218f69c7e4a3d3e82ee10e1b4
+OK sync done; no 0-byte output under /home/tbound/tbh/f33 nor in: /home/tbound/tbh/cf33/capture.json /home/tbound/tbh/cf33/go-test.json /home/tbound/tbh/cf33/guest-tests/procoracle.test /home/tbound/tbh/cf33/guest-tests/tbound-cell-entrypoint.test
+== DONE 35-evq-capture: /home/tbound/tbh/cf33
+##### 40-sign.sh 14:38:44
+COSIGN_PUB_DIGEST=sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+S5 signed_manifest_digest=sha256:54cb2588a7543dc2ba66b99263acdf3cf5cdd346e2aee956eb0c2f62eabb1f0a (== IMGDIGEST)
+LOAD_TAR_DIGEST=sha256:57bb67354de36b40a9bb96dd3015ac8020e802f0a981595993911f98a8c563f8
+LOAD_TAR_DIGEST: sha256:57bb67354de36b40a9bb96dd3015ac8020e802f0a981595993911f98a8c563f8  (NEW; F23 was sha256:ae38be168c42f8c9d2d4d24adda02672432b886670736028a70540911fb7aac3)
+freeze end 14:38:48

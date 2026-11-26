@@ -1,0 +1,5 @@
+V on (#284) vs F32: manifest equal True; steps 1935 vs 1935; identical step for step (all fields, index included): True
+  units 1935 vs 1935; PlannedUnits legacy 1935 vs 1935; draw-pin path 1935 vs 1935; plan digest equal False
+V off (#284) vs V-free #272: manifest equal True; steps 1835 vs 1835; identical step for step (all fields, index included): True
+  units 1835 vs 1835; PlannedUnits legacy 1835 vs 1835; draw-pin path 1835 vs 1835; plan digest equal True
+V on: compliant orders {'BCV': 17, 'BVC': 17, 'CBV': 17, 'CVB': 17, 'VBC': 16, 'VCB': 16} B before C: 50 V before B: 49

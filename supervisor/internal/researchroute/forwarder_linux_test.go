@@ -486,3 +486,42 @@ func TestForwarderReportsAnOverageAndRefusesWhatFollows(t *testing.T) {
 		t.Fatal("the ledger did not record the overage")
 	}
 }
+
+func replayWithReasoningDetails(text string) string {
+	return `{"model":"deepseek/deepseek-v4.1-flash","stream":true,"messages":[{"role":"user","content":"hi"},` +
+		`{"role":"assistant","content":"c","tool_calls":[{"id":"call-1","type":"function","function":{"name":"read","arguments":"{}"}}],` +
+		`"reasoning_details":[{"type":"reasoning.text","text":"` + text + `","format":"unknown","index":0}]},` +
+		`{"role":"tool","content":"ok","tool_call_id":"call-1"}]}`
+}
+
+func TestForwarderSendsAReplayedReasoningDetailsAsReasoningAtTheSameReservation(t *testing.T) {
+	bundle, up, srv, fwd := newForwarderFixture(t)
+	if status, out := post(t, srv, ForwardPath, forwardToken, replayWithReasoningDetails("think"), nil); status != 200 {
+		t.Fatalf("status %d body %q", status, out)
+	}
+	if up.requests.Load() != 1 || up.openAtHit.Load() != 8400 {
+		t.Fatalf("upstream saw %d requests with %d micro-USD booked; want 1 and 8400", up.requests.Load(), up.openAtHit.Load())
+	}
+	if body := string(up.bodies[0]); !strings.Contains(body, `"reasoning":"think"`) || strings.Contains(body, "reasoning_details") {
+		t.Fatalf("upstream body %s", body)
+	}
+	if totals := fwd.Finish(); totals.Booked != 1 || totals.Settled != 1 || totals.Uncertain != 0 {
+		t.Fatalf("totals %+v", totals)
+	}
+	if snap := snapshot(t, bundle); snap.SettledUnits != 1 || snap.OpenMicroUSD != 0 {
+		t.Fatalf("ledger %+v", snap)
+	}
+}
+
+func TestForwarderHoldsTheTranslatedReasoningToTheInputBound(t *testing.T) {
+	bundle, up, srv, _ := newForwarderFixture(t)
+	if status, _ := post(t, srv, ForwardPath, forwardToken, replayWithReasoningDetails(strings.Repeat("a", 20000)), nil); status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status %d", status)
+	}
+	if up.requests.Load() != 0 {
+		t.Fatalf("upstream saw %d requests", up.requests.Load())
+	}
+	if snap := snapshot(t, bundle); snap.Records != 1 || snap.OpenMicroUSD != 0 {
+		t.Fatalf("ledger %+v", snap)
+	}
+}

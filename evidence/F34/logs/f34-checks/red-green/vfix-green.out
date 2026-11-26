@@ -1,0 +1,31 @@
+HEAD bbf67932e32042cd15fbe86dc77d6ab554c45842 dirty=0 cr=0
+start 2026-11-24T16:13:10Z green
+=== RUN   TestServeRecordsDecisionFailClosed
+--- PASS: TestServeRecordsDecisionFailClosed (0.00s)
+=== RUN   TestServePiProductionRefusalUnchanged
+--- PASS: TestServePiProductionRefusalUnchanged (0.00s)
+=== RUN   TestServePiDevFixtureIsMutuallyExclusive
+--- PASS: TestServePiDevFixtureIsMutuallyExclusive (0.00s)
+=== RUN   TestServePiDevFixtureConflictsWithNativeHostProfile
+--- PASS: TestServePiDevFixtureConflictsWithNativeHostProfile (0.00s)
+=== RUN   TestServePiFixturesRejectProductionServiceInputs
+--- PASS: TestServePiFixturesRejectProductionServiceInputs (0.00s)
+=== RUN   TestServePiDevFixtureRequiresExplicitEnvironment
+--- PASS: TestServePiDevFixtureRequiresExplicitEnvironment (0.00s)
+=== RUN   TestServePiDevFixtureLaunchesActualPinnedPiOffline
+    dev_fixture_linux_test.go:125: set TBOUND_DEV_FIXTURE_PI/TBOUND_DEV_FIXTURE_NODE/TBOUND_DEV_FIXTURE_ADAPTER/TBOUND_DEV_FIXTURE_ROOT to run the actual offline development Pi CLI fixture
+--- SKIP: TestServePiDevFixtureLaunchesActualPinnedPiOffline (0.00s)
+=== RUN   TestServeVRequestHoldsTheSlotAndTheMaintenanceLockOnlyForTheUnit
+--- PASS: TestServeVRequestHoldsTheSlotAndTheMaintenanceLockOnlyForTheUnit (0.00s)
+=== RUN   TestVRoleAdmission
+--- PASS: TestVRoleAdmission (0.01s)
+=== RUN   TestVForwarderCommandRequestPassesTheCorpusAdmissionScreen
+--- PASS: TestVForwarderCommandRequestPassesTheCorpusAdmissionScreen (0.01s)
+=== RUN   TestServeBashOutputFlagsFailClosedBeforeServiceUse
+--- PASS: TestServeBashOutputFlagsFailClosedBeforeServiceUse (0.00s)
+=== RUN   TestVForwarderClientRunsUnderNoNewPrivs
+--- PASS: TestVForwarderClientRunsUnderNoNewPrivs (0.00s)
+PASS
+ok  	tbound/supervisor/cmd/tbound	0.064s
+rc=0 end 2026-11-24T16:13:17Z
+EXIT=0

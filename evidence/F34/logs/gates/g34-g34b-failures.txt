@@ -1,0 +1,57 @@
+== g34
+FAIL tbound/supervisor/cmd/tbound TestProductTurnBashKeepsTheExactPathRuleWithoutAProductScope 110.39
+   | === RUN   TestProductTurnBashKeepsTheExactPathRuleWithoutAProductScope
+   |     product_turn_bash_linux_test.go:399: turn 2 over the exact-path Bash predecessor: {ID:psess-35c2930ea8ff340cf34471073ba833df/turn-2 SessionID:psess-35c2930ea8ff340cf34471073ba833df Ordinal:2 Principal:1000 RequestKey:turn-2 PayloadDiges
+   | urationSeconds:0} Refund:{HostCalls:0 Tokens:0 DurationSeconds:0} ResultBaselineDigest: ContextEligible:false CandidateDigest: Removed:0 UnknownReason:the turn left unresolved Store or workflow state RefusalCode: CancelRequested:false Resol
+   |         a provider host call is unresolved
+   |         provider conversation is closed
+   |         settle exact provider exchange reservation before result release: persist verified provider-exchange outcome before releasing the response: workflow recovery checkpoint compare-and-swap failed
+   |         workflow recovery checkpoint compare-and-swap failed: synchronized checkpoint could not be anchored by the trusted root: workflow recovery SQLite owner store is unavailable or invalid: begin protected-root checkpoint CAS: context de
+   | --- FAIL: TestProductTurnBashKeepsTheExactPathRuleWithoutAProductScope (110.39s)
+FAIL tbound/supervisor/cmd/tbound TestProductTurnDriverImportedCallDoesNotCorrelate 31.45
+   | === RUN   TestProductTurnDriverImportedCallDoesNotCorrelate
+   |     product_turn_driver_linux_test.go:616: turn 1: {ID:psess-739f265adb11ddaef9b0ff64964152d7/turn-1 SessionID:psess-739f265adb11ddaef9b0ff64964152d7 Ordinal:1 Principal:1000 RequestKey:turn-1 PayloadDigest:sha256:fd36777a5f673cb94c1622e567
+   | d:0 UnknownReason:the turn left unresolved Store or workflow state RefusalCode: CancelRequested:false Resolution: ReviewTimeoutSeconds:0 TerminalReason: OperatorResolution:<nil>} product turn psess-739f265adb11ddaef9b0ff64964152d7/turn-1 is
+   |         a provider host call is unresolved
+   |         provider conversation is closed
+   |         settle exact provider exchange reservation before result release: persist verified provider-exchange outcome before releasing the response: workflow recovery checkpoint compare-and-swap failed
+   |         workflow recovery checkpoint compare-and-swap failed: trusted root did not confirm committed checkpoint: workflow recovery SQLite owner store is unavailable or invalid: read protected host-root workflow state: context deadline excee
+   | --- FAIL: TestProductTurnDriverImportedCallDoesNotCorrelate (31.45s)
+FAIL tbound/supervisor/cmd/tbound None 2401.043
+   | FAIL	tbound/supervisor/cmd/tbound	2401.043s
+{'tbound/supervisor/cmd/tbound': ('fail', 2401.043)}
+== g34b
+FAIL tbound/supervisor/internal/netoracle TestCollectorArrivalInTheCanaryWindowIsAnEffect 61.46
+   | === RUN   TestCollectorArrivalInTheCanaryWindowIsAnEffect
+   |     collector_test.go:102: runner: evidence not collected: evidence command exited 2: "netoracle: canary start: Get \"http://127.0.0.1:44961/.canary/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/start/c53efb46936faa3df6a6
+   | --- FAIL: TestCollectorArrivalInTheCanaryWindowIsAnEffect (61.46s)
+FAIL tbound/supervisor/internal/netoracle None 102.846
+   | FAIL
+   | FAIL	tbound/supervisor/internal/netoracle	102.845s
+{'tbound/supervisor/internal/netoracle': ('fail', 102.846)}
+== g33b vs g34 per-test time
+common tests 561: g33b 1140s, g34 2387s, ratio 2.09
+TestProductTurnPredecessorRefusesAModifiedRetainedJournal                        g33b     2.9 g34   154.6
+TestProductTurnDriverRunsTwoTurnsFromRetainedEvidence                            g33b     2.5 g34   134.8
+TestProductTurnBashShowsTheModelItsCommandOutput                                 g33b    16.2 g34   140.0
+TestProductTurnDriverRecordsAnInterruptedTwoFilePublicationAsUnknown             g33b     2.3 g34   113.8
+TestProductTurnBashKeepsTheExactPathRuleWithoutAProductScope                     g33b    12.4 g34   110.4
+TestProductTurnBashInAReadOnlySessionChangesNothing                              g33b    15.3 g34    99.5
+TestProductTurnBashRestartReconcilesALinkedTurn                                  g33b    10.1 g34    92.1
+TestProductTurnBashRequestAdvertisesTheOutputItReleases                          g33b     6.3 g34    86.4
+TestProductProviderConversationRequiresTheCheckpointedPredecessor                g33b     3.9 g34    59.6
+TestProductTurnDriverCarriesADenialAndHintIntoTheNextTurn                        g33b     3.3 g34    45.5
+TestProductTurnDriverRecordsAnEditAfterPublicationAsUnknown                      g33b     1.3 g34    43.1
+TestProductTurnPredecessorFromRetainedEvidenceReachesTheNextTurn                 g33b     3.1 g34    42.1
+only in g34 (new or not reached in g33b): ['TestVServiceRefusesTheRequestAfterTheCaseMaxHostCalls', 'TestVServiceCapIsBoundedByTheProfile', 'TestVForwarderCommandRequestPassesTheCorpusAdmissionScreen']
+g33b tests not reached in g34: 412
+{'other': (937, 1070), 'ProductTurn': (202, 1316), 'VService': (1, 1)}
+== g34 timeout
+running (started, never ended): ['TestProductTurnBashSettlesBeforeCaptureRefusalTerminal', 'TestProductTurnBashSettlesBeforeCaptureRefusalTerminal/cleanup-fails-false']
+panic: test timed out after 40m0s
+	running tests:
+		TestProductTurnBashSettlesBeforeCaptureRefusalTerminal (13s)
+		TestProductTurnBashSettlesBeforeCaptureRefusalTerminal/cleanup-fails-false (13s)
+
+goroutine 88266 [running]:
+testing.(*M).startAlarm.func1()

@@ -1,0 +1,94 @@
+== 29-g1-recover start 2026-11-24T21:53:47Z guest=172.29.57.244
+OK   FROZEN-COMMIT = 8627adeb4ab3fb01728136d8b4995bf8d7c07b41
+OK   F23 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+OK   F23 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468
+OK   F23 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:9b7499bc356810b74bc2e5ce0bfea5e66f5918ac9c2031096f80f22b5c2aa3f4
+OK   F23 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:da00b275241e06c23b49e7bd064eb3573f52f4de136c1293157e7938f520eb95
+OK   F23 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1
+OK   F23 record IMGDIGEST == PREV_IMGDIGEST = sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f
+OK   F23 record CFG == PREV_CFG = sha256:2656d410f2b5b8dd40cce326f3c3f73affdd5154fc85fa9a190cbe4d4e2f7731
+OK   F23 record BASE_TD == PREV_BASE_TD = sha256:0179bdd920627ce28ee7041c67c924df7dfcaefeb046270de54ec3b65e2e8fce
+OK   F23 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:ae38be168c42f8c9d2d4d24adda02672432b886670736028a70540911fb7aac3
+OK   F23 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F23 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F23 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:72274bf50b9977652d540999940fc9791444ed675302cb9f609c703aad5a86b9
+OK   F23 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:e29b6f8b22e3c38a01274b628bf24a239b116648a00f2c32d994b8a854a5f4d6
+OK   F23 FROZEN-COMMIT record == PREV_COMMIT = 13ed11939c06e552a2d8662fb752bf2b3640ac68
+OK   F23 g1/RID record == PREV_G1_RID = g1-req-20261108T183243Z
+OK   F23 rp/RID record == PREV_RP_RID = rp-req-20261108T183452Z
+OK   F23 dr/RID record == PREV_DR_RID = dr-req-20261108T183711Z
+OK   F23 dr/RUNID record == PREV_DR_RUNID = production-run-85c9eb7a114561a194560496
+OK   F23 dr/CHECKS_OK record == 'ok' = ok
+OK   F23 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-11-08d
+OK   IMGDIGEST (session-env == HF) = sha256:f10e4972d43ed7130f83a4f07d10e7a71e6051e5e5028e06676f3a963bbcde28
+OK   frozen commit 8627adeb4ab3fb01728136d8b4995bf8d7c07b41; HF=/home/tbound/tbh/f34
+
+== preflight: guest 172.29.57.244 (pinned host key, StrictHostKeyChecking=yes), tbound-op only
+guest address: GUEST_IP=172.29.57.244 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', or 'ip -4 addr' on the guest console, then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n true fails (narrowed sudo)
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-24T21:53:53Z 
+OK   password sudo works
+
+== 1. g1 recovery items on the guest (password sudo, read-only)
+absent /root/ga/reg-g1
+absent /root/ga/state/g1
+absent /root/ga/state/g1.once
+absent /root/ga/state/g1.client-status
+absent /root/ga/out/response.txt
+absent /root/ga/out/response.txt.err
+absent /root/ga/g1
+absent /var/tmp/tbound-op/g1
+absent /root/ga/reg-rp
+absent /root/ga/state/rp
+absent /root/ga/state/rp.once
+absent /root/ga/state/rp.client-status
+absent /root/ga/out/probe-response.txt
+absent /root/ga/out/probe-response.txt.err
+absent /root/ga/rp
+absent /var/tmp/tbound-op/rp
+absent /root/ga/reg-dr
+absent /root/ga/state/dr
+absent /root/ga/state/dr.once
+absent /root/ga/state/dr.client-status
+absent /root/ga/out/dr-response.txt
+absent /root/ga/out/dr-response.txt.err
+absent /root/ga/dr
+absent /var/tmp/tbound-op/dr
+aside-dir absent
+archive-done /root/ga/archive-f23-20261124T215106Z
+older-archive-f10 /root/ga/archive-f10-20261023T184527Z (ignored)
+older-archive-f9 /root/ga/archive-f9-20261023T173353Z (ignored)
+older-archive-f8 /root/ga/archive-f8-20261023T165617Z (ignored)
+older-archive-f7 /root/ga/archive-f7-20261023T161506Z (ignored)
+older-archive-f6 /root/ga/archive-f6-20261022T222759Z (ignored)
+older-archive-f5 /root/ga/archive-f5-20261022T213001Z (ignored)
+older-archive-f4 /root/ga/archive-f4-20261022T203823Z (ignored)
+
+== tbound-op status g1 (narrowed sudo)
+tbound-op status 2026-11-24T21:53:54Z pins F=8627adeb4ab3fb01728136d8b4995bf8d7c07b41
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:68308ef96e756d86 tbound-profile: sha256:561f5ecf1d03bda7
+service=inactive socket=active
+installed: cfg sha256:31d4d673f11711b5538eddab588eb3e163211a57dee2877c981cda85632bca0d reg sha256:b22f27dee2cce13a prof sha256:033455e770525446 tpl sha256:091ef93b042b39a4
+installed config matches state of: 
+-- g1: no state
+-- last log lines
+2026-11-24T21:52:02Z tboundadmin END rc=0 argv=status g1 
+2026-11-24T21:52:43Z tboundadmin BEGIN argv=status 
+2026-11-24T21:52:43Z tboundadmin OK status 
+2026-11-24T21:52:43Z tboundadmin END rc=0 argv=status 
+2026-11-24T21:53:54Z tboundadmin BEGIN argv=status g1 
+
+== 2. identity checks against the F23 record (/home/tbound/tbh/f23/g1, PREV_G1_RID)
+OK   F23 g1/RID record == PREV_G1_RID = g1-req-20261108T183243Z
+   sha256: 
+OK   F23 rp/RID = rp-req-20261108T183452Z
+OK   F23 dr/RID = dr-req-20261108T183711Z
+OK   nothing left to move: 27-archive-state.sh already moved the F23 g1 items (and the service state, and the live-root content) into /root/ga/archive-f23-20261124T215106Z
+
+== 3. reconciliation gate for the F23 rp request rp-req-20261108T183452Z (status g1 + request journal)
+OK   nothing left to move: no gate needed (the F23 items are already aside)
+NOTE status only: nothing changed. Next: bash 29-g1-recover.sh move
+
+== DONE 29-g1-recover.sh 2026-11-24T21:53:57Z

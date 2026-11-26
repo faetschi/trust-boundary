@@ -1,0 +1,19 @@
+== service cgroup
+cells
+runner
+tbound-pi:tbound-pi 755
+domain
+cpu memory pids
+-- runner procs
+516751
+-- cgroup-root-digest (profile: sha256:8c64df4047d2e49832d3fd5334c06eca57a9812c2bb374c26ab8a947ac2e03ce)
+sha256:8c64df4047d2e49832d3fd5334c06eca57a9812c2bb374c26ab8a947ac2e03ce
+== mounts
+/usr/local/bin/tbound ro,nosuid,nodev,relatime
+/usr/local/bin/node ro,nosuid,nodev,relatime
+/usr/bin/podman ro,nosuid,nodev,relatime
+/usr/bin/crun ro,nosuid,nodev,relatime
+/opt/tbound/cell ro,nosuid,nodev,relatime
+/var/lib/tbound/runtime ro,nosuid,nodev,relatime
+== maintenance lock
+lock-free
