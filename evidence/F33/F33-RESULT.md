@@ -21,3 +21,5 @@ Citation roots: `L=evidence/F33/logs`, `K=L/f33-checks`. On `tbound-dev`: `H=/ho
   - The conformance table against the final D61 item 4 found a second register gap: the per-case `max_host_calls` cap. It was fixed in F34 (#295). The three readings of the table are thesis #63.
 
 End state: the guest was restored again for F34, so F33's guest state survives only as checkpoint `pre-F34-restore-2026-11-24`. F33's ids are spent (`infra/freeze/freezes/F34.env`).
+
+The two binary signatures of the throwaway V-probe registration and profile (`K/vs/managed-live-root.ed25519`, `K/vs/pi-host-profile.ed25519`) are not kept here, because `scripts/check-self-contained.sh` refuses `ed25519` files under `evidence/`. Their verification on the guest is in `K/vs/s3-verify.out` and `K/vs/s4-verify.out`, and the signed digests are in `K/vs/REGDIGEST`, `K/vs/PROFILE_DIGEST` and `K/vs/TD`.
