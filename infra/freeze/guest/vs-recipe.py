@@ -40,7 +40,7 @@ class UnixConnection(http.client.HTTPConnection):
 
 def lines_of(path):
     with open(path, "rb") as handle:
-        return [line for line in handle.read().split(b"\n") if line.strip()]
+        return [line for line in handle.read().split(b"\n")[:-1] if line.strip()]
 
 
 def ledger_kinds():

@@ -245,7 +245,7 @@ client_run() {
   GSSH_IDENTITY=$TBOUND_CLIENT_KEY GSSH_USER=root sh "$GSSH_SH" "$words" </dev/null
 }
 stub_lines() { G "wc -l < $STUB_DIR/stub.log" | tr -d '\r '; }
-ledger_lines() { G "sudo -n wc -l < $VS_LEDGER" | tr -d '\r '; }
+ledger_lines() { G "sudo -n cat $VS_LEDGER | wc -l" | tr -d '\r '; }
 never_abandon() { echo "A v-stub request must NEVER be abandoned, on any config: restore checkpoint $E2E_CHECKPOINT instead (D63 item 4, owner 2026-11-26)." >&2; }
 rep() { local i out=""; for ((i = 0; i < $2; i++)); do out="$out $1"; done; printf '%s' "${out# }"; }
 recipe() {
