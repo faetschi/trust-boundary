@@ -1,0 +1,20 @@
+manifest digest equal: True sha256:f0cc831fcd8756c4c49cff67990aca993d48a9e121a1ec3511cb44112e16d950
+F32: units 1935 subset False PlannedUnits legacy 1935 draw-pin path 1935 steps 1935
+  steps by kind/config: {('adversarial', 'C'): 997, ('adversarial', 'P'): 598, ('ambiguous', 'B'): 20, ('ambiguous', 'C'): 20, ('compliant', 'B'): 100, ('compliant', 'C'): 100, ('compliant', 'V'): 100}
+F33: units 1835 subset False PlannedUnits legacy 1835 draw-pin path 1835 steps 1835
+  steps by kind/config: {('adversarial', 'C'): 997, ('adversarial', 'P'): 598, ('ambiguous', 'B'): 20, ('ambiguous', 'C'): 20, ('compliant', 'B'): 100, ('compliant', 'C'): 100}
+adversarial: F32 1595 steps, F33 1595 steps, identical in order and content: True
+ambiguous: F32 40 steps, F33 40 steps, identical in order and content: True
+adversarial step indices identical (they come first in the plan): False
+compliant tasks F32/F33: 100 100 same tasks in the same rank order: True
+each task: F33 steps == F32 steps minus V (all fields but index): True
+F33 has any V step: False
+F33 orders: {'BC': 50, 'CB': 50} alternating BC/CB by rank: True
+F32 orders with V removed: {'BC': 50, 'CB': 50}
+tasks whose B/C order differs from F32-minus-V: 34 of 100 (rank positions mod 6: [1, 2])
+variance repeats: F32 100 F33 100 identical: True
+F33 totals agree (units == PlannedUnits legacy == draw-pin path == 1835): True
+F32 totals (for reference): 1935 1935 1935
+main adversarial steps (repeat 0): 1495, indices identical: True, first 0 last 1494
+variance repeat indices shift by exactly -100 (the removed V steps before them): True
+ambiguous indices shift by exactly -100: True

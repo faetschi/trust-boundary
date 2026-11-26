@@ -1,0 +1,9 @@
+start 2026-11-24T07:42:51Z
+WARNING: session sudo close failed (see sudo-close.txt)
+records 1 (want 1)
+head 6bed50e0065343fbb41b4121873d4b715b0cbd2b26331933176ee22f334148ec (want 6bed50e0065343fbb41b4121873d4b715b0cbd2b26331933176ee22f334148ec)
+checkpoint vs evidence/F32/proving-rounds/round-research/logs/checkpoint-1.json: equal
+local sha256 [8e262b99e97ac663ab5647fa644186f84544f94f6cf8b014aad9632678b0621e e55afc1eb4d1e525827a7416a781d8511574f2de234d091dd4d15a6b26299723 ] guest sha256 [8e262b99e97ac663ab5647fa644186f84544f94f6cf8b014aad9632678b0621e e55afc1eb4d1e525827a7416a781d8511574f2de234d091dd4d15a6b26299723 ]: equal
+RESULT UNTOUCHED: 2026-11-21 genesis, unused, superseded by D59
+end 2026-11-24T07:43:03Z
+2026-11-24T07:43:49Z session sudo: the first close failed (TBA_PW already unset in the script); closed at 2026-11-24T07:43:34Z with sudo-close-2.txt; after it: sudo -n true asks for a password, one NOPASSWD rule (tbound-op)

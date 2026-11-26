@@ -1,0 +1,31 @@
+/var/tmp/tbound-op/:
+total 96
+drwxr-x---  6 root tboundadmin  4096 Nov 24 21:56 .
+drwxrwxrwt 14 root root         4096 Nov 24 21:56 ..
+drwxr-x---  2 root tboundadmin 73728 Nov 24 22:23 _
+drwxr-x---  2 root tboundadmin  4096 Nov 24 21:55 g1
+drwxr-x---  2 root tboundadmin  4096 Nov 24 21:57 rp
+drwxr-x---  2 root tboundadmin  4096 Oct 21 11:04 smoke
+
+/var/tmp/tbound-op/g1:
+total 36
+drwxr-x--- 2 root tboundadmin 4096 Nov 24 21:55 .
+drwxr-x--- 6 root tboundadmin 4096 Nov 24 21:56 ..
+-rw-r----- 1 root tboundadmin  612 Nov 24 21:54 archive.sha256
+-rw-r----- 1 root tboundadmin   33 Nov 24 21:55 client-run.status
+-rw-r----- 1 root tboundadmin 5159 Nov 24 21:54 live-listing.txt
+-rw-r----- 1 root tboundadmin 3410 Nov 24 21:54 managed-live-root.unsigned.json
+-rw-r----- 1 root tboundadmin 1902 Nov 24 21:55 response.txt
+-rw-r----- 1 root tboundadmin    0 Nov 24 21:55 response.txt.err
+-rw-r----- 1 root tboundadmin  139 Nov 24 21:54 svc-start-journal.txt
+
+/var/tmp/tbound-op/rp:
+total 28
+drwxr-x--- 2 root tboundadmin 4096 Nov 24 21:57 .
+drwxr-x--- 6 root tboundadmin 4096 Nov 24 21:56 ..
+-rw-r----- 1 root tboundadmin  612 Nov 24 21:56 archive.sha256
+-rw-r----- 1 root tboundadmin   33 Nov 24 21:57 client-run.status
+-rw-r----- 1 root tboundadmin 3410 Nov 24 21:56 managed-live-root.unsigned.json
+-rw-r----- 1 root tboundadmin 1606 Nov 24 21:57 probe-response.txt
+-rw-r----- 1 root tboundadmin    0 Nov 24 21:57 probe-response.txt.err
+-rw-r----- 1 root tboundadmin  139 Nov 24 21:56 svc-start-journal.txt

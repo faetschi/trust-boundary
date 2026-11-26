@@ -27,7 +27,9 @@ readonly VWORK=/var/lib/tbound/v-work
 readonly OUT=/var/tmp/tbound-op
 readonly VKILL_PATTERN='[t]bound trial ssh-original-command'
 readonly THROWAWAY_PATHS="$VS $VS_LEDGER $VS_ADMISSIONS $VS_SCRATCH $STUB_DIR"
-SESSION_OPEN=0 SWAPPED=0 THROWAWAY=0 STUB_UP=0 VRUN=0 VERIFY=0 TORN_DOWN=0 TD_RC=0 VJOB="" VWORK_PRE="" VWORK_DEL="" DEL_PATHS="" CAT_SHA_BEFORE="" CAT_SIZE_BEFORE="" PILOT_META_BEFORE=""
+RESEARCH_E2E=${RESEARCH_E2E:-0}
+E2E_CASES="" B_CASE="" E2E_SUMMARY=""
+SESSION_OPEN=0 B_OPEN=0 SWAPPED=0 THROWAWAY=0 STUB_UP=0 VRUN=0 VERIFY=0 TORN_DOWN=0 TD_RC=0 VJOB="" VWORK_PRE="" VWORK_DEL="" DEL_PATHS="" CAT_SHA_BEFORE="" CAT_SIZE_BEFORE="" PILOT_META_BEFORE=""
 VS_CASE="" VS_KEY="" PILOT_FILES="serve-pi-service.json:serve-pi-service.json managed-live-root.json:managed-live-root.json managed-live-root.ed25519:managed-live-root.ed25519 pi-host-profile.signed.json:pi-host-profile.json pi-host-profile.ed25519:pi-host-profile.ed25519 d09-cell.json:d09-cell.json"
 
 session_close() {
@@ -121,7 +123,7 @@ stub_start() {
   STUB_UP=1
   WX cat "$SRC/infra/guest/v-stub/stub-upstream.py" | GI "umask 077; install -d -m 0700 $STUB_DIR && cat > $STUB_DIR/stub.py"
   eq "staged stub.py == the frozen source" "$(G "sha256sum $STUB_DIR/stub.py" | cut -d' ' -f1 | sed 's/^/sha256:/')" "$(wd "$SRC/infra/guest/v-stub/stub-upstream.py")"
-  G "cd $STUB_DIR && : > stub.log && { setsid nohup python3 -I stub.py stub.log stub.pid $STUB_HOLD > stub.out 2>&1 < /dev/null & }"
+  G "cd $STUB_DIR && : > stub.log && { setsid nohup python3 -I stub.py stub.log stub.pid $STUB_HOLD $STUB_PORT $STUB_DIR/mode > stub.out 2>&1 < /dev/null & }"
   local i
   for i in $(seq 1 20); do
     if G "python3 -I -c 'import socket; socket.create_connection((\"127.0.0.1\", $STUB_PORT), 2)'" >/dev/null 2>&1; then break; fi
@@ -163,7 +165,7 @@ td_vclean() {
 }
 td_stub() {
   if ! hf_has vs/stub.log && G "test -s $STUB_DIR/stub.log"; then G "cat $STUB_DIR/stub.log" | tr -d '\r' | save vs/stub.log; fi
-  G "if test -f $STUB_DIR/stub.pid; then kill \$(cat $STUB_DIR/stub.pid) 2>/dev/null || true; fi; sleep 1; rm -f $STUB_DIR/stub.py $STUB_DIR/stub.pid $STUB_DIR/stub.log $STUB_DIR/stub.out; rmdir $STUB_DIR 2>/dev/null || true"
+  G "if test -f $STUB_DIR/stub.pid; then kill \$(cat $STUB_DIR/stub.pid) 2>/dev/null || true; fi; sleep 1; rm -f $STUB_DIR/stub.py $STUB_DIR/stub.pid $STUB_DIR/stub.log $STUB_DIR/stub.out $STUB_DIR/mode; rmdir $STUB_DIR 2>/dev/null || true"
   [ -z "$(G "ss -ltnH 'sport = :$STUB_PORT'" | tr -d '\r')" ] || die "port $STUB_PORT is still in use after the stub was stopped"
   [ "$(G "test -e $STUB_DIR && echo present || echo absent" | tr -d '\r')" = absent ] || die "$STUB_DIR is still on the guest"
   ok "stub upstream stopped, $STUB_DIR removed, port $STUB_PORT free"
@@ -230,8 +232,59 @@ vs_teardown() {
   if [ "$THROWAWAY" = 1 ]; then tstep td_delete && THROWAWAY=0; fi
   if [ "$SWAPPED" = 1 ]; then tstep td_restore && SWAPPED=0 && VERIFY=1; fi
   if [ "$VERIFY" = 1 ]; then tstep td_verify && VERIFY=0; fi
+  [ "$B_OPEN" = 0 ] || never_abandon
   [ "$TD_RC" != 0 ] || TORN_DOWN=1
   return "$TD_RC"
+}
+
+compliant_cases() {
+  WX python3 -I -c 'import json,sys
+print(" ".join(c["case_id"] for c in json.load(open(sys.argv[1],encoding="utf-8"))["cases"] if c["kind"]=="compliant"))' "$1" | tr -d '\r\n'
+}
+client_run() {
+  local words="'setpriv' '--reuid' '994' '--regid' '985' '--clear-groups' '--bounding-set=-all' '--inh-caps=-all' '--ambient-caps=-all' '--no-new-privs' '--' '/usr/local/bin/tbound' 'serve' '--pi' '--task-id' '$1' '--role' '$2' '--attempt' '1' '--task-request-id' '$3' '--bash-no-outputs'"
+  GSSH_IDENTITY=$TBOUND_CLIENT_KEY GSSH_USER=root sh "$GSSH_SH" "$words" </dev/null
+}
+stub_lines() { G "wc -l < $STUB_DIR/stub.log" | tr -d '\r '; }
+ledger_lines() { G "sudo -n cat $VS_LEDGER | wc -l" | tr -d '\r '; }
+never_abandon() { echo "A v-stub request must NEVER be abandoned, on any config: restore checkpoint $E2E_CHECKPOINT instead (D63 item 4, owner 2026-11-26)." >&2; }
+rep() { local i out=""; for ((i = 0; i < $2; i++)); do out="$out $1"; done; printf '%s' "${out# }"; }
+recipe() {
+  local phase=$1 file=$2 rc=0
+  shift 2
+  GI "sudo -n timeout 1800 python3 -I - $phase $STUB_DIR/mode $STUB_DIR/stub.log $VS_LEDGER $*" < "$GA/vs-recipe.py" > "$LOCAL_TMP/$file" 2> "$LOCAL_TMP/$file.err" || rc=$?
+  [ -s "$LOCAL_TMP/$file" ] || die "vs-recipe.py $phase printed nothing (rc $rc): $(head -c 600 "$LOCAL_TMP/$file.err")"
+  tr -d '\r' < "$LOCAL_TMP/$file" | save "vs/$file"
+  WX cat "$HG/$file"
+  [ "$rc" = 0 ] || die "vs-recipe.py $phase failed (rc $rc), see $HG/$file: $(head -c 600 "$LOCAL_TMP/$file.err")"
+}
+abandoned_priors() {
+  op "collect requests" > /dev/null || die "tbound-op collect requests failed"
+  G "cat $OUT/_/serve-pi-requests.jsonl" | tr -d '\r' | save vs/e2e-requests-before-b.jsonl
+  WX python3 -I -c 'import base64,json,sys
+for line in open(sys.argv[1]):
+    if not line.strip(): continue
+    r=json.loads(line)
+    if r["event"]["kind"]!="pi_service_request_abandoned": continue
+    d=json.loads(base64.b64decode(r["event"]["data"],validate=True))
+    print(d.get("request_id"), (d.get("reconciliation") or {}).get("provider_route"))' "$HG/e2e-requests-before-b.jsonl" | tr -d '\r'
+}
+vs_genesis() {
+  G "cd / && $SVC /usr/local/bin/tbound-profile research-ledger-genesis --profile $VS/research-profile.json --ledger-config $VS/research-ledger.json --ledger $VS_LEDGER" | tr -d '\r' | save "vs/$1.json"
+  eq "genesis ledger_id ($1)" "$(jgetw "$HG/$1.json" ledger_id)" "$LEDGER_ID"
+  eq "genesis ledger_path ($1)" "$(jgetw "$HG/$1.json" ledger_path)" "$VS_LEDGER"
+  WX python3 -I -c 'import json,sys; g=json.load(open(sys.argv[1])); print(json.dumps({"records": g["records"], "head_sha256": g["head_sha256"]}))' "$HG/$1.json" | tr -d '\r' | save "vs/$2.json"
+  gput 0644 root:root "$HG/$2.json" $VS/research-ledger-checkpoint.json
+}
+vs_service_start() {
+  local t0 act
+  t0=$(G "date -u '+%Y-%m-%d %H:%M:%S'" | tr -d '\r')
+  G "sudo -n systemctl start tbound-pi.socket && sudo -n systemctl start tbound-pi.service" || true
+  sleep 3
+  act=$(G 'systemctl is-active tbound-pi.socket tbound-pi.service' | tr -d '\r' | tr '\n' ' ') || true
+  G "sudo -n journalctl -u tbound-pi.service --since '$t0 UTC' --no-pager" | tr -d '\r' | save "vs/$1"
+  [ "$act" = "active active " ] || die "the v-stub service did not start (is-active: $act); journal in $HG/$1"
+  [ "$(WB "grep -c 'open the research provider route\|exceeds the research profile\|Failed with result' '$HG/$1' || true" | tr -d '\r\n')" = 0 ] || die "the journal shows a refusal: $HG/$1"
 }
 
 say "0. preconditions"
@@ -251,6 +304,22 @@ SD=$(G 'sha256sum /etc/tbound/podman-config/storage.conf' | cut -d' ' -f1 | sed 
 eq "measured CD == recorded CONTAINERS_CONF_DIGEST" "$CD" "$(hf_get CONTAINERS_CONF_DIGEST)"
 eq "measured SD == recorded STORAGE_CONF_DIGEST" "$SD" "$(hf_get STORAGE_CONF_DIGEST)"
 ok "V unit case: $VS_CASE (development compliant case of the installed pilot manifest)"
+case $RESEARCH_E2E in
+  0) ;;
+  1)
+    [ -n "${TBOUND_CLIENT_KEY:-}" ] && [ -f "$TBOUND_CLIENT_KEY" ] || die "RESEARCH_E2E=1 needs TBOUND_CLIENT_KEY=<path of the client forced-command key> (the B unit runs through it)"
+    [[ ${E2E_CHECKPOINT:-} =~ ^[A-Za-z0-9._-]{3,80}$ ]] || die "RESEARCH_E2E=1 needs E2E_CHECKPOINT=<the Hyper-V checkpoint taken right before this step>: a v-stub request that ends unknown is never abandoned, the guest goes back to that checkpoint"
+    read -r -a E2E_ALL <<<"$(compliant_cases "$HF/pilot/manifest.json")"
+    [ "${#E2E_ALL[@]}" -ge 5 ] || die "the installed manifest has ${#E2E_ALL[@]} compliant cases, the research-route check needs 5"
+    [ "${E2E_ALL[0]}" = "$VS_CASE" ] || die "the first compliant case is not the V unit case"
+    for c in "${E2E_ALL[@]:0:5}"; do
+      [[ $c =~ ^PILOT-CMP-[A-Za-z0-9-]+$ ]] || die "case '$c' is not a development case without a suffix: it could share an admission id with a research-pilot (.rp1) case"
+    done
+    B_CASE=${E2E_ALL[1]}; E2E_CASES="${E2E_ALL[2]} ${E2E_ALL[3]} ${E2E_ALL[4]}"
+    ok "research-route check: B unit $B_CASE/b-compliant/1, V units for the forwarder checks $E2E_CASES; no id carries a suffix, so none equals a research-pilot (.rp1) admission; recovery point: checkpoint $E2E_CHECKPOINT"
+    never_abandon;;
+  *) die "RESEARCH_E2E must be 0 or 1";;
+esac
 WX mkdir -m 0700 "$HG"
 local_tmp
 cleanup_add session_close
@@ -355,23 +424,49 @@ gput 0644 root:root "$HG/research-profile.json" $VS/research-profile.json
 gput 0644 root:root "$HG/research-ledger.json" $VS/research-ledger.json
 printf '%s' "$VS_KEY" | GI "sudo -n install -o 995 -g 986 -m 0400 /dev/stdin $VS/stub.key"
 eq "guest stub.key == the generated throwaway key" "$(gsha $VS/stub.key)" "sha256:$(printf '%s' "$VS_KEY" | sha256sum | cut -c1-64)"
-G "cd / && $SVC /usr/local/bin/tbound-profile research-ledger-genesis --profile $VS/research-profile.json --ledger-config $VS/research-ledger.json --ledger $VS_LEDGER" | tr -d '\r' | save vs/genesis.json
-eq "genesis ledger_id" "$(jgetw "$HG/genesis.json" ledger_id)" "$LEDGER_ID"
-eq "genesis ledger_path" "$(jgetw "$HG/genesis.json" ledger_path)" "$VS_LEDGER"
-WX python3 -I -c 'import json,sys; g=json.load(open(sys.argv[1])); print(json.dumps({"records": g["records"], "head_sha256": g["head_sha256"]}))' "$HG/genesis.json" | tr -d '\r' | save vs/checkpoint-1.json
-gput 0644 root:root "$HG/checkpoint-1.json" $VS/research-ledger-checkpoint.json
+vs_genesis genesis checkpoint-1
 GENESIS_HEAD=$(jgetw "$HG/genesis.json" head_sha256)
 
 say "6. stub upstream and the v-stub service"
 stub_start
-T0=$(G "date -u '+%Y-%m-%d %H:%M:%S'" | tr -d '\r')
-G "sudo -n systemctl start tbound-pi.socket && sudo -n systemctl start tbound-pi.service" || true
-sleep 3
-act=$(G 'systemctl is-active tbound-pi.socket tbound-pi.service' | tr -d '\r' | tr '\n' ' ') || true
-G "sudo -n journalctl -u tbound-pi.service --since '$T0 UTC' --no-pager" | tr -d '\r' | save vs/svc-start-journal.txt
-[ "$act" = "active active " ] || die "the v-stub service did not start (is-active: $act); journal in $HG/svc-start-journal.txt"
-[ "$(WB "grep -c 'open the research provider route\|exceeds the research profile\|Failed with result' '$HG/svc-start-journal.txt' || true" | tr -d '\r\n')" = 0 ] || die "the journal shows a refusal: $HG/svc-start-journal.txt"
+vs_service_start svc-start-journal.txt
 ok "the v-stub service and socket are active, no refusal in the journal"
+
+if [ "$RESEARCH_E2E" = 1 ]; then
+  say "6b. the DR-drill prior is in the request journal, abandoned on the engineering route"
+  hf_has pilot/DR_SETTLED || die "no $HF/pilot/DR_SETTLED: the research-route check needs the DR-drill prior that 33 abandoned"
+  DR_RID=$(hf_get pilot/DR_SETTLED)
+  PRIORS=$(abandoned_priors); printf '%s\n' "$PRIORS"
+  grep -qxF "$DR_RID engineering" <<<"$PRIORS" || die "no abandoned prior '$DR_RID' on the engineering route in the request journal: a DR request that completed or was not abandoned leaves no such prior, and the B unit would not test begin with it present"
+  ok "abandoned prior $DR_RID on the engineering route is in the request journal"
+
+  say "6c. B unit $B_CASE/b-compliant/1 on the v-stub route: begin passes with the DR prior present, its calls are booked and settled, the workflow completes"
+  never_abandon
+  B_RID=vse2e-b-$(date -u +%Y%m%dT%H%M%SZ)
+  B_LINES=$(ledger_lines); B_STUB=$(stub_lines)
+  G "printf 'quick\n' > $STUB_DIR/mode"
+  trial "reset $B_CASE" > /dev/null || die "trial reset $B_CASE refused before the B unit"
+  B_OPEN=1; rc=0; client_run "$B_CASE" b-compliant "$B_RID" > "$LOCAL_TMP/b.out" 2> "$LOCAL_TMP/b.err" || rc=$?
+  G "sudo -n cat $VS_LEDGER" | save vs/e2e-ledger-after-b.jsonl
+  [ -s "$LOCAL_TMP/b.out" ] || { never_abandon; die "the B client printed nothing (exit $rc): $(head -c 600 "$LOCAL_TMP/b.err")"; }
+  tr -d '\r' < "$LOCAL_TMP/b.out" | save vs/e2e-b-response.jsonl
+  read -r B_STATUS B_CODE <<<"$(WX python3 -I -c 'import json,sys
+r=[json.loads(l) for l in open(sys.argv[1]) if l.strip().startswith("{")][-1]
+print(r.get("status"), r.get("error_code") or "-")' "$HG/e2e-b-response.jsonl" | tr -d '\r')"
+  [ "$B_STATUS" = completed ] || { never_abandon; die "the B unit answered '$B_STATUS' ($B_CODE, client exit $rc), not completed: see $HG/e2e-b-response.jsonl"; }
+  B_OPEN=0
+  op "collect catalog" > /dev/null || die "tbound-op collect catalog failed"
+  G "cat $OUT/_/catalog.jsonl" | tr -d '\r' | save vs/e2e-catalog-after-b.jsonl
+  eq "workflow $B_CASE/b-compliant/1 in the catalog" "$(workflow_state "$HG/e2e-catalog-after-b.jsonl" "$B_CASE/b-compliant/1")" terminal:completed
+  B_CALLS=$(( ($(ledger_lines) - B_LINES) / 2 )); S_CALLS=$(( $(stub_lines) - B_STUB ))
+  [ "$B_CALLS" -ge 1 ] && [ "$S_CALLS" = "$B_CALLS" ] || die "the B unit booked $B_CALLS call(s) in the throwaway ledger and the stub saw $S_CALLS"
+  WX python3 -I "$WGA/vs-check.py" ledgerseq "$HG/e2e-ledger-after-b.jsonl" "$GENESIS_HEAD" "$B_LINES" "$(rep 'reserve settle' "$B_CALLS")" | head -n 1
+  G "tail -n +$((B_STUB + 1)) $STUB_DIR/stub.log" | tr -d '\r' | save vs/stub-b.log
+  printf '%s' "$VS_KEY" | WBI "python3 -I '$WGA/vs-check.py' stublog '$HG/stub-b.log' - '$B_CALLS' '$HG/research-profile.json'"
+  G "rm -f $STUB_DIR/mode"
+  ok "B unit: begin passed with the DR prior present, $B_CALLS call(s) booked and settled in the throwaway ledger, workflow terminal:completed"
+fi
+V_STUB_FROM=$(stub_lines)
 
 say "7. one V unit on $VS_CASE through the forwarder, the stub holds its reply for $STUB_HOLD s"
 VRUN=1
@@ -379,7 +474,7 @@ VRUN=1
 VJOB=$!
 SEEN=0
 for i in $(seq 1 75); do
-  if [ "$(G "wc -l < $STUB_DIR/stub.log" | tr -d '\r ')" -ge 1 ] 2>/dev/null; then SEEN=1; break; fi
+  if [ "$(stub_lines)" -gt "$V_STUB_FROM" ] 2>/dev/null; then SEEN=1; break; fi
   kill -0 "$VJOB" 2>/dev/null || break
   sleep 2
 done
@@ -405,10 +500,44 @@ printf '%s\n' "$DOCOUT" | head -n -1
 NREC=$(printf '%s\n' "$DOCOUT" | tail -n 1)
 
 say "8. what the stub saw, the throwaway ledger, the research ledger"
-G "cat $STUB_DIR/stub.log" | tr -d '\r' | save vs/stub.log
-printf '%s' "$VS_KEY" | WBI "python3 -I '$WGA/vs-check.py' stublog '$HG/stub.log' - '$NREC' '$HG/research-profile.json'"
+G "tail -n +$((V_STUB_FROM + 1)) $STUB_DIR/stub.log" | tr -d '\r' | save vs/stub-v.log
+printf '%s' "$VS_KEY" | WBI "python3 -I '$WGA/vs-check.py' stublog '$HG/stub-v.log' - '$NREC' '$HG/research-profile.json'"
 G "sudo -n cat $VS_LEDGER" | save vs/v-stub-ledger.after
 WX python3 -I "$WGA/vs-check.py" ledger "$HG/v-stub-ledger.after" "$GENESIS_HEAD"
+
+if [ "$RESEARCH_E2E" = 1 ]; then
+  say "8b. forwarder on the throwaway ledger: a settled call, a refusal, an upstream failure, a missing usage, a crash during a call and the restart, the stop rule"
+  read -r C2 C3 C4 <<<"$E2E_CASES"
+  RID=vse2e-$(date -u +%Y%m%dT%H%M%SZ)
+  A_FROM=$(ledger_lines)
+  T1=$(G "date -u '+%Y-%m-%d %H:%M:%S'" | tr -d '\r')
+  recipe stoprule e2e-stoprule.jsonl "$RID" "$C2" "$C3"
+  G "sudo -n journalctl -u tbound-pi.service --since '$T1 UTC' --no-pager" | tr -d '\r' | save vs/e2e-stoprule-journal.txt
+  G "sudo -n cat $VS_LEDGER" | save vs/e2e-ledger-1.jsonl
+  out=$(WX python3 -I "$WGA/vs-check.py" ledgerseq "$HG/e2e-ledger-1.jsonl" "$GENESIS_HEAD" "$A_FROM" \
+    "reserve settle reserve uncertain reserve uncertain reserve reserve uncertain reserve uncertain reserve uncertain" | tr -d '\r') || die "the throwaway ledger after the forwarder checks is not the expected sequence"
+  printf '%s\n' "$out" | head -n 1
+  STOP_REMAINING=$(printf '%s\n' "$out" | tail -n 1)
+  STOP_MIN=$(jgetw "$HG/research-ledger.json" min_per_unit_worst_case_micro_usd)
+  [ "$STOP_REMAINING" -lt "$STOP_MIN" ] || die "remaining $STOP_REMAINING micro-USD is not below the per-unit worst case $STOP_MIN, yet the forwarder refused"
+  ok "the crashed call stays held at worst case after the restart; the stop rule holds at $STOP_REMAINING < $STOP_MIN micro-USD and the forwarder refused before sending"
+
+  say "8c. an overage on a second throwaway ledger: a cost above the reservation, then every later request is refused before sending"
+  op "svc stop" || die "svc stop before the second throwaway ledger failed"
+  G "sudo -n rm -f $VS_LEDGER"
+  [ "$(G "sudo -n test -e $VS_LEDGER && echo present || echo absent" | tr -d '\r')" = absent ] || die "the first throwaway ledger is still on the guest after the deletion"
+  printf 'deleted %s (the first throwaway ledger; its records are in e2e-ledger-1.jsonl)\n' "$VS_LEDGER" | save vs/e2e-ledger-1.deleted
+  note "the first throwaway ledger is deleted (its records are in $HG/e2e-ledger-1.jsonl)"
+  vs_genesis genesis-2 checkpoint-2
+  GENESIS2_HEAD=$(jgetw "$HG/genesis-2.json" head_sha256)
+  vs_service_start e2e-svc-start-2.txt
+  recipe overage e2e-overage.jsonl "$RID" "$C4"
+  G "sudo -n cat $VS_LEDGER" | save vs/e2e-ledger-2.jsonl
+  WX python3 -I "$WGA/vs-check.py" ledgerseq "$HG/e2e-ledger-2.jsonl" "$GENESIS2_HEAD" 0 "genesis reserve overage" | head -n 1
+  ok "overage: the call settled above its reservation, the ledger refused every later request before sending"
+  E2E_SUMMARY="b_case $B_CASE b_request $B_RID b_calls $B_CALLS dr_prior $DR_RID recipe_cases $C2,$C3,$C4 recipe_request_prefix $RID stop_remaining_micro_usd $STOP_REMAINING genesis2_head $GENESIS2_HEAD e2e_checkpoint $E2E_CHECKPOINT"
+fi
+
 RS_AFTER=$(research_state); printf '%s\n' "$RS_AFTER" | save vs/research-after.txt
 eq "the research ledger, its checkpoint, profile, configuration and key file are unchanged" "$RS_AFTER" "$RS_BEFORE"
 note "the research ledger: $(printf '%s\n' "$RS_AFTER" | head -1)"
@@ -422,8 +551,9 @@ session_close
 WX python3 -I "$WGA/vs-check.py" record commit "$F" freeze "$FREEZE" case "$VS_CASE" stub_endpoint "$STUB_ENDPOINT" throwaway_ledger "$VS_LEDGER" throwaway_dir "$VS" \
   ledger_id "$LEDGER_ID" genesis_head "$GENESIS_HEAD" unit_ledger_records "$NREC" profile_sha256 "$FROZEN_PROFILE_SHA" regdigest "$REGDIGEST" td "$TD" profile_digest "$PROFILE_DIGEST" \
   research_before "$RS_BEFORE" research_after "$RS_FINAL" research_unchanged true deleted "$(WX cat "$HG/DELETED" | tr -d '\r' | tr '\n' ';')" \
-  pilot_restored true | save vs/record.json
+  pilot_restored true research_e2e "$RESEARCH_E2E" $E2E_SUMMARY | save vs/record.json
 hf_put vs/CHECKS_OK ok
 WX cat "$HG/record.json"
 note "the probe is complete: nothing was booked in the research ledger, the throwaway files are deleted, the pilot chain is running again. Next: 40-guest-evidence.sh v-stub"
+[ "$RESEARCH_E2E" = 0 ] || { never_abandon; note "after 40-guest-evidence.sh v-stub, restore checkpoint $E2E_CHECKPOINT: the B unit's admission $B_CASE/b-compliant/1 and its requests stay in the catalog until then"; }
 done_step

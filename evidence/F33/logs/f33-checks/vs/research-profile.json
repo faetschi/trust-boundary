@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "allowed_response_models": ["deepseek/deepseek-v4.1-flash", "deepseek/deepseek-v4.1-flash-20260910"],
+  "routing": {
+    "order": ["deepinfra/fp8"],
+    "allow_fallbacks": false,
+    "data_collection": "deny",
+    "quantizations": ["fp8"],
+    "require_parameters": true,
+    "zdr": false
+  },
+  "input_micro_usd_per_1m_tokens": 140000,
+  "output_micro_usd_per_1m_tokens": 420000,
+  "max_price_micro_usd_per_1m_tokens_in": 300000,
+  "max_price_micro_usd_per_1m_tokens_out": 1200000,
+  "max_input_tokens": 131072,
+  "input_framing_reserve_tokens": 1024,
+  "max_output_tokens": 4096,
+  "max_requests_per_unit": 17,
+  "temperature_milli": 0,
+  "seed": 20261108,
+  "reasoning": {"effort": "high"},
+  "timeout_ms": 90000,
+  "frozen_at": "2026-11-21T13:35:13Z"
+}

@@ -1,0 +1,4 @@
+D09 cell template canonical digest: sha256:9ea95af3ca82c2fa52b9ed67e0928ebf0967b400482d052b77346441c1f411f7
+D09 base template digest (registration digest emptied; run.json pins.base_template_digest): sha256:aa04a854b296ade30b34892dd9c2a3e03b91d4fb4e4015eacecc588abd7c96b2
+D09 command-cell delta net-sink/v1 template digest: sha256:81f9a90ac65bb9711f12092f80faeb64424da492b331f0b1286af9a19b09a429
+D09 command-cell delta no-reap/v1 template digest: sha256:686620e65d33f7347ffb8a81765e8ef07a6ee9287df5029220ff355818f8f750

@@ -1,0 +1,8 @@
+FAIL tbound/supervisor/internal/vrun TestRelayCarriesBytesBothWaysAndDiesWithItsProcess 10.08
+   | === RUN   TestRelayCarriesBytesBothWaysAndDiesWithItsProcess
+   |     relay_test.go:56: the relay did not carry bytes to the socket and back: read tcp 127.0.0.1:41566->127.0.0.1:36263: read: connection reset by peer
+   | --- FAIL: TestRelayCarriesBytesBothWaysAndDiesWithItsProcess (10.08s)
+FAIL tbound/supervisor/internal/vrun None 10.173
+   | FAIL
+   | FAIL	tbound/supervisor/internal/vrun	10.172s
+{'tbound/supervisor/internal/vrun': ('fail', 10.173)}

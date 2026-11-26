@@ -1,0 +1,6 @@
+F34 build: the final freeze and F-H1 (main 8627adeb, owner-authorized 2026-11-24; thesis D59, D61, D62).
+
+F34 replaces F33 (D62): F33 plus the V forwarder fixes found in F33's qualification (--bash-no-outputs, #292; the
+per-case max_host_calls cap, #295), the freeze socket guard (#293) and fresh admission ids (#294). Build identity
+(SRC_DIGEST, EVQ capture, frozen_source_digest) is this commit, tree 76a68d74, gated by g34c (7884 pass, 52 skip, 0 fail). The
+confirmatory corpus corpus/third/ is not in it (register D39); it is in the corpus-only commit of tag f34-corpus-1.

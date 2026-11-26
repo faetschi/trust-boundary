@@ -106,6 +106,48 @@ def check_ledger(path, head):
     print("throwaway ledger: %d records, record 1 is the genesis head %s" % (len(lines), head))
 
 
+def check_ledgerseq(path, head, start, pattern):
+    with open(path, "rb") as handle:
+        lines = handle.read().split(b"\n")
+    if lines[-1] == b"":
+        lines.pop()
+    if not lines or hashlib.sha256(lines[0]).hexdigest() != head:
+        fail("the throwaway ledger does not start with its genesis record")
+    records = [json.loads(line) for line in lines]
+    cap = records[0].get("cap")
+    if records[0].get("kind") != "genesis" or not isinstance(cap, int):
+        fail("record 1 is not a genesis record with a cap")
+    for i in range(1, len(records)):
+        if records[i].get("seq") != i or records[i].get("prev") != hashlib.sha256(lines[i - 1]).hexdigest():
+            fail("record %d does not chain to record %d" % (i + 1, i))
+    got = [r.get("kind") for r in records[int(start):]]
+    want = pattern.split()
+    if got != want:
+        fail("records from line %d are [%s], want [%s]" % (int(start) + 1, " ".join(got), " ".join(want)))
+    reserved, settled, held = {}, 0, 0
+    for r in records[1:]:
+        kind, unit = r.get("kind"), r.get("unit")
+        if kind == "reserve":
+            if unit in reserved:
+                fail("unit %s is reserved twice" % unit)
+            reserved[unit] = r.get("micro")
+        elif kind in ("settle", "overage"):
+            if reserved.pop(unit, None) is None:
+                fail("a %s record names a unit with no open reservation" % kind)
+            settled += r.get("micro") or 0
+        elif kind == "uncertain":
+            amount = reserved.pop(unit, None)
+            if amount is None:
+                fail("an uncertain record names a unit with no open reservation")
+            held += amount
+        else:
+            fail("unexpected record kind %r" % kind)
+    held += sum(reserved.values())
+    print("throwaway ledger: %d records, chain intact, records from line %d are [%s]; settled %d, held at worst case %d, still open %d, remaining %d of %d micro-USD" %
+          (len(records), int(start) + 1, " ".join(got), settled, held, len(reserved), cap - settled - held, cap))
+    print(cap - settled - held)
+
+
 def record(args):
     if len(args) % 2:
         fail("record takes key value pairs")
@@ -114,11 +156,11 @@ def record(args):
 
 def main():
     command, args = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else ("", [])
-    table = {"inspect": (check_inspect, 2), "stublog": (check_stublog, 4), "doc": (check_doc, 2), "ledger": (check_ledger, 2)}
+    table = {"inspect": (check_inspect, 2), "stublog": (check_stublog, 4), "doc": (check_doc, 2), "ledger": (check_ledger, 2), "ledgerseq": (check_ledgerseq, 4)}
     if command == "record":
         return record(args)
     if command not in table or len(args) != table[command][1]:
-        fail("usage: vs-check.py inspect FILE KEY | stublog FILE KEY COUNT PROFILE | doc FILE CASE | ledger FILE GENESIS_HEAD | record KEY VALUE...")
+        fail("usage: vs-check.py inspect FILE KEY | stublog FILE KEY COUNT PROFILE | doc FILE CASE | ledger FILE GENESIS_HEAD | ledgerseq FILE GENESIS_HEAD START KINDS | record KEY VALUE...")
     table[command][0](*args)
 
 
