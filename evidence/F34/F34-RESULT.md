@@ -55,3 +55,5 @@ End state (`K/f34-end-guest-state.txt`, read-only, 2026-11-25T01:20:40Z):
 - the research ledger is absent, and so are the v-stub throwaway paths.
 
 The guest goes to the F32 thread for the research pilot, which runs the RA steps and the ledger genesis. The coordinator did none of them. The guest password file `.local/pilot-walk/secret/tba_pw` (ACL FABIAN\Admin only) was used only for the F33 and F34 chains' sudo windows. It was not deleted: it was handed back to the F32 thread with "F34 qualified, guest yours", and that thread deletes it after the research-pilot guest setup.
+
+The two binary signatures of the throwaway V-probe registration and profile (`K/vs/managed-live-root.ed25519`, `K/vs/pi-host-profile.ed25519`) are not kept here, because `scripts/check-self-contained.sh` refuses `ed25519` files under `evidence/`. Their verification on the guest is in `K/vs/s3-verify.out` and `K/vs/s4-verify.out`, and the signed digests are in `K/vs/REGDIGEST`, `K/vs/PROFILE_DIGEST` and `K/vs/TD`.
