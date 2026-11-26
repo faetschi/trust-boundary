@@ -29,7 +29,7 @@ readonly VKILL_PATTERN='[t]bound trial ssh-original-command'
 readonly THROWAWAY_PATHS="$VS $VS_LEDGER $VS_ADMISSIONS $VS_SCRATCH $STUB_DIR"
 RESEARCH_E2E=${RESEARCH_E2E:-0}
 E2E_CASES="" B_CASE="" E2E_SUMMARY=""
-SESSION_OPEN=0 SWAPPED=0 THROWAWAY=0 STUB_UP=0 VRUN=0 VERIFY=0 TORN_DOWN=0 TD_RC=0 VJOB="" VWORK_PRE="" VWORK_DEL="" DEL_PATHS="" CAT_SHA_BEFORE="" CAT_SIZE_BEFORE="" PILOT_META_BEFORE=""
+SESSION_OPEN=0 B_OPEN=0 SWAPPED=0 THROWAWAY=0 STUB_UP=0 VRUN=0 VERIFY=0 TORN_DOWN=0 TD_RC=0 VJOB="" VWORK_PRE="" VWORK_DEL="" DEL_PATHS="" CAT_SHA_BEFORE="" CAT_SIZE_BEFORE="" PILOT_META_BEFORE=""
 VS_CASE="" VS_KEY="" PILOT_FILES="serve-pi-service.json:serve-pi-service.json managed-live-root.json:managed-live-root.json managed-live-root.ed25519:managed-live-root.ed25519 pi-host-profile.signed.json:pi-host-profile.json pi-host-profile.ed25519:pi-host-profile.ed25519 d09-cell.json:d09-cell.json"
 
 session_close() {
@@ -232,6 +232,7 @@ vs_teardown() {
   if [ "$THROWAWAY" = 1 ]; then tstep td_delete && THROWAWAY=0; fi
   if [ "$SWAPPED" = 1 ]; then tstep td_restore && SWAPPED=0 && VERIFY=1; fi
   if [ "$VERIFY" = 1 ]; then tstep td_verify && VERIFY=0; fi
+  [ "$B_OPEN" = 0 ] || never_abandon
   [ "$TD_RC" != 0 ] || TORN_DOWN=1
   return "$TD_RC"
 }
@@ -251,7 +252,7 @@ rep() { local i out=""; for ((i = 0; i < $2; i++)); do out="$out $1"; done; prin
 recipe() {
   local phase=$1 file=$2 rc=0
   shift 2
-  GI "sudo -n python3 -I - $phase $STUB_DIR/mode $STUB_DIR/stub.log $VS_LEDGER $*" < "$GA/vs-recipe.py" > "$LOCAL_TMP/$file" 2> "$LOCAL_TMP/$file.err" || rc=$?
+  GI "sudo -n timeout 1500 python3 -I - $phase $STUB_DIR/mode $STUB_DIR/stub.log $VS_LEDGER $*" < "$GA/vs-recipe.py" > "$LOCAL_TMP/$file" 2> "$LOCAL_TMP/$file.err" || rc=$?
   [ -s "$LOCAL_TMP/$file" ] || die "vs-recipe.py $phase printed nothing (rc $rc): $(head -c 600 "$LOCAL_TMP/$file.err")"
   tr -d '\r' < "$LOCAL_TMP/$file" | save "vs/$file"
   WX cat "$HG/$file"
@@ -436,7 +437,7 @@ if [ "$RESEARCH_E2E" = 1 ]; then
   hf_has pilot/DR_SETTLED || die "no $HF/pilot/DR_SETTLED: the research-route check needs the DR-drill prior that 33 abandoned"
   DR_RID=$(hf_get pilot/DR_SETTLED)
   PRIORS=$(abandoned_priors); printf '%s\n' "$PRIORS"
-  grep -qx "$DR_RID engineering" <<<"$PRIORS" || die "no abandoned prior '$DR_RID' on the engineering route in the request journal: the B unit would not test begin with the DR prior present"
+  grep -qxF "$DR_RID engineering" <<<"$PRIORS" || die "no abandoned prior '$DR_RID' on the engineering route in the request journal: a DR request that completed or was not abandoned leaves no such prior, and the B unit would not test begin with it present"
   ok "abandoned prior $DR_RID on the engineering route is in the request journal"
 
   say "6c. B unit $B_CASE/b-compliant/1 on the v-stub route: begin passes with the DR prior present, its calls are booked and settled, the workflow completes"
@@ -445,7 +446,7 @@ if [ "$RESEARCH_E2E" = 1 ]; then
   B_LINES=$(ledger_lines); B_STUB=$(stub_lines)
   G "printf 'quick\n' > $STUB_DIR/mode"
   trial "reset $B_CASE" > /dev/null || die "trial reset $B_CASE refused before the B unit"
-  rc=0; client_run "$B_CASE" b-compliant "$B_RID" > "$LOCAL_TMP/b.out" 2> "$LOCAL_TMP/b.err" || rc=$?
+  B_OPEN=1; rc=0; client_run "$B_CASE" b-compliant "$B_RID" > "$LOCAL_TMP/b.out" 2> "$LOCAL_TMP/b.err" || rc=$?
   G "sudo -n cat $VS_LEDGER" | save vs/e2e-ledger-after-b.jsonl
   [ -s "$LOCAL_TMP/b.out" ] || { never_abandon; die "the B client printed nothing (exit $rc): $(head -c 600 "$LOCAL_TMP/b.err")"; }
   tr -d '\r' < "$LOCAL_TMP/b.out" | save vs/e2e-b-response.jsonl
@@ -453,6 +454,7 @@ if [ "$RESEARCH_E2E" = 1 ]; then
 r=[json.loads(l) for l in open(sys.argv[1]) if l.strip().startswith("{")][-1]
 print(r.get("status"), r.get("error_code") or "-")' "$HG/e2e-b-response.jsonl" | tr -d '\r')"
   [ "$B_STATUS" = completed ] || { never_abandon; die "the B unit answered '$B_STATUS' ($B_CODE, client exit $rc), not completed: see $HG/e2e-b-response.jsonl"; }
+  B_OPEN=0
   op "collect catalog" > /dev/null || die "tbound-op collect catalog failed"
   G "cat $OUT/_/catalog.jsonl" | tr -d '\r' | save vs/e2e-catalog-after-b.jsonl
   eq "workflow $B_CASE/b-compliant/1 in the catalog" "$(workflow_state "$HG/e2e-catalog-after-b.jsonl" "$B_CASE/b-compliant/1")" terminal:completed
@@ -523,6 +525,8 @@ if [ "$RESEARCH_E2E" = 1 ]; then
   say "8c. an overage on a second throwaway ledger: a cost above the reservation, then every later request is refused before sending"
   op "svc stop" || die "svc stop before the second throwaway ledger failed"
   G "sudo -n rm -f $VS_LEDGER"
+  [ "$(G "sudo -n test -e $VS_LEDGER && echo present || echo absent" | tr -d '\r')" = absent ] || die "the first throwaway ledger is still on the guest after the deletion"
+  printf 'deleted %s (the first throwaway ledger; its records are in e2e-ledger-1.jsonl)\n' "$VS_LEDGER" | save vs/e2e-ledger-1.deleted
   note "the first throwaway ledger is deleted (its records are in $HG/e2e-ledger-1.jsonl)"
   vs_genesis genesis-2 checkpoint-2
   GENESIS2_HEAD=$(jgetw "$HG/genesis-2.json" head_sha256)

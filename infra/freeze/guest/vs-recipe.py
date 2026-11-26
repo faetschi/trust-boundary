@@ -69,7 +69,10 @@ class Unit:
         self.case = case
         self.proc = subprocess.Popen(CLIENT + ["--task-id", case, "--attempt", "1", "--role", "v", "--task-request-id", request_id, "--bash-no-outputs"],
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd="/", env=ENV)
+        timer = threading.Timer(60, self.proc.kill)
+        timer.start()
         line = self.proc.stdout.readline()
+        timer.cancel()
         if not line:
             fail("the V client for %s printed no ready frame: %s" % (case, self.proc.stderr.read()[:600].decode(errors="replace")))
         ready = json.loads(line)
@@ -99,12 +102,12 @@ class Unit:
 
     def finish(self):
         try:
-            self.proc.stdin.close()
-        except OSError:
-            pass
-        out, err = self.proc.communicate(timeout=180)
+            out, err = self.proc.communicate(timeout=180)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            out, err = self.proc.communicate()
         frames = [json.loads(line) for line in out.decode().splitlines() if line.strip().startswith("{")]
-        return frames[-1] if len(frames) > 1 else {"status": "no final frame", "exit": self.proc.returncode, "stderr": err.decode(errors="replace")[:400]}
+        return frames[-1] if frames else {"status": "no final frame", "exit": self.proc.returncode, "stderr": err.decode(errors="replace")[:400]}
 
 
 def expect(case_step, got, want_status, want_reached):
@@ -130,11 +133,12 @@ def stoprule(case2, case3, prefix):
     expect("wrong model is refused before booking", unit.post("quick", WRONG_MODEL), 400, 0)
     expect("upstream 500 ends uncertain", unit.post("fail500"), 500, 1)
     expect("no usage ends uncertain", unit.post("nousage"), 200, 1)
-    reserves = ledger_kinds().count("reserve")
+    reserves, seen = ledger_kinds().count("reserve"), len(lines_of(STUB_LOG))
     held = {}
-    thread = threading.Thread(target=lambda: held.update(result=unit.post("hold", timeout=90)))
+    thread = threading.Thread(target=lambda: held.update(result=unit.post("hold", timeout=90)), daemon=True)
     thread.start()
     wait_for(lambda: ledger_kinds().count("reserve") == reserves + 1, 30, "the hold request's reservation")
+    wait_for(lambda: len(lines_of(STUB_LOG)) == seen + 1, 30, "the hold request to reach the stub")
     killed = systemctl("kill", "-s", "KILL", SERVICE)
     if killed.returncode != 0:
         fail("systemctl kill failed: " + killed.stderr[:300])
@@ -148,7 +152,10 @@ def stoprule(case2, case3, prefix):
         expect("upstream 500 ends uncertain (after restart, %d)" % (i + 1), after.post("fail500"), 500, 1)
     expect("the stop rule refuses before sending", after.post("quick"), 503, 0)
     final = after.finish()
-    emit(step="unit totals after the stop rule", totals=final.get("receipt"), status=final.get("status"))
+    totals = final.get("receipt") or {}
+    emit(step="unit totals after the stop rule", totals=totals, status=final.get("status"))
+    if final.get("status") != "completed" or [totals.get(k) for k in ("booked", "settled", "uncertain", "overage")] != [3, 0, 3, False]:
+        fail("the stop-rule unit did not complete with 3 booked, 0 settled, 3 uncertain, no overage: %r" % final)
 
 
 def overage(case4, prefix):
@@ -158,8 +165,8 @@ def overage(case4, prefix):
     final = unit.finish()
     receipt = final.get("receipt") or {}
     emit(step="unit totals after the overage", totals=receipt, status=final.get("status"))
-    if receipt.get("overage") is not True:
-        fail("the unit's totals do not report the overage: %r" % final)
+    if final.get("status") != "completed" or receipt.get("booked") != 1 or receipt.get("overage") is not True:
+        fail("the overage unit did not complete with 1 booked and the overage reported: %r" % final)
 
 
 phase, MODE_FILE, STUB_LOG, LEDGER, prefix = sys.argv[1:6]
