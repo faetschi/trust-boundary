@@ -252,7 +252,7 @@ rep() { local i out=""; for ((i = 0; i < $2; i++)); do out="$out $1"; done; prin
 recipe() {
   local phase=$1 file=$2 rc=0
   shift 2
-  GI "sudo -n timeout 1500 python3 -I - $phase $STUB_DIR/mode $STUB_DIR/stub.log $VS_LEDGER $*" < "$GA/vs-recipe.py" > "$LOCAL_TMP/$file" 2> "$LOCAL_TMP/$file.err" || rc=$?
+  GI "sudo -n timeout 1800 python3 -I - $phase $STUB_DIR/mode $STUB_DIR/stub.log $VS_LEDGER $*" < "$GA/vs-recipe.py" > "$LOCAL_TMP/$file" 2> "$LOCAL_TMP/$file.err" || rc=$?
   [ -s "$LOCAL_TMP/$file" ] || die "vs-recipe.py $phase printed nothing (rc $rc): $(head -c 600 "$LOCAL_TMP/$file.err")"
   tr -d '\r' < "$LOCAL_TMP/$file" | save "vs/$file"
   WX cat "$HG/$file"
