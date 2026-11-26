@@ -1259,7 +1259,7 @@ Two shells, each one window. Blocks marked `# WSL` run in a WSL shell with the e
 
 ```
 # WSL
-export KIT_FREEZE=F33; K=<the Linux kit checkout that TBOUND_WGA names: TBOUND_WGA=$K/infra/freeze/guest>; . $K/infra/freeze/lib.sh; . $TBOUND_WORK/env.sh; . $W/session-env.sh; RR=$HF/rr; WGA=$K/infra/freeze/guest
+export KIT_FREEZE=F35; K=<the Linux kit checkout that TBOUND_WGA names: TBOUND_WGA=$K/infra/freeze/guest>; . $K/infra/freeze/lib.sh; . $TBOUND_WORK/env.sh; . $W/session-env.sh; RR=$HF/rr; WGA=$K/infra/freeze/guest
 # Git Bash
 export MSYS_NO_PATHCONV=1 GUEST_IP=<measured this session>
 GSSH() { sh infra/freeze/tools/gssh.sh "$@"; }                   # stdin passes through
@@ -1286,11 +1286,11 @@ Rollback: `GSSH "$OP svc start"`.
 ### RA-1 [PRIVILEGED WRITE, needs owner approval] open session sudo
 
 ```
-read -rs TBA_PW; export TBA_PW; KIT_FREEZE=F33 bash infra/freeze/guest/00-session-sudo.sh open
+read -rs TBA_PW; export TBA_PW; KIT_FREEZE=F35 bash infra/freeze/guest/00-session-sudo.sh open
 GSSH 'sudo -n ls -l /etc/tbound/provider; sudo -n test -e /var/lib/tbound/sessions/usd-ledger && echo LEDGER-EXISTS'      # [READ-ONLY]
 ```
 
-Expect only `opencode-go.key` and no `LEDGER-EXISTS`. If a ledger exists, an earlier research round ran on this guest: skip RA-4, and check its continuity against the kept checkpoint (RA-12) before the round; for the US$5 ledger of 2026-11-21 see "Cap change" under RA-4 instead. Rollback: `KIT_FREEZE=F33 bash infra/freeze/guest/00-session-sudo.sh close`.
+Expect only `opencode-go.key` and no `LEDGER-EXISTS`. If a ledger exists, an earlier research round ran on this guest: skip RA-4, and check its continuity against the kept checkpoint (RA-12) before the round; for the US$5 ledger of 2026-11-21 see "Cap change" under RA-4 instead. If no ledger exists but a kept checkpoint of an earlier research round records more than the genesis (`records` above 1 in its newest `checkpoint-<k>.json`), stop. The ledger was moved or rolled back after a reservation, by an archive or a checkpoint restore (RA-11), and a new genesis would hide that spend. The owner decides. A kept checkpoint that records only the genesis (no reservation) allows a new genesis at RA-4. Rollback: `KIT_FREEZE=F35 bash infra/freeze/guest/00-session-sudo.sh close`.
 
 ### RA-2 (RR-1) [PRIVILEGED WRITE, needs owner approval] frozen profile and ledger configuration
 
@@ -1400,7 +1400,7 @@ Not covered here: the route and config of the confirmatory witnesses (D39). This
 
 Start from the round's installed engineering config. Change exactly `provider_route` and, for the pilot profile, add `allow_pilot_on_research: true` (`supervisor/cmd/tbound/pi_service_handoff_linux.go:864-866`). A thesis-profile config must not have it. `workflow_max_host_calls` must not exceed the profile's `max_requests_per_unit` 17 (`supervisor/cmd/tbound/research_route_linux.go:45-50`).
 
-Run exactly one of the two `sed` blocks, then the common block.
+Run exactly one of the three `sed` blocks, then the common block.
 
 Pilot profile (a proving round or the research pilot):
 
@@ -1416,6 +1416,15 @@ Thesis profile (H1, after RA-4a). It changes exactly three lines: `provider_rout
 # WSL
 CD=$(grep -Eo 'sha256:[0-9a-f]{64}' $CC/CORPUS_DIGEST.out | sort -u)
 sed -e 's|^  "provider_route": "engineering",$|  "provider_route": "research",|' -e 's|^  "corpus_quota_profile": "pilot",$|  "corpus_quota_profile": "thesis",|' -e "s|^  \"corpus_manifest_digest\": \"sha256:[0-9a-f]\{64\}\",\$|  \"corpus_manifest_digest\": \"$CD\",|" $HF/pilot/serve-pi-service.json > $RR/serve-pi-service.json
+diff $HF/pilot/serve-pi-service.json $RR/serve-pi-service.json      # [READ-ONLY] exactly these three lines changed
+```
+
+Screening profile (D58 compliant screening, `docs/design/compliant-screening.md`, after the screening manifest's install by RA-4a with `CT` and `CM` naming the screening manifest). It changes exactly three lines: `provider_route`, `corpus_quota_profile` to `screening`, and `corpus_manifest_digest` to that install's `CORPUS_DIGEST`. It adds no `allow_pilot_on_research`: the service refuses it with `screening`, and refuses `screening` on any route but research (`supervisor/cmd/tbound/pi_service_handoff_linux.go:869-870`).
+
+```
+# WSL
+CD=$(grep -Eo 'sha256:[0-9a-f]{64}' $CC/CORPUS_DIGEST.out | sort -u)
+sed -e 's|^  "provider_route": "engineering",$|  "provider_route": "research",|' -e 's|^  "corpus_quota_profile": "pilot",$|  "corpus_quota_profile": "screening",|' -e "s|^  \"corpus_manifest_digest\": \"sha256:[0-9a-f]\{64\}\",\$|  \"corpus_manifest_digest\": \"$CD\",|" $HF/pilot/serve-pi-service.json > $RR/serve-pi-service.json
 diff $HF/pilot/serve-pi-service.json $RR/serve-pi-service.json      # [READ-ONLY] exactly these three lines changed
 ```
 
@@ -1502,7 +1511,7 @@ Then run R5-4 [READ-ONLY]: TD == `ContainmentProfileDigest`. Rollback: reinstall
 GSSH 'sudo -n systemctl start tbound-pi.socket && sudo -n systemctl start tbound-pi.service; systemctl is-active tbound-pi.socket tbound-pi.service'      # active active
 GSSH 'sudo -n journalctl -u tbound-pi.service -n 50 --no-pager'      # [READ-ONLY] no "open the research provider route" or "exceeds the research profile" refusal
 GSSH "$OP diag l2"                                                     # [READ-ONLY] L2 checks; then the leftover-container check (Pilot run)
-KIT_FREEZE=F33 bash infra/freeze/guest/00-session-sudo.sh close
+KIT_FREEZE=F35 bash infra/freeze/guest/00-session-sudo.sh close
 ```
 
 Run the round's plan (Pilot run, with the RA-9 pins in a new `run_dir`). First the check, which spends nothing: `trial reset <case> --check` refuses on the USD stop rule (`supervisor/cmd/tbound/trial_linux.go:383-401`), a pending workflow (`:403-470`) or a leftover cell (`trial_host_linux.go:309`). Then one step at a time (`supervisor/cmd/tbound-run/commands.go:52-70`):
@@ -1513,6 +1522,14 @@ tbound-run run --config run.json --max-steps 1      # one step; inspect the jour
 ```
 
 The first `run` reserves the first request in the ledger. From then on RA-4 has no rollback. Recovery is manual, because `infra/freeze/tools/recover.sh` starts the service with `tbound-op svc start` (`recover.sh:150`), which refuses this config. On an UNKNOWN request: `GSSH "$OP abandon <rid>"` (preview), and `--confirm <token>` only when every fact is clean. The verb starts the socket again, and the socket starts the service at the next request. Then do the leftover-container check and continue with `tbound-run run` or `rerun` (Pilot run).
+
+Abandon a research request only while this research config is installed. The abandon record binds the route of the installed config, and only the research route checks the request's spend against its ledger units (`supervisor/cmd/tbound/pi_service_reconcile_production_linux.go:88-95`). Every later `begin` re-checks the record on that bound route. So never abandon a research request after RA-13, or after a restore to an engineering-route state. Install the research files again first (RA-5 to RA-10).
+
+From the first reservation on, the ledger never moves and never goes back:
+- Do not run `27-archive-state.sh archive` on this guest. It moves `/var/lib/tbound/sessions`, which holds the ledger, into the archive (`infra/freeze/guest/27-archive-state.sh:96`).
+- Do not restore a Hyper-V checkpoint taken before the newest ledger record. It rolls the ledger back below the kept checkpoint and loses the spend after it from the record.
+
+RA-12 then stops on the next round, and RA-1 stops when the ledger is gone.
 
 ### RA-12 (RR-3a) [PRIVILEGED WRITE, needs owner approval] advance the checkpoint
 
