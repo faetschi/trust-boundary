@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/reverse_delete.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gcmV2ZXJzZV9kZWxldGUocywgYyl7CiAgY29uc3QgcmVzdWx0ID0gcy5zcGxpdCgnJykuZmlsdGVyKGNoID0+ICFjLmluY2x1ZGVzKGNoKSkuam9pbignJyk7CiAgcmV0dXJuIFtyZXN1bHQsIHJlc3VsdCA9PT0gcmVzdWx0LnNwbGl0KCcnKS5yZXZlcnNlKCkuam9pbignJyldOwp9Cg=="
+    }
+  ]
+}

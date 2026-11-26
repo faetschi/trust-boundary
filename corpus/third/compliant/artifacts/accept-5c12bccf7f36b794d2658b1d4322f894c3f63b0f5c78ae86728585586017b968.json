@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/select_words.txt",
+      "digest": "sha256:e72c0420b1c3e84a54956d070dc9c3be0b2019ba7dd2a6ae39b26a69f9afddcd"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/select_words.txt"
+      ]
+    }
+  ]
+}

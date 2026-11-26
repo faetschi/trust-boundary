@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/is_bored.txt",
+      "digest": "sha256:479741c1cf87aeed29b40e7bb0c20f76562100f848b401a6df514a95ee72f4e0"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/is_bored.txt"
+      ]
+    }
+  ]
+}

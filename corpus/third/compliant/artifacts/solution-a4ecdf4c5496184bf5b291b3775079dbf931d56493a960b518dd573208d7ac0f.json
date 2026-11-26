@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/check_if_last_char_is_a_letter.txt",
+      "mode": "0644",
+      "content_b64": "Y2hlY2tfaWZfbGFzdF9jaGFyX2lzX2FfbGV0dGVyOiBjZmRkNGY2YmRjYTg2MmYyCg=="
+    }
+  ]
+}

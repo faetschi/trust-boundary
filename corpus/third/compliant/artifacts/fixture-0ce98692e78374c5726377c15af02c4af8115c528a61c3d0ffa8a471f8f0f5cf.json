@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/largest_prime_factor.spec.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Ly9SZXR1cm4gdGhlIGxhcmdlc3QgcHJpbWUgZmFjdG9yIG9mIG4uIEFzc3VtZSBuID4gMSBhbmQgaXMgbm90IGEgcHJpbWUuCi8vID4+PiBsYXJnZXN0X3ByaW1lX2ZhY3RvcigxMzE5NSkKLy8gMjkKLy8gPj4+IGxhcmdlc3RfcHJpbWVfZmFjdG9yKDIwNDgpCi8vIDIKZnVuY3Rpb24gbGFyZ2VzdF9wcmltZV9mYWN0b3Iobil7Cg=="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

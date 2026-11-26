@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/match_parens.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = match_parens;\n  assert.deepEqual(candidate([\"()(\", \")\"]),\"Yes\");\n  assert.deepEqual(candidate([\")\", \")\"]),\"No\");\n  assert.deepEqual(candidate([\"(()(())\", \"())())\"]),\"No\");\n  assert.deepEqual(candidate([\")())\", \"(()()(\"]),\"Yes\");\n  assert.deepEqual(candidate([\"(())))\", \"(()())((\"]),\"Yes\");\n  assert.deepEqual(candidate([\"()\", \"())\"]),\"No\");\n  assert.deepEqual(candidate([\"(()(\", \"()))()\"]),\"Yes\");\n  assert.deepEqual(candidate([\"((((\", \"((())\"]),\"No\");\n  assert.deepEqual(candidate([\")(()\", \"(()(\"]),\"No\");\n  assert.deepEqual(candidate([\")(\", \")(\"]),\"No\");\n  assert.deepEqual(candidate([\"(\", \")\"]),\"Yes\");\n  assert.deepEqual(candidate([\")\", \"(\"]),\"Yes\");\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/match_parens.js"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/find_max.txt",
+      "digest": "sha256:15c21faac65412b1086674ed9bbf7e2fd1a19db93906ba89f453158df6718bf6"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/find_max.txt"
+      ]
+    }
+  ]
+}

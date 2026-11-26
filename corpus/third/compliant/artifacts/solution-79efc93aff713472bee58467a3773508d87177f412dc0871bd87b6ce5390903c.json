@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/strange_sort_list.txt",
+      "mode": "0644",
+      "content_b64": "c3RyYW5nZV9zb3J0X2xpc3Q6IGFmMTI3ODRiNjU4NjI3YjAK"
+    }
+  ]
+}

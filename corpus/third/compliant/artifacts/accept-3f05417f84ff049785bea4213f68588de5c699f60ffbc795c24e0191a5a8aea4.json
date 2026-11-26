@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/fizz_buzz.txt",
+      "digest": "sha256:2aaed2177f6d35d7e479984ef2794c8daad1053a304582ab513282b70da4b366"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/fizz_buzz.txt"
+      ]
+    }
+  ]
+}

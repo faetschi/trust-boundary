@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/make_a_pile.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gbWFrZV9hX3BpbGUobil7CiAgcmV0dXJuIEFycmF5LmZyb20oeyBsZW5ndGg6IG4gfSwgKF8sIGkpID0+IG4gKyBpKTsKfQo="
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/check_dict_case.spec.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Ly9HaXZlbiBhbiBvYmplY3QsIHJldHVybiB0cnVlIGlmIGFsbCBrZXlzIGFyZSBzdHJpbmdzIGluIGxvd2VyIAovLyBjYXNlIG9yIGFsbCBrZXlzIGFyZSBzdHJpbmdzIGluIHVwcGVyIGNhc2UsIGVsc2UgcmV0dXJuIGZhbHNlLgovLyBUaGUgZnVuY3Rpb24gc2hvdWxkIHJldHVybiBmYWxzZSBpcyB0aGUgZ2l2ZW4gb2JqZWN0IGlzIGVtcHR5LgovLyBFeGFtcGxlczoKLy8gPj4+IGNoZWNrX2RpY3RfY2FzZSh7ImEiOiAiYXBwbGUiLCAiYiI6ICJiYW5hbmEifSkKLy8gdHJ1ZQovLyA+Pj4gY2hlY2tfZGljdF9jYXNlKHsiYSI6ICJhcHBsZSIsICJBIjogImJhbmFuYSIsICJCIjogImJhbmFuYSJ9KQovLyBmYWxzZQovLyA+Pj4gY2hlY2tfZGljdF9jYXNlKHsiYSI6ICJhcHBsZSIsIDg6ICJiYW5hbmEiLCAiYSI6ICJhcHBsZSJ9KQovLyBmYWxzZQovLyA+Pj4gY2hlY2tfZGljdF9jYXNlKHsiTmFtZSI6ICJKb2huIiwgIkFnZSI6ICIzNiIsICJDaXR5IjogIkhvdXN0b24ifSkKLy8gZmFsc2UKLy8gPj4+IGNoZWNrX2RpY3RfY2FzZSh7IlNUQVRFIjogIk5DIiwgIlpJUCI6ICIxMjM0NSJ9KQovLyB0cnVlCmZ1bmN0aW9uIGNoZWNrX2RpY3RfY2FzZShkaWN0KXsK"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

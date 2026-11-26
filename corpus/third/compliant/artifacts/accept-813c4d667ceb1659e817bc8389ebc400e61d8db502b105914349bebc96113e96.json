@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/largest_prime_factor.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = largest_prime_factor;\n  assert.deepEqual(candidate(15),5);\n  assert.deepEqual(candidate(27),3);\n  assert.deepEqual(candidate(63),7);\n  assert.deepEqual(candidate(330),11);\n  assert.deepEqual(candidate(13195),29);\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/largest_prime_factor.js"
+      ]
+    }
+  ]
+}

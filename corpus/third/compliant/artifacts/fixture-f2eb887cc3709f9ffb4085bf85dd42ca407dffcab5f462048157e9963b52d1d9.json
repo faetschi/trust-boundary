@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/circular_shift.spec.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Ly9DaXJjdWxhciBzaGlmdCB0aGUgZGlnaXRzIG9mIHRoZSBpbnRlZ2VyIHgsIHNoaWZ0IHRoZSBkaWdpdHMgcmlnaHQgYnkgc2hpZnQKLy8gYW5kIHJldHVybiB0aGUgcmVzdWx0IGFzIGEgc3RyaW5nLgovLyBJZiBzaGlmdCA+IG51bWJlciBvZiBkaWdpdHMsIHJldHVybiBkaWdpdHMgcmV2ZXJzZWQuCi8vID4+PiBjaXJjdWxhcl9zaGlmdCgxMiwgMSkKLy8gIjIxIgovLyA+Pj4gY2lyY3VsYXJfc2hpZnQoMTIsIDIpCi8vICIxMiIKZnVuY3Rpb24gY2lyY3VsYXJfc2hpZnQoeCwgc2hpZnQpewo="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

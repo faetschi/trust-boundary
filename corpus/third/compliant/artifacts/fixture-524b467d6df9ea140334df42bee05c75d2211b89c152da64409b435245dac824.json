@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/do_algebra.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gZG9fYWxnZWJyYShvcGVyYXRvciwgb3BlcmFuZCl7CiAgLy8gUHl0aG9uIHByZWNlZGVuY2U6ICoqIChyaWdodC1hc3NvY2lhdGl2ZSksIHRoZW4gKiBhbmQgLy8sIHRoZW4gKyBhbmQgLS4KICBsZXQgdmFsdWVzID0gb3BlcmFuZC5zbGljZSgpOwogIGxldCBvcHMgPSBvcGVyYXRvci5zbGljZSgpOwogIGZvciAobGV0IGkgPSBvcHMubGVuZ3RoIC0gMTsgaSA+PSAwOyBpLS0pIHsKICAgIGlmIChvcHNbaV0gPT09ICcqKicpIHsKICAgICAgdmFsdWVzLnNwbGljZShpLCAyLCBNYXRoLnBvdyh2YWx1ZXNbaV0sIHZhbHVlc1tpICsgMV0pKTsKICAgICAgb3BzLnNwbGljZShpLCAxKTsKICAgIH0KICB9CiAgZm9yIChsZXQgaSA9IDA7IGkgPCBvcHMubGVuZ3RoOyApIHsKICAgIGlmIChvcHNbaV0gPT09ICcqJyB8fCBvcHNbaV0gPT09ICcvLycpIHsKICAgICAgY29uc3QgcmVzdWx0ID0gb3BzW2ldID09PSAnKicgPyB2YWx1ZXNbaV0gKiB2YWx1ZXNbaSArIDFdIDogTWF0aC5mbG9vcih2YWx1ZXNbaV0gLyB2YWx1ZXNbaSArIDFdKTsKICAgICAgdmFsdWVzLnNwbGljZShpLCAyLCByZXN1bHQpOwogICAgICBvcHMuc3BsaWNlKGksIDEpOwogICAgfSBlbHNlIHsKICAgICAgaSsrOwogICAgfQogIH0KICBsZXQgdG90YWwgPSB2YWx1ZXNbMF07CiAgZm9yIChsZXQgaSA9IDA7IGkgPCBvcHMubGVuZ3RoOyBpKyspIHsKICAgIHRvdGFsID0gb3BzW2ldID09PSAnKycgPyB0b3RhbCArIHZhbHVlc1tpICsgMV0gOiB0b3RhbCArIHZhbHVlc1tpICsgMV07CiAgfQogIHJldHVybiB0b3RhbDsKfQo="
+    }
+  ]
+}
