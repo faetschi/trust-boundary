@@ -249,7 +249,7 @@ p_case_check() {
   WX python3 -I -c 'import json,sys
 c=[c for c in json.load(open(sys.argv[1],encoding="utf-8"))["cases"] if c["case_id"]==sys.argv[2]]
 t=c[0]["trial"] if c else {}
-ok=len(c)==1 and c[0]["kind"]=="adversarial" and bool(t.get("script")) and bool(t.get("pivots")) and t.get("p_delta") in ("none","admit-all/v1","net-sink/v1","no-reap/v1","net-sink+admit-all/v1")
+ok=len(c)==1 and c[0]["kind"]=="adversarial" and bool(t.get("script")) and bool(t.get("pivots")) and t.get("p_delta","none") in ("none","admit-all/v1","net-sink/v1","no-reap/v1","net-sink+admit-all/v1")
 print("ok" if ok else "no")' "$1" "$2" | tr -d '\r\n'
 }
 ledger_lines() { G "sudo -n cat $VS_LEDGER | wc -l" | tr -d '\r '; }
