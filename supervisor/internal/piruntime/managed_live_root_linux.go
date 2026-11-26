@@ -83,7 +83,7 @@ const (
 
 // The research provider route has its own fixed key file next to the engineering
 // one (same loader rules: service uid, mode 0400 or 0600, environment ignored).
-// provider_route in the service config is one of the route names; v-stub serves only role v (a probe against a stub).
+// provider_route in the service config is one of the route names; v-stub is a probe route against a stub (stub key, stub endpoint, throwaway ledger).
 const (
 	D09ManagedPiResearchCredentialPath   = "/etc/tbound/provider/openrouter.key"
 	D09ManagedPiProviderRouteEngineering = "engineering"
