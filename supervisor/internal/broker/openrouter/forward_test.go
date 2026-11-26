@@ -1,7 +1,11 @@
 package openrouter
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -176,5 +180,99 @@ func TestForwardedRequestDropsPiToolStrictFlag(t *testing.T) {
 	bad := `[{"type":"function","function":{"name":"read","description":"d","parameters":{"type":"object"},"strict":"no"}}]`
 	if _, err := BuildForwardedRequest(route, []byte(forwardedBody(messages, bad)), 4096); err == nil {
 		t.Fatal("a non-boolean strict was accepted")
+	}
+}
+
+func TestForwardedRequestTranslatesThePiReplayOfTheProbeReply(t *testing.T) {
+	route := researchTestRoute(t)
+	raw, err := os.ReadFile(filepath.Join("testdata", "f35-probe-v-request-3.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sent struct {
+		Messages []struct {
+			ReasoningDetails []struct {
+				Text string `json:"text"`
+			} `json:"reasoning_details"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(raw, &sent); err != nil || len(sent.Messages) < 6 || len(sent.Messages[5].ReasoningDetails) != 1 {
+		t.Fatalf("probe body: %v", err)
+	}
+	built, err := BuildForwardedRequest(route, raw, 4096)
+	if err != nil {
+		t.Fatalf("the probe's replayed body is refused: %v", err)
+	}
+	var forwarded struct {
+		Messages []map[string]json.RawMessage `json:"messages"`
+	}
+	if err := json.Unmarshal(built.Body(), &forwarded); err != nil || len(forwarded.Messages) != len(sent.Messages) {
+		t.Fatalf("forwarded body: %v", err)
+	}
+	var role, reasoning string
+	_ = json.Unmarshal(forwarded.Messages[5]["role"], &role)
+	_ = json.Unmarshal(forwarded.Messages[5]["reasoning"], &reasoning)
+	if role != "assistant" || reasoning != sent.Messages[5].ReasoningDetails[0].Text {
+		t.Fatalf("messages[5] role %q reasoning %q", role, reasoning)
+	}
+	if strings.Contains(string(built.Body()), "reasoning_details") {
+		t.Fatalf("reasoning_details reached the provider body: %s", built.Body())
+	}
+	if !strings.HasSuffix(string(built.Body()), ","+researchTestMembers[1:]) {
+		t.Fatalf("profile members are not pinned: %s", built.Body())
+	}
+}
+
+func reasoningDetailsBody(message string) string {
+	return `{"model":"deepseek/deepseek-v4.1-flash","stream":true,"messages":[{"role":"user","content":"hi"},` + message + `]}`
+}
+
+func TestForwardedRequestJoinsReasoningDetailsInIndexOrder(t *testing.T) {
+	route := researchTestRoute(t)
+	for name, tc := range map[string]struct{ details, want string }{
+		"in order":          {`[{"type":"reasoning.text","text":"a","format":"unknown","index":0},{"type":"reasoning.text","text":"b","index":1}]`, "ab"},
+		"out of order":      {`[{"type":"reasoning.text","text":"b","index":1},{"type":"reasoning.text","text":"a","index":0}]`, "ab"},
+		"no index":          {`[{"type":"reasoning.text","text":"a"},{"type":"reasoning.text","text":"b"}]`, "ab"},
+		"null id signature": {`[{"type":"reasoning.text","text":"a","id":null,"signature":null,"format":null,"index":0}]`, "a"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			built, err := BuildForwardedRequest(route, []byte(reasoningDetailsBody(`{"role":"assistant","content":"c","reasoning_details":`+tc.details+`}`)), 4096)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := `{"role":"assistant","content":"c","reasoning":"` + tc.want + `"}`
+			if !strings.Contains(string(built.Body()), want) || strings.Contains(string(built.Body()), "reasoning_details") {
+				t.Fatalf("body %s; want %s", built.Body(), want)
+			}
+		})
+	}
+}
+
+func TestForwardedRequestRefusesEveryOtherReasoningDetailsShape(t *testing.T) {
+	route := researchTestRoute(t)
+	item := `{"type":"reasoning.text","text":"a","index":0}`
+	for name, message := range map[string]string{
+		"summary type":        `{"role":"assistant","content":"c","reasoning_details":[{"type":"reasoning.summary","summary":"a","index":0}]}`,
+		"encrypted type":      `{"role":"assistant","content":"c","reasoning_details":[{"type":"reasoning.encrypted","data":"x","index":0}]}`,
+		"signature":           `{"role":"assistant","content":"c","reasoning_details":[{"type":"reasoning.text","text":"a","signature":"sig","index":0}]}`,
+		"id":                  `{"role":"assistant","content":"c","reasoning_details":[{"type":"reasoning.text","text":"a","id":"rs_1","index":0}]}`,
+		"unknown member":      `{"role":"assistant","content":"c","reasoning_details":[{"type":"reasoning.text","text":"a","data":"x","index":0}]}`,
+		"text not a string":   `{"role":"assistant","content":"c","reasoning_details":[{"type":"reasoning.text","text":1,"index":0}]}`,
+		"no text":             `{"role":"assistant","content":"c","reasoning_details":[{"type":"reasoning.text","index":0}]}`,
+		"format not string":   `{"role":"assistant","content":"c","reasoning_details":[{"type":"reasoning.text","text":"a","format":1,"index":0}]}`,
+		"negative index":      `{"role":"assistant","content":"c","reasoning_details":[{"type":"reasoning.text","text":"a","index":-1}]}`,
+		"index not integer":   `{"role":"assistant","content":"c","reasoning_details":[{"type":"reasoning.text","text":"a","index":"0"}]}`,
+		"mixed index":         `{"role":"assistant","content":"c","reasoning_details":[` + item + `,{"type":"reasoning.text","text":"b"}]}`,
+		"not an array":        `{"role":"assistant","content":"c","reasoning_details":` + item + `}`,
+		"with reasoning":      `{"role":"assistant","content":"c","reasoning":"a","reasoning_details":[` + item + `]}`,
+		"on a user message":   `{"role":"user","content":"c","reasoning_details":[` + item + `]}`,
+		"on a tool message":   `{"role":"assistant","content":"","tool_calls":[{"id":"call-1","type":"function","function":{"name":"read","arguments":"{}"}}]},{"role":"tool","content":"c","tool_call_id":"call-1","reasoning_details":[` + item + `]}`,
+		"on a system message": `{"role":"system","content":"c","reasoning_details":[` + item + `]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := BuildForwardedRequest(route, []byte(reasoningDetailsBody(message)), 4096); !errors.Is(err, ErrForwardedRequest) {
+				t.Fatalf("%s: %v", fmt.Sprint(name), err)
+			}
+		})
 	}
 }
