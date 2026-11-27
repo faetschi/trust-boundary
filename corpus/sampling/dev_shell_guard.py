@@ -8,7 +8,8 @@ Fails (exit 1) when
   - a dev Python tool (dev_src*.py, dev_carrier.py, dev_overlap.py, this file) uses shell=True, os.system, os.popen,
     os.exec*, os.spawn*, eval or exec, imports names out of subprocess, or calls subprocess with an argument that is not a
     list literal of string constants, names, attributes and f-strings of names;
-  - a subprocess list starts with git and its subcommand is not one of GIT_READ, or any other program is started.
+  - a subprocess list starts with git and its subcommand is not one of GIT_READ, or any other program is started (the one
+    exception is EXEC_ALLOW: dev_src_exercism.py run_node runs `["node", script_file]`, a file in a temp directory).
 The single indirect call `git(clone, *args)` of dev_src.py is allowed by name; every call of that helper elsewhere must give a
 constant subcommand out of GIT_READ. Stdlib only. The dev_overlap precheck runs this guard first and stops if it fails.
 """
@@ -27,6 +28,7 @@ SCRIPT_EXT = (".sh", ".bash", ".ps1", ".cmd", ".bat")
 SUBPROCESS_CALLS = {"run", "call", "check_call", "check_output", "Popen", "getoutput", "getstatusoutput"}
 FORBIDDEN_OS = {"system", "popen", "execv", "execve", "execl", "execle", "execlp", "execvp", "execvpe", "execlpe",
                 "spawnl", "spawnle", "spawnlp", "spawnlpe", "spawnv", "spawnve", "spawnvp", "spawnvpe", "startfile"}
+EXEC_ALLOW = {("dev_src_exercism.py", "run_node"): "node"}  # (file, function): `["node", script_file]`, nothing else
 INDIRECT_GIT = ("dev_src.py", "git")  # (file, function): `["git", "-C", clone, *args]`, its callers are checked instead
 
 
@@ -117,8 +119,13 @@ class Visitor(ast.NodeVisitor):
         elts = node.args[0].elts
         if not all(_plain(e) for e in elts):
             return self.fail(node, "subprocess list holds something other than constants, names, attributes, *names or f-strings of names")
-        if not elts or _const(elts[0]) != "git":
-            return self.fail(node, "subprocess starts a program other than git")
+        prog = _const(elts[0]) if elts else None
+        fn = self.stack[-1] if self.stack else None
+        if prog != "git":
+            ok = any(self.rel.endswith(f) and fn == g and prog == exe for (f, g), exe in EXEC_ALLOW.items())
+            if not (ok and len(elts) == 2 and isinstance(elts[1], ast.Name)):
+                self.fail(node, "subprocess starts a program other than git (or not the allowlisted node call)")
+            return
         i = 3 if len(elts) > 2 and _const(elts[1]) == "-C" else 1
         sub = _const(elts[i]) if len(elts) > i else None
         indirect = self.stack and self.stack[-1] == INDIRECT_GIT[1] and self.rel.endswith(INDIRECT_GIT[0])
