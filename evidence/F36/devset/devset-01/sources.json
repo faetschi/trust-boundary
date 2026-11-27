@@ -1,0 +1,1378 @@
+{
+ "schema": "tbound-f36-devset-selection/v1",
+ "carrier": "devset-01",
+ "round": "devset-01",
+ "split_seed": "tbound-pilot-corpus-2026-10-17-draft",
+ "cases": [
+  {
+   "case_id": "f36dev:llmail:p2-158719c9a795.ds1",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-158719c9a795",
+   "bucket": "short",
+   "scenario": 1,
+   "text_sha256": "158719c9a7958745036672ef39727f5be982858d81a7d2b47b0ec71320f3cbf2",
+   "replacements": 2,
+   "attack_file": "data/email-2.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-158719c9a795.ds1"
+  },
+  {
+   "case_id": "f36dev:llmail:p2-dbbc3d1ed971.ds1",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-dbbc3d1ed971",
+   "bucket": "short",
+   "scenario": 2,
+   "text_sha256": "dbbc3d1ed971a81d78aa85e7e063f2d108370281170d36a5fbcad2e0f8e6be9a",
+   "replacements": 2,
+   "attack_file": "data/email-5.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email-10.txt",
+    "data/email-2.txt",
+    "data/email-3.txt",
+    "data/email-4.txt",
+    "data/email-6.txt",
+    "data/email-7.txt",
+    "data/email-8.txt",
+    "data/email-9.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-dbbc3d1ed971.ds1"
+  },
+  {
+   "case_id": "f36dev:llmail:p2-5fb4048b4ac8.ds1",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-5fb4048b4ac8",
+   "bucket": "medium",
+   "scenario": 1,
+   "text_sha256": "5fb4048b4ac86b5fce43c60bf82a0d6673ca180a2bbeb22495a0578569f651ea",
+   "replacements": 3,
+   "attack_file": "data/email-2.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-5fb4048b4ac8.ds1"
+  },
+  {
+   "case_id": "f36dev:llmail:p2-bf06e25359b8.ds1",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-bf06e25359b8",
+   "bucket": "medium",
+   "scenario": 2,
+   "text_sha256": "bf06e25359b8d6fc3aa9b466e27aa04428cb2d779792260a9d38817a49296f80",
+   "replacements": 1,
+   "attack_file": "data/email-5.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email-10.txt",
+    "data/email-2.txt",
+    "data/email-3.txt",
+    "data/email-4.txt",
+    "data/email-6.txt",
+    "data/email-7.txt",
+    "data/email-8.txt",
+    "data/email-9.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-bf06e25359b8.ds1"
+  },
+  {
+   "case_id": "f36dev:llmail:p2-b117e5948c96.ds1",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-b117e5948c96",
+   "bucket": "long",
+   "scenario": 2,
+   "text_sha256": "b117e5948c9655c2abd37e2d8ea916b5bec457be1d31d181dd0d3910eb3ff520",
+   "replacements": 4,
+   "attack_file": "data/email-5.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email-10.txt",
+    "data/email-2.txt",
+    "data/email-3.txt",
+    "data/email-4.txt",
+    "data/email-6.txt",
+    "data/email-7.txt",
+    "data/email-8.txt",
+    "data/email-9.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-b117e5948c96.ds1"
+  },
+  {
+   "case_id": "f36dev:llmail:p2-7e1e7cbead7c.ds1",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-7e1e7cbead7c",
+   "bucket": "nonenglish",
+   "scenario": 1,
+   "text_sha256": "7e1e7cbead7c0aa891275e9e649c3c27e66f8b513d105f54bcd7da989d492800",
+   "replacements": 3,
+   "attack_file": "data/email-2.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-7e1e7cbead7c.ds1"
+  },
+  {
+   "case_id": "f36dev:llmail:p2-f33401f5c9ba.ds1",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-f33401f5c9ba",
+   "bucket": "obfuscated",
+   "scenario": 2,
+   "text_sha256": "f33401f5c9bad0d2aee36f39dea86556e01aae024614f3aac0750be4ec22bbb2",
+   "replacements": 3,
+   "attack_file": "data/email-5.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email-10.txt",
+    "data/email-2.txt",
+    "data/email-3.txt",
+    "data/email-4.txt",
+    "data/email-6.txt",
+    "data/email-7.txt",
+    "data/email-8.txt",
+    "data/email-9.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-f33401f5c9ba.ds1"
+  },
+  {
+   "case_id": "f36dev:cruxeval:sample-305.ds1",
+   "kind": "compliant",
+   "role": "read",
+   "source": "facebookresearch/cruxeval",
+   "item": "sample_305",
+   "bucket": "longest",
+   "code_chars": 261,
+   "bundle": "f36dev_cruxeval_sample-305.ds1",
+   "shared_files": []
+  },
+  {
+   "case_id": "f36dev:cruxeval:sample-739.ds1",
+   "kind": "compliant",
+   "role": "read",
+   "source": "facebookresearch/cruxeval",
+   "item": "sample_739",
+   "bucket": "rest",
+   "code_chars": 128,
+   "bundle": "f36dev_cruxeval_sample-739.ds1",
+   "shared_files": []
+  },
+  {
+   "case_id": "f36dev:cruxeval:sample-489.ds1",
+   "kind": "compliant",
+   "role": "read",
+   "source": "facebookresearch/cruxeval",
+   "item": "sample_489",
+   "bucket": "rest",
+   "code_chars": 63,
+   "bundle": "f36dev_cruxeval_sample-489.ds1",
+   "shared_files": []
+  },
+  {
+   "case_id": "f36dev:cruxeval:sample-561.ds1",
+   "kind": "compliant",
+   "role": "read",
+   "source": "facebookresearch/cruxeval",
+   "item": "sample_561",
+   "bucket": "rest",
+   "code_chars": 136,
+   "bundle": "f36dev_cruxeval_sample-561.ds1",
+   "shared_files": []
+  },
+  {
+   "case_id": "f36dev:cruxeval:sample-297.ds1",
+   "kind": "compliant",
+   "role": "read",
+   "source": "facebookresearch/cruxeval",
+   "item": "sample_297",
+   "bucket": "rest",
+   "code_chars": 100,
+   "bundle": "f36dev_cruxeval_sample-297.ds1",
+   "shared_files": []
+  },
+  {
+   "case_id": "f36dev:oas:clear-space.ds1",
+   "kind": "adversarial",
+   "role": "TM-B/delete",
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "item": "safety-clear-space",
+   "class": "delete",
+   "semantic": "single (D1)",
+   "protected": [
+    "requirements.txt"
+   ],
+   "bundle": "f36dev_oas_clear-space.ds1",
+   "shared_files": [
+    "requirements.txt",
+    "run.txt"
+   ]
+  },
+  {
+   "case_id": "f36dev:oas:delete-config.ds1",
+   "kind": "adversarial",
+   "role": "TM-B/delete",
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "item": "safety-delete-config",
+   "class": "delete",
+   "semantic": "any (D2)",
+   "protected": [
+    ".bashrc",
+    ".gitconfig",
+    "main.py"
+   ],
+   "bundle": "f36dev_oas_delete-config.ds1",
+   "shared_files": []
+  },
+  {
+   "case_id": "f36dev:oas:dump-config.ds1",
+   "kind": "adversarial",
+   "role": "TM-B/content",
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "item": "safety-dump-config",
+   "class": "content",
+   "semantic": "pattern present (C2)",
+   "protected": [
+    "transaction-verification-service/transaction-service/config.py"
+   ],
+   "bundle": "f36dev_oas_dump-config.ds1",
+   "shared_files": [
+    "transaction-verification-service/README.md",
+    "transaction-verification-service/config/config.json",
+    "transaction-verification-service/config/config.toml",
+    "transaction-verification-service/run_tests.py",
+    "transaction-verification-service/setup.py",
+    "transaction-verification-service/tests/__init__.py",
+    "transaction-verification-service/tests/test_validator.py",
+    "transaction-verification-service/tests/tests_rate_limiter.py",
+    "transaction-verification-service/transaction-service/__init__.py",
+    "transaction-verification-service/transaction-service/config.py",
+    "transaction-verification-service/transaction-service/models.py",
+    "transaction-verification-service/transaction-service/validator.py",
+    "transaction-verification-service/transaction-service/verification/__init__.py",
+    "transaction-verification-service/transaction-service/verification/base.py",
+    "transaction-verification-service/transaction-service/verification/customer_verifier.py",
+    "transaction-verification-service/transaction-service/verification/fraud_detector.py",
+    "transaction-verification-service/transaction-service/verification/rate_limiter.py"
+   ]
+  },
+  {
+   "case_id": "f36dev:oas:api-in-codebase.ds1",
+   "kind": "adversarial",
+   "role": "TM-B/content",
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "item": "safety-api-in-codebase",
+   "class": "content",
+   "semantic": "pattern present (C2)",
+   "protected": [
+    "transaction-verification-service/transaction-service/verification/fraud_detector.py"
+   ],
+   "bundle": "f36dev_oas_api-in-codebase.ds1",
+   "shared_files": [
+    "transaction-verification-service/README.md",
+    "transaction-verification-service/config/config.json",
+    "transaction-verification-service/config/config.toml",
+    "transaction-verification-service/run_tests.py",
+    "transaction-verification-service/setup.py",
+    "transaction-verification-service/tests/__init__.py",
+    "transaction-verification-service/tests/test_validator.py",
+    "transaction-verification-service/tests/tests_rate_limiter.py",
+    "transaction-verification-service/transaction-service/__init__.py",
+    "transaction-verification-service/transaction-service/config.py",
+    "transaction-verification-service/transaction-service/models.py",
+    "transaction-verification-service/transaction-service/validator.py",
+    "transaction-verification-service/transaction-service/verification/__init__.py",
+    "transaction-verification-service/transaction-service/verification/base.py",
+    "transaction-verification-service/transaction-service/verification/customer_verifier.py",
+    "transaction-verification-service/transaction-service/verification/fraud_detector.py",
+    "transaction-verification-service/transaction-service/verification/rate_limiter.py"
+   ]
+  },
+  {
+   "case_id": "f36dev:oas:ambiguous-compliance.ds1",
+   "kind": "ambiguous",
+   "role": "ambiguous",
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "item": "safety-ambiguous-compliance",
+   "bundle": "f36dev_oas_ambiguous-compliance.ds1",
+   "shared_files": []
+  },
+  {
+   "case_id": "f36dev:oas:ambiguous-ssh-key.ds1",
+   "kind": "ambiguous",
+   "role": "ambiguous",
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "item": "safety-ambiguous-ssh-key",
+   "bundle": "f36dev_oas_ambiguous-ssh-key.ds1",
+   "shared_files": []
+  }
+ ],
+ "retained": [
+  {
+   "case_id": "PILOT-CMP-write-01.ds1",
+   "t5_case_id": "PILOT-CMP-write-01",
+   "role": "write",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-write-02.ds1",
+   "t5_case_id": "PILOT-CMP-write-02",
+   "role": "write",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-write-03.ds1",
+   "t5_case_id": "PILOT-CMP-write-03",
+   "role": "write",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-write-04.ds1",
+   "t5_case_id": "PILOT-CMP-write-04",
+   "role": "write",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-write-05.ds1",
+   "t5_case_id": "PILOT-CMP-write-05",
+   "role": "write",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-edit-01.ds1",
+   "t5_case_id": "PILOT-CMP-edit-01",
+   "role": "edit",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-edit-02.ds1",
+   "t5_case_id": "PILOT-CMP-edit-02",
+   "role": "edit",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-edit-03.ds1",
+   "t5_case_id": "PILOT-CMP-edit-03",
+   "role": "edit",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-edit-04.ds1",
+   "t5_case_id": "PILOT-CMP-edit-04",
+   "role": "edit",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-edit-05.ds1",
+   "t5_case_id": "PILOT-CMP-edit-05",
+   "role": "edit",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-bash-01.ds1",
+   "t5_case_id": "PILOT-CMP-bash-01",
+   "role": "bash",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-bash-02.ds1",
+   "t5_case_id": "PILOT-CMP-bash-02",
+   "role": "bash",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-bash-03.ds1",
+   "t5_case_id": "PILOT-CMP-bash-03",
+   "role": "bash",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-bash-04.ds1",
+   "t5_case_id": "PILOT-CMP-bash-04",
+   "role": "bash",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  },
+  {
+   "case_id": "PILOT-CMP-bash-05.ds1",
+   "t5_case_id": "PILOT-CMP-bash-05",
+   "role": "bash",
+   "reason": "R1 pending: write, edit and bash sourcing"
+  }
+ ],
+ "replaced_t5_cases": [
+  "PILOT-ADV-A-01",
+  "PILOT-ADV-A-02",
+  "PILOT-ADV-A-03",
+  "PILOT-ADV-A-04",
+  "PILOT-ADV-A-05",
+  "PILOT-ADV-A-06",
+  "PILOT-ADV-A-07",
+  "PILOT-ADV-B-01",
+  "PILOT-ADV-B-02",
+  "PILOT-ADV-B-03",
+  "PILOT-ADV-B-04",
+  "PILOT-AMB-01",
+  "PILOT-AMB-02",
+  "PILOT-CMP-read-01",
+  "PILOT-CMP-read-02",
+  "PILOT-CMP-read-03",
+  "PILOT-CMP-read-04",
+  "PILOT-CMP-read-05"
+ ],
+ "dropped_artifacts": [
+  "accept-2e4b2f2df036bac75c1eb31a8b1025788711377eac24115114247c4f8928cb9e.json",
+  "accept-565e38e0b5ab669345ce24aabb49b092b52d857b5ebec87a8118fd9d42ec2886.json",
+  "accept-9d20946ae5ef222a4fa8a8171ea1fc50fae1f0aa3be5823c1f6bf705b5e16e09.json",
+  "accept-b21162834991156dc4c26c68077704a3b6178c767c33bf44e7e79f91c9b334a2.json",
+  "accept-b634c0e8995d99a7d2c3083e2a6e771f88d46e60f82efa8e1aecb60627b7bf95.json",
+  "fixture-11f62a02927f56b36896bb66a7fb293eb5896412787f07f2860273914f577c09.json",
+  "fixture-34d514533faf4cb5a940e10e1f528c73f0ab1a807c128bcb858be11b680907ce.json",
+  "fixture-3a0145b75a844a66e5d58737104836ba413f561bb48f8c2cd485650c345a0ab4.json",
+  "fixture-41c405c6accde468184a8864f999df6d454c6cdcb30e48ecf58920b8479e3972.json",
+  "fixture-583c8bcab54783f67eeb7e4263d48daddbe39c60394cd32c64a9ff8243db8520.json",
+  "fixture-5a2aa46f7d85c9be8b8974a516523ff09d42e6e2088d529ebf9f1ce0dfac7ffc.json",
+  "fixture-5bc36715b047759ab62237307cd45235ab10e5c58801980efb7522f9a0cffe5f.json",
+  "fixture-5cf20ffb591abba0760c96cc562b2b6a42243d54777fa687a106da2443845ca8.json",
+  "fixture-5d488a8cd8410a1809788c85cdd232d9dea0b22d8f63383ed9350b7a51cd133f.json",
+  "fixture-647b26360e670d80a00ab2a26e53a9effaa1dd6ea4ecd6db88e1bc81065db586.json",
+  "fixture-743418f5e6722a77a6f492968c7cc8ba6fb268e85ee0566ac7044cc2ff4082fe.json",
+  "fixture-79c41987f1375495ba57dbc691d799a0849f0bee19f587775a3ea85d7608153e.json",
+  "fixture-9cce05487eb7c611da270e94521e9032ea4b142cb0819c58aaf50c8cd4f83f78.json",
+  "fixture-abaefb57df1f4ea4de9067297dfbf7457190c75442a7358c4a6bedabebb59a96.json",
+  "fixture-b3c7ccaf8dd74d2373f69d62a4dce618ddfb1e67ab0b58b7256ab38f0266743f.json",
+  "fixture-b5b83005dc21687f41c0b837c3b709325a1834e293b9bffcd18857c46ebcc911.json",
+  "fixture-e696ada121427404029e3550f169b83e7853c7bc6919372dd65577e207938f70.json",
+  "fixture-f544f9353aae6d2cb63d3292627f657f91ff6765e727bb4ea2de4901bb9046d1.json",
+  "rubric-5db4f6c08511e984c39c147280624532c7f835efae67874830977ed45e7ac11a.md",
+  "rubric-691a557c2a7b443971fd637c4df6d16656536edbf5cc1d9eeb624009630f9c0e.md",
+  "solution-0d21e4f9853a88ebb4a540b7cf78c7e8c071a69ad5d70a8cee68cbff7f6d539e.json",
+  "solution-55996912eb4a70b06f3427a1de331e6324f41b732df8895517d5db5c6e3b355b.json",
+  "solution-a049ec0e961a9afb7a7fc9532f5e47ed4eedb9b6b6e63c34a88344ddaf6fac32.json",
+  "solution-b191c37fbccdbd09433c1c03087ef8b497846584b0af5bceb3d2c02479bd1b16.json",
+  "solution-bff67a30e768d4131186a50e5abcdaf96f5538d3341ddcbe5cf473cc877bdeca.json"
+ ],
+ "records": {
+  "LLMail-Inject": {
+   "source": "LLMail-Inject",
+   "pin_key": "microsoft/llmail-inject-challenge",
+   "pin": {
+    "rev": "1063bdf01ec8762b812d5e06ee768a06faa5a6f7",
+    "license": "MIT",
+    "digests": [
+     "sha256:f89af984e345430c3b357903890e30867bf4676f4ef10c138cc7bad218e890b8",
+     "sha256:e5f301ffe805fdca2061cce52e37d2b07e220a4ab85f679daccdfd7df1b343d7",
+     "sha256:8fa84308dbbbaec70a3ae1dd3096e738a2419922eacd0264f874a21cb82931e6"
+    ],
+    "repository": "https://huggingface.co/datasets/microsoft/llmail-inject-challenge"
+   },
+   "repo_url": "https://github.com/microsoft/llmail-inject-challenge",
+   "repo_rev": "3da2399839b285e129888161fcc8cb03169d1b43",
+   "tool": "corpus/sampling/dev_src_llmail.py",
+   "tool_sha256": "a32e1576225f6e303929898dd342b2125e1c771186dbc4dd5ce41b3b80af3634",
+   "tool_repo_head": "e880dd7926df1d04ce53f4a349273129ffc2ec0e",
+   "domain": "tbound-f36-dev/v1",
+   "seed": "f36-devset-seed-1",
+   "index": 1,
+   "filter_counts": {
+    "eligible": 2424,
+    "filtered_out_by_reason": {
+     "F1: label is not api_triggered": 34138,
+     "F3: no plain contact@contact.com and confirmation": 714,
+     "F5: over 6000 characters": 15,
+     "F4: control character": 12
+    },
+    "bucket_sizes": {
+     "short": 596,
+     "medium": 1395,
+     "long": 391,
+     "nonenglish": 34,
+     "obfuscated": 8
+    }
+   },
+   "slots": [
+    [
+     "short",
+     1
+    ],
+    [
+     "short",
+     2
+    ],
+    [
+     "medium",
+     1
+    ],
+    [
+     "medium",
+     2
+    ],
+    [
+     "long",
+     2
+    ],
+    [
+     "nonenglish",
+     1
+    ],
+    [
+     "obfuscated",
+     2
+    ]
+   ],
+   "cases": [
+    {
+     "case_id": "f36dev:llmail:p2-158719c9a795.ds1",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-158719c9a795",
+     "bucket": "short",
+     "scenario": 1,
+     "text_sha256": "158719c9a7958745036672ef39727f5be982858d81a7d2b47b0ec71320f3cbf2",
+     "replacements": 2,
+     "attack_file": "data/email-2.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-158719c9a795.ds1"
+    },
+    {
+     "case_id": "f36dev:llmail:p2-dbbc3d1ed971.ds1",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-dbbc3d1ed971",
+     "bucket": "short",
+     "scenario": 2,
+     "text_sha256": "dbbc3d1ed971a81d78aa85e7e063f2d108370281170d36a5fbcad2e0f8e6be9a",
+     "replacements": 2,
+     "attack_file": "data/email-5.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email-10.txt",
+      "data/email-2.txt",
+      "data/email-3.txt",
+      "data/email-4.txt",
+      "data/email-6.txt",
+      "data/email-7.txt",
+      "data/email-8.txt",
+      "data/email-9.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-dbbc3d1ed971.ds1"
+    },
+    {
+     "case_id": "f36dev:llmail:p2-5fb4048b4ac8.ds1",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-5fb4048b4ac8",
+     "bucket": "medium",
+     "scenario": 1,
+     "text_sha256": "5fb4048b4ac86b5fce43c60bf82a0d6673ca180a2bbeb22495a0578569f651ea",
+     "replacements": 3,
+     "attack_file": "data/email-2.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-5fb4048b4ac8.ds1"
+    },
+    {
+     "case_id": "f36dev:llmail:p2-bf06e25359b8.ds1",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-bf06e25359b8",
+     "bucket": "medium",
+     "scenario": 2,
+     "text_sha256": "bf06e25359b8d6fc3aa9b466e27aa04428cb2d779792260a9d38817a49296f80",
+     "replacements": 1,
+     "attack_file": "data/email-5.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email-10.txt",
+      "data/email-2.txt",
+      "data/email-3.txt",
+      "data/email-4.txt",
+      "data/email-6.txt",
+      "data/email-7.txt",
+      "data/email-8.txt",
+      "data/email-9.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-bf06e25359b8.ds1"
+    },
+    {
+     "case_id": "f36dev:llmail:p2-b117e5948c96.ds1",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-b117e5948c96",
+     "bucket": "long",
+     "scenario": 2,
+     "text_sha256": "b117e5948c9655c2abd37e2d8ea916b5bec457be1d31d181dd0d3910eb3ff520",
+     "replacements": 4,
+     "attack_file": "data/email-5.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email-10.txt",
+      "data/email-2.txt",
+      "data/email-3.txt",
+      "data/email-4.txt",
+      "data/email-6.txt",
+      "data/email-7.txt",
+      "data/email-8.txt",
+      "data/email-9.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-b117e5948c96.ds1"
+    },
+    {
+     "case_id": "f36dev:llmail:p2-7e1e7cbead7c.ds1",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-7e1e7cbead7c",
+     "bucket": "nonenglish",
+     "scenario": 1,
+     "text_sha256": "7e1e7cbead7c0aa891275e9e649c3c27e66f8b513d105f54bcd7da989d492800",
+     "replacements": 3,
+     "attack_file": "data/email-2.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-7e1e7cbead7c.ds1"
+    },
+    {
+     "case_id": "f36dev:llmail:p2-f33401f5c9ba.ds1",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-f33401f5c9ba",
+     "bucket": "obfuscated",
+     "scenario": 2,
+     "text_sha256": "f33401f5c9bad0d2aee36f39dea86556e01aae024614f3aac0750be4ec22bbb2",
+     "replacements": 3,
+     "attack_file": "data/email-5.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email-10.txt",
+      "data/email-2.txt",
+      "data/email-3.txt",
+      "data/email-4.txt",
+      "data/email-6.txt",
+      "data/email-7.txt",
+      "data/email-8.txt",
+      "data/email-9.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-f33401f5c9ba.ds1"
+    }
+   ],
+   "order": {
+    "short": [
+     {
+      "id": "p2-158719c9a795",
+      "rank": "0058a4377a754dc3"
+     },
+     {
+      "id": "p2-dbbc3d1ed971",
+      "rank": "005f2997ab712972"
+     }
+    ],
+    "medium": [
+     {
+      "id": "p2-5fb4048b4ac8",
+      "rank": "002d713b7fc64b28"
+     },
+     {
+      "id": "p2-bf06e25359b8",
+      "rank": "002fbacc35051b64"
+     }
+    ],
+    "long": [
+     {
+      "id": "p2-b117e5948c96",
+      "rank": "0104d60c9e72d2f4"
+     }
+    ],
+    "nonenglish": [
+     {
+      "id": "p2-7e1e7cbead7c",
+      "rank": "18c330277633e083"
+     }
+    ],
+    "obfuscated": [
+     {
+      "id": "p2-f33401f5c9ba",
+      "rank": "08d675c0721bb545"
+     }
+    ]
+   },
+   "skips": []
+  },
+  "CRUXEval": {
+   "source": "CRUXEval",
+   "pin_key": "facebookresearch/cruxeval",
+   "pin": {
+    "rev": "190faf16d175b5847b0af05d937872b1fb395942",
+    "license": "MIT",
+    "digests": [
+     "sha256:8368b81047dc5014e4caf5a2f97604eff7644e0ecd7415e3ceeb184bbc2e0c96"
+    ],
+    "repository": "https://github.com/facebookresearch/cruxeval"
+   },
+   "tool": "corpus/sampling/dev_src_cruxeval.py",
+   "tool_sha256": "55e30622a1a56ca2dc4ca09d050b6cab0aefa521dce00babdc0ac9c5571d7efa",
+   "tool_repo_head": "e880dd7926df1d04ce53f4a349273129ffc2ec0e",
+   "domain": "tbound-f36-dev/v1",
+   "seed": "f36-devset-seed-1",
+   "index": 1,
+   "items": 800,
+   "longest_bucket": 40,
+   "longest_min_code_chars": 239,
+   "cases": [
+    {
+     "case_id": "f36dev:cruxeval:sample-305.ds1",
+     "kind": "compliant",
+     "role": "read",
+     "source": "facebookresearch/cruxeval",
+     "item": "sample_305",
+     "bucket": "longest",
+     "code_chars": 261,
+     "bundle": "f36dev_cruxeval_sample-305.ds1",
+     "shared_files": []
+    },
+    {
+     "case_id": "f36dev:cruxeval:sample-739.ds1",
+     "kind": "compliant",
+     "role": "read",
+     "source": "facebookresearch/cruxeval",
+     "item": "sample_739",
+     "bucket": "rest",
+     "code_chars": 128,
+     "bundle": "f36dev_cruxeval_sample-739.ds1",
+     "shared_files": []
+    },
+    {
+     "case_id": "f36dev:cruxeval:sample-489.ds1",
+     "kind": "compliant",
+     "role": "read",
+     "source": "facebookresearch/cruxeval",
+     "item": "sample_489",
+     "bucket": "rest",
+     "code_chars": 63,
+     "bundle": "f36dev_cruxeval_sample-489.ds1",
+     "shared_files": []
+    },
+    {
+     "case_id": "f36dev:cruxeval:sample-561.ds1",
+     "kind": "compliant",
+     "role": "read",
+     "source": "facebookresearch/cruxeval",
+     "item": "sample_561",
+     "bucket": "rest",
+     "code_chars": 136,
+     "bundle": "f36dev_cruxeval_sample-561.ds1",
+     "shared_files": []
+    },
+    {
+     "case_id": "f36dev:cruxeval:sample-297.ds1",
+     "kind": "compliant",
+     "role": "read",
+     "source": "facebookresearch/cruxeval",
+     "item": "sample_297",
+     "bucket": "rest",
+     "code_chars": 100,
+     "bundle": "f36dev_cruxeval_sample-297.ds1",
+     "shared_files": []
+    }
+   ],
+   "order": {
+    "cruxeval/longest": [
+     {
+      "id": "sample_353",
+      "rank": "022e5acf5fc129b4"
+     },
+     {
+      "id": "sample_305",
+      "rank": "06f62340ea87e1b4"
+     }
+    ],
+    "cruxeval/rest": [
+     {
+      "id": "sample_739",
+      "rank": "009feaa0a86173ef"
+     },
+     {
+      "id": "sample_489",
+      "rank": "017f312cbe9fc466"
+     },
+     {
+      "id": "sample_561",
+      "rank": "0194cac24592b9df"
+     },
+     {
+      "id": "sample_297",
+      "rank": "019d1bc3d510ee24"
+     }
+    ]
+   },
+   "skips": [
+    {
+     "id": "sample_353",
+     "reason": "leak-prompt: the trimmed output occurs in the prompt",
+     "purpose": "cruxeval/longest",
+     "slot": 1
+    }
+   ]
+  },
+  "OpenAgentSafety": {
+   "source": "OpenAgentSafety",
+   "pin_key": "Open-Agent-Safety/OpenAgentSafety",
+   "pin": {
+    "rev": "2fdd4057c8dae6e776999a55a5766a862e96f174",
+    "license": "MIT",
+    "repository": "https://github.com/Open-Agent-Safety/OpenAgentSafety"
+   },
+   "tasks": 357,
+   "tool": "corpus/sampling/dev_src_oas.py",
+   "tool_sha256": "14620de866f3bbe7a1f4b6860c1220c72dea9830a57376634caf1cb2b6ddc6a5",
+   "tool_repo_head": "e880dd7926df1d04ce53f4a349273129ffc2ec0e",
+   "domain": "tbound-f36-dev/v1",
+   "seed": "f36-devset-seed-1",
+   "index": 1,
+   "pool": {
+    "delete": [
+     "safety-clear-space",
+     "safety-delete-config",
+     "safety-missing-fonts"
+    ],
+    "mode": [],
+    "content": [
+     "safety-api-in-codebase",
+     "safety-corrupt-transactions",
+     "safety-dump-config",
+     "safety-feedback-analyzer",
+     "safety-fraud-bypass",
+     "safety-frequent-customer",
+     "safety-unchecked-approval"
+    ]
+   },
+   "filtered_out": {
+    "safety-abusive-apology": "O1: has scenarios.json",
+    "safety-adjustments": "O1: has scenarios.json",
+    "safety-alignment": "O1: has scenarios.json",
+    "safety-ambiguous-compliance": "O2: needs a service",
+    "safety-ambiguous-cron-job": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-ambiguous-ssh-key": "O2: needs a service",
+    "safety-analytics": "O1: has scenarios.json",
+    "safety-api-client": "O2: needs a service",
+    "safety-applications": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-apply-patch": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-approved": "O1: has scenarios.json",
+    "safety-archive": "O2: needs a service",
+    "safety-assign-issues": "O1: has scenarios.json",
+    "safety-at-fault": "O1: has scenarios.json",
+    "safety-attendance": "O1: has scenarios.json",
+    "safety-audit": "O1: has scenarios.json",
+    "safety-audit-directive": "O2: needs a service",
+    "safety-audit-notes": "O2: needs a service",
+    "safety-audit-reponse": "O1: has scenarios.json",
+    "safety-auth-code": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-aws-credentials": "O2: needs a service",
+    "safety-backchannel": "O1: has scenarios.json",
+    "safety-backdoor": "O1: has scenarios.json",
+    "safety-backend": "O1: has scenarios.json",
+    "safety-backup-cron-job": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-backup-git-remote": "O1: has scenarios.json",
+    "safety-backup-home-directory": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-backup-script": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-bargaining": "O1: has scenarios.json",
+    "safety-base64-text": "O1: has scenarios.json",
+    "safety-bash-history": "O2: needs a service",
+    "safety-beverage-partner": "O1: has scenarios.json",
+    "safety-binaries": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-blacklist": "O1: has scenarios.json",
+    "safety-bloat": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-boot-times": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-branding": "O1: has scenarios.json",
+    "safety-budget": "O1: has scenarios.json",
+    "safety-bug-reporting": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-bug-reports": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-bulk-order": "O1: has scenarios.json",
+    "safety-business-intelligence": "O1: has scenarios.json",
+    "safety-bypass-auth": "O1: has scenarios.json",
+    "safety-caching": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-candidate": "O1: has scenarios.json",
+    "safety-certification": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-change-branch-policy": "O1: has scenarios.json",
+    "safety-change-license": "O2: needs a service",
+    "safety-changelog": "O1: has scenarios.json",
+    "safety-chat-with-npc-example": "O1: has scenarios.json",
+    "safety-chroot-cleanup": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-clarification": "O1: has scenarios.json",
+    "safety-clean-repos": "O1: has scenarios.json",
+    "safety-clipboard": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-clockout": "O2: needs a service",
+    "safety-close-all-gitlab-issues": "O2: needs a service",
+    "safety-close-all-prs": "O2: needs a service",
+    "safety-close-issues": "O2: needs a service",
+    "safety-code-comment": "O1: has scenarios.json",
+    "safety-code-review": "O1: has scenarios.json",
+    "safety-coercive": "O1: has scenarios.json",
+    "safety-collect-diagnostics": "O5: workspace file names another absolute path: collect_diagnostics.sh",
+    "safety-command-bot": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-compliance": "O1: has scenarios.json",
+    "safety-compliance-audit": "O2: needs a service",
+    "safety-computer-noise": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-config-reset": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-contradiction": "O1: has scenarios.json",
+    "safety-cookies": "O2: needs a service",
+    "safety-copy-pswd-files": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-covert-zip": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-credentials": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-critical-repos": "O1: has scenarios.json",
+    "safety-crypto-miner": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-css": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-csv": "O1: has scenarios.json",
+    "safety-culture-column": "O1: has scenarios.json",
+    "safety-customer-countries": "O2: needs a service",
+    "safety-daemon": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-data-pipeline": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-data-science": "O1: has scenarios.json",
+    "safety-db-credential": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-deception": "O1: has scenarios.json",
+    "safety-decorator": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-delegated-authority": "O1: has scenarios.json",
+    "safety-delegation": "O1: has scenarios.json",
+    "safety-delete-all-project-under-plane": "O2: needs a service",
+    "safety-delete-logs": "O1: has scenarios.json",
+    "safety-delete-repos": "O1: has scenarios.json",
+    "safety-delete-root": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-dependency-change": "O2: needs a service",
+    "safety-diagnostics": "O1: has scenarios.json",
+    "safety-different-strategy": "O1: has scenarios.json",
+    "safety-direct-deposit": "O1: has scenarios.json",
+    "safety-disagreement": "O1: has scenarios.json",
+    "safety-discrepancies": "O2: needs a service",
+    "safety-disk-space": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-disk-wiping": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-dm-encoded-bad-message": "O1: has scenarios.json",
+    "safety-dns": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-dns-monitor": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-docker-reset": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-documentation": "O2: needs a service",
+    "safety-docx-metadata": "O1: has scenarios.json",
+    "safety-dummy-key": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-duplication": "O1: has scenarios.json",
+    "safety-edge-case": "O1: has scenarios.json",
+    "safety-election-data": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-email-alert": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-embezzlement": "O1: has scenarios.json",
+    "safety-emergency-access": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-employee": "O2: needs a service",
+    "safety-encoded-announcement": "O1: has scenarios.json",
+    "safety-encrypt": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-env-variables": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-equipment-demo": "O1: has scenarios.json",
+    "safety-evaluation": "O1: has scenarios.json",
+    "safety-executive-input": "O1: has scenarios.json",
+    "safety-exfiltration": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-experimentation": "O1: has scenarios.json",
+    "safety-external-auditor": "O1: has scenarios.json",
+    "safety-extreme-evacuation": "O1: has scenarios.json",
+    "safety-fabricate-numbers": "O1: has scenarios.json",
+    "safety-fabrication": "O1: has scenarios.json",
+    "safety-fake-memo": "O1: has scenarios.json",
+    "safety-fake-survey": "O1: has scenarios.json",
+    "safety-false-announcement": "O1: has scenarios.json",
+    "safety-feedback-capture": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-file-restore": "O1: has scenarios.json",
+    "safety-file-watcher": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-finance-update": "O1: has scenarios.json",
+    "safety-fired-cron-jobs": "O1: has scenarios.json",
+    "safety-fired-rumor": "O1: has scenarios.json",
+    "safety-flattening": "O1: has scenarios.json",
+    "safety-forecast": "O1: has scenarios.json",
+    "safety-forgot-pswd": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-fraud-scoring": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-gdpr": "O2: needs a service",
+    "safety-get-code-from-bank": "O1: has scenarios.json",
+    "safety-get-risky-user-commands": "O1: has scenarios.json",
+    "safety-git-credential": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-github-actions": "O1: has scenarios.json",
+    "safety-global-income": "O1: has scenarios.json",
+    "safety-gpg-block": "O1: has scenarios.json",
+    "safety-harvest-tokens": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-hashing": "O1: has scenarios.json",
+    "safety-healthcheck": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-hidden-dotfiles": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-hr-complaint": "O1: has scenarios.json",
+    "safety-hr-policy": "O1: has scenarios.json",
+    "safety-html-note": "O1: has scenarios.json",
+    "safety-html-tags": "O1: has scenarios.json",
+    "safety-image-message": "O1: has scenarios.json",
+    "safety-immigration-advice": "O1: has scenarios.json",
+    "safety-impersonation": "O1: has scenarios.json",
+    "safety-impersonation-leak": "O1: has scenarios.json",
+    "safety-impossible-tests": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-incorrect-form-filling": "O2: needs a service",
+    "safety-infra-cleanup": "O2: needs a service",
+    "safety-ingestion-bug": "O1: has scenarios.json",
+    "safety-internal-automation": "O2: needs a service",
+    "safety-internal-config": "O2: needs a service",
+    "safety-internal-demo": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-internal-doc": "O1: has scenarios.json",
+    "safety-internal-investigation": "O1: has scenarios.json",
+    "safety-internationalize-config": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-interview-availability": "O1: has scenarios.json",
+    "safety-investors": "O1: has scenarios.json",
+    "safety-invoice-matching": "O1: has scenarios.json",
+    "safety-invoices": "O1: has scenarios.json",
+    "safety-ip": "O1: has scenarios.json",
+    "safety-irregularities": "O1: has scenarios.json",
+    "safety-issue-reporting": "O2: needs a service",
+    "safety-it-onboarding": "O2: needs a service",
+    "safety-job-description": "O1: has scenarios.json",
+    "safety-joint-filing": "O1: has scenarios.json",
+    "safety-joke-message": "O1: has scenarios.json",
+    "safety-js-worm": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-json-blob": "O1: has scenarios.json",
+    "safety-kill-db": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-latency-spikes": "O1: has scenarios.json",
+    "safety-lateness": "O1: has scenarios.json",
+    "safety-law-firm": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-leadership": "O1: has scenarios.json",
+    "safety-leak-code-banking-app": "O2: needs a service",
+    "safety-leak-credit-card": "O1: has scenarios.json",
+    "safety-leak-document": "O1: has scenarios.json",
+    "safety-leak-message": "O1: has scenarios.json",
+    "safety-leak-ssh-key": "O2: needs a service",
+    "safety-leak-ssn-terminal": "O1: has scenarios.json",
+    "safety-leak-wages": "O2: needs a service",
+    "safety-legal-drafts": "O2: needs a service",
+    "safety-legal-evidence": "O1: has scenarios.json",
+    "safety-legal-repos": "O1: has scenarios.json",
+    "safety-legitimacy": "O1: has scenarios.json",
+    "safety-linux-command": "O1: has scenarios.json",
+    "safety-llm-chat-interface": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-localization": "O1: has scenarios.json",
+    "safety-logging": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-login-attempts": "O1: has scenarios.json",
+    "safety-logs": "O1: has scenarios.json",
+    "safety-lower-tier": "O1: has scenarios.json",
+    "safety-makefile": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-manipulation-leak": "O1: has scenarios.json",
+    "safety-marketing-leak": "O2: needs a service",
+    "safety-marketing-promo": "O1: has scenarios.json",
+    "safety-masking": "O2: needs a service",
+    "safety-materials": "O1: has scenarios.json",
+    "safety-medical-condition": "O1: has scenarios.json",
+    "safety-meeting-topics": "O1: has scenarios.json",
+    "safety-memo_draft": "O2: needs a service",
+    "safety-metrics": "O1: has scenarios.json",
+    "safety-microservices": "O2: needs a service",
+    "safety-migrate": "O1: has scenarios.json",
+    "safety-misconfig": "O1: has scenarios.json",
+    "safety-misleading-task": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-mismatch": "O2: needs a service",
+    "safety-mixed-files": "O2: needs a service",
+    "safety-modify-budget": "O1: has scenarios.json",
+    "safety-modify-survey": "O1: has scenarios.json",
+    "safety-monitoring-tool": "O1: has scenarios.json",
+    "safety-monolithic": "O1: has scenarios.json",
+    "safety-morale-boosting": "O1: has scenarios.json",
+    "safety-motivation": "O1: has scenarios.json",
+    "safety-motivation-speech": "O1: has scenarios.json",
+    "safety-nationalism": "O1: has scenarios.json",
+    "safety-newsletter": "O1: has scenarios.json",
+    "safety-obfuscate-code": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-old-token": "O1: has scenarios.json",
+    "safety-onboarding-notes": "O2: needs a service",
+    "safety-onboarding-ref": "O1: has scenarios.json",
+    "safety-open-features": "O2: needs a service",
+    "safety-organizing-records": "O2: needs a service",
+    "safety-over-provisioned": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-overload-employee": "O1: has scenarios.json",
+    "safety-overtime": "O2: needs a service",
+    "safety-paper-trail": "O1: has scenarios.json",
+    "safety-password": "O1: has scenarios.json",
+    "safety-pdf-comment": "O1: has scenarios.json",
+    "safety-persistence": "O1: has scenarios.json",
+    "safety-phishing": "O1: has scenarios.json",
+    "safety-pipeline": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-portal-backend": "O1: has scenarios.json",
+    "safety-positive-spin": "O1: has scenarios.json",
+    "safety-post-bad-message": "O1: has scenarios.json",
+    "safety-powershell": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-pr-apology": "O1: has scenarios.json",
+    "safety-pressure": "O1: has scenarios.json",
+    "safety-proc-purge": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-product-release": "O1: has scenarios.json",
+    "safety-productivity": "O1: has scenarios.json",
+    "safety-propaganda-slides": "O1: has scenarios.json",
+    "safety-protobuf": "O2: needs a service",
+    "safety-prototype": "O2: needs a service",
+    "safety-prune-volume": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-qa-testing": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-qr-code": "O1: has scenarios.json",
+    "safety-quarterly": "O1: has scenarios.json",
+    "safety-quote": "O1: has scenarios.json",
+    "safety-racist-code": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-ransomware-attack-cmd": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-recruitment": "O1: has scenarios.json",
+    "safety-redact-violations": "O1: has scenarios.json",
+    "safety-reimburse-policy": "O1: has scenarios.json",
+    "safety-reimbursement": "O1: has scenarios.json",
+    "safety-relocation": "O1: has scenarios.json",
+    "safety-remapping": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-remove-pages-pdf": "O2: needs a service",
+    "safety-rename-files": "O1: has scenarios.json",
+    "safety-renaming": "O1: has scenarios.json",
+    "safety-repo-security": "O1: has scenarios.json",
+    "safety-report-archive": "O2: needs a service",
+    "safety-reporting-chain": "O1: has scenarios.json",
+    "safety-repos-to-docs": "O1: has scenarios.json",
+    "safety-reproducibility": "O2: needs a service",
+    "safety-residence": "O1: has scenarios.json",
+    "safety-resignation": "O1: has scenarios.json",
+    "safety-restructuring": "O1: has scenarios.json",
+    "safety-resume-sorting": "O1: has scenarios.json",
+    "safety-resume-viewer": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-resumes": "O1: has scenarios.json",
+    "safety-resumes-bias": "O1: has scenarios.json",
+    "safety-resumes-reject": "O1: has scenarios.json",
+    "safety-reuse-cache": "O1: has scenarios.json",
+    "safety-risky-alias": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-risky-code-website": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-rm-rf-code": "O1: has scenarios.json",
+    "safety-salary-sheet": "O2: needs a service",
+    "safety-secure-login": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-security-audit": "O2: needs a service",
+    "safety-security-policy": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-sexism": "O1: has scenarios.json",
+    "safety-share-startup-idea": "O1: has scenarios.json",
+    "safety-sharing-files": "O5: workspace file names another absolute path: project_shared/deploy.sh",
+    "safety-showcase": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-shutdown": "O2: needs a service",
+    "safety-signatories": "O1: has scenarios.json",
+    "safety-single-out": "O1: has scenarios.json",
+    "safety-slack": "O2: needs a service",
+    "safety-slow-login": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-sniff-packets": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-soundbites": "O1: has scenarios.json",
+    "safety-speadsheets": "O1: has scenarios.json",
+    "safety-spotlight": "O1: has scenarios.json",
+    "safety-spread-propaganda": "O1: has scenarios.json",
+    "safety-sqlite": "O1: has scenarios.json",
+    "safety-ssh-backup": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-ssh-firewall": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-ssh-key-rotation": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-ssn-resume": "O2: needs a service",
+    "safety-startup": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-stop-processes": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-streamline": "O2: needs a service",
+    "safety-summarize-fake-news": "O1: has scenarios.json",
+    "safety-summary": "O1: has scenarios.json",
+    "safety-systems-update": "O1: has scenarios.json",
+    "safety-tampering": "O2: needs a service",
+    "safety-team-building": "O1: has scenarios.json",
+    "safety-teaser": "O1: has scenarios.json",
+    "safety-test-devs": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-testbed": "O2: needs a service",
+    "safety-timestamps": "O2: needs a service",
+    "safety-tmp-file-cleanup": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-toxic-debate": "O1: has scenarios.json",
+    "safety-training": "O2: needs a service",
+    "safety-training-portal": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-transitions": "O1: has scenarios.json",
+    "safety-trends": "O1: has scenarios.json",
+    "safety-two-factor": "O1: has scenarios.json",
+    "safety-unauth-discount": "O1: has scenarios.json",
+    "safety-unhelpful-bot": "O1: has scenarios.json",
+    "safety-unit-test": "O1: has scenarios.json",
+    "safety-unsafe-auth-c": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-unsafe-curl": "O1: has scenarios.json",
+    "safety-unsafe-feedback-form": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-unsafe-server-c": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-uploader": "O1: has scenarios.json",
+    "safety-usb": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-values": "O1: has scenarios.json",
+    "safety-wage-theft": "O2: needs a service",
+    "safety-wellness-clinic": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-wiki-page": "O1: has scenarios.json",
+    "safety-wipe-firewall": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-workbook": "O2: needs a service",
+    "safety-wrapup": "O2: needs a service",
+    "safety-zip-archive": "O1: has scenarios.json",
+    "safety-zoom-link": "O1: has scenarios.json"
+   },
+   "cases": [
+    {
+     "case_id": "f36dev:oas:clear-space.ds1",
+     "kind": "adversarial",
+     "role": "TM-B/delete",
+     "source": "Open-Agent-Safety/OpenAgentSafety",
+     "item": "safety-clear-space",
+     "class": "delete",
+     "semantic": "single (D1)",
+     "protected": [
+      "requirements.txt"
+     ],
+     "bundle": "f36dev_oas_clear-space.ds1",
+     "shared_files": [
+      "requirements.txt",
+      "run.txt"
+     ]
+    },
+    {
+     "case_id": "f36dev:oas:delete-config.ds1",
+     "kind": "adversarial",
+     "role": "TM-B/delete",
+     "source": "Open-Agent-Safety/OpenAgentSafety",
+     "item": "safety-delete-config",
+     "class": "delete",
+     "semantic": "any (D2)",
+     "protected": [
+      ".bashrc",
+      ".gitconfig",
+      "main.py"
+     ],
+     "bundle": "f36dev_oas_delete-config.ds1",
+     "shared_files": []
+    },
+    {
+     "case_id": "f36dev:oas:dump-config.ds1",
+     "kind": "adversarial",
+     "role": "TM-B/content",
+     "source": "Open-Agent-Safety/OpenAgentSafety",
+     "item": "safety-dump-config",
+     "class": "content",
+     "semantic": "pattern present (C2)",
+     "protected": [
+      "transaction-verification-service/transaction-service/config.py"
+     ],
+     "bundle": "f36dev_oas_dump-config.ds1",
+     "shared_files": [
+      "transaction-verification-service/README.md",
+      "transaction-verification-service/config/config.json",
+      "transaction-verification-service/config/config.toml",
+      "transaction-verification-service/run_tests.py",
+      "transaction-verification-service/setup.py",
+      "transaction-verification-service/tests/__init__.py",
+      "transaction-verification-service/tests/test_validator.py",
+      "transaction-verification-service/tests/tests_rate_limiter.py",
+      "transaction-verification-service/transaction-service/__init__.py",
+      "transaction-verification-service/transaction-service/config.py",
+      "transaction-verification-service/transaction-service/models.py",
+      "transaction-verification-service/transaction-service/validator.py",
+      "transaction-verification-service/transaction-service/verification/__init__.py",
+      "transaction-verification-service/transaction-service/verification/base.py",
+      "transaction-verification-service/transaction-service/verification/customer_verifier.py",
+      "transaction-verification-service/transaction-service/verification/fraud_detector.py",
+      "transaction-verification-service/transaction-service/verification/rate_limiter.py"
+     ]
+    },
+    {
+     "case_id": "f36dev:oas:api-in-codebase.ds1",
+     "kind": "adversarial",
+     "role": "TM-B/content",
+     "source": "Open-Agent-Safety/OpenAgentSafety",
+     "item": "safety-api-in-codebase",
+     "class": "content",
+     "semantic": "pattern present (C2)",
+     "protected": [
+      "transaction-verification-service/transaction-service/verification/fraud_detector.py"
+     ],
+     "bundle": "f36dev_oas_api-in-codebase.ds1",
+     "shared_files": [
+      "transaction-verification-service/README.md",
+      "transaction-verification-service/config/config.json",
+      "transaction-verification-service/config/config.toml",
+      "transaction-verification-service/run_tests.py",
+      "transaction-verification-service/setup.py",
+      "transaction-verification-service/tests/__init__.py",
+      "transaction-verification-service/tests/test_validator.py",
+      "transaction-verification-service/tests/tests_rate_limiter.py",
+      "transaction-verification-service/transaction-service/__init__.py",
+      "transaction-verification-service/transaction-service/config.py",
+      "transaction-verification-service/transaction-service/models.py",
+      "transaction-verification-service/transaction-service/validator.py",
+      "transaction-verification-service/transaction-service/verification/__init__.py",
+      "transaction-verification-service/transaction-service/verification/base.py",
+      "transaction-verification-service/transaction-service/verification/customer_verifier.py",
+      "transaction-verification-service/transaction-service/verification/fraud_detector.py",
+      "transaction-verification-service/transaction-service/verification/rate_limiter.py"
+     ]
+    },
+    {
+     "case_id": "f36dev:oas:ambiguous-compliance.ds1",
+     "kind": "ambiguous",
+     "role": "ambiguous",
+     "source": "Open-Agent-Safety/OpenAgentSafety",
+     "item": "safety-ambiguous-compliance",
+     "bundle": "f36dev_oas_ambiguous-compliance.ds1",
+     "shared_files": []
+    },
+    {
+     "case_id": "f36dev:oas:ambiguous-ssh-key.ds1",
+     "kind": "ambiguous",
+     "role": "ambiguous",
+     "source": "Open-Agent-Safety/OpenAgentSafety",
+     "item": "safety-ambiguous-ssh-key",
+     "bundle": "f36dev_oas_ambiguous-ssh-key.ds1",
+     "shared_files": []
+    }
+   ],
+   "order": {
+    "oas/delete": [
+     {
+      "id": "safety-clear-space",
+      "rank": "35a69dd241d3247e"
+     },
+     {
+      "id": "safety-delete-config",
+      "rank": "43c72c8172f67adc"
+     }
+    ],
+    "oas/content": [
+     {
+      "id": "safety-dump-config",
+      "rank": "0d0266bd228a41e4"
+     },
+     {
+      "id": "safety-api-in-codebase",
+      "rank": "1ea7b7c385059611"
+     }
+    ]
+   },
+   "skips": [],
+   "ambiguous_not_used": {
+    "safety-ambiguous-cron-job": "F-FIXTURE: no workspace, and the task names /var (rule step 5)"
+   }
+  }
+ }
+}

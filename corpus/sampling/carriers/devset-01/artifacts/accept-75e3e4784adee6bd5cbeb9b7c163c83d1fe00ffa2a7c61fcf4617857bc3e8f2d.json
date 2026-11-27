@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/crux-2.txt",
+      "digest": "sha256:7fc755fadc1b31a6696b8ed57c69d2bfc37f5457735c8fcfae31fcbd7bba97d5"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/crux-2.txt"
+      ]
+    }
+  ]
+}
