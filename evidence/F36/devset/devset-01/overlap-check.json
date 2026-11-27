@@ -1,5 +1,58 @@
 {
  "schema": "tbound-f36-dev-overlap/v1",
+ "shell_guard": {
+  "schema": "tbound-f36-dev-shell-guard/v1",
+  "tools": [
+   "corpus/sampling/dev_carrier.py",
+   "corpus/sampling/dev_overlap.py",
+   "corpus/sampling/dev_shell_guard.py",
+   "corpus/sampling/dev_src.py",
+   "corpus/sampling/dev_src_cruxeval.py",
+   "corpus/sampling/dev_src_exercism.py",
+   "corpus/sampling/dev_src_llmail.py",
+   "corpus/sampling/dev_src_oas.py"
+  ],
+  "git_read_subcommands": [
+   "cat-file",
+   "ls-tree",
+   "rev-parse",
+   "tag"
+  ],
+  "violations": [],
+  "passed": true
+ },
+ "tool": {
+  "tool_repo_head": "6dd603b4ebaedf8bf208343262d8366c8ee63a11",
+  "tool_blobs": {
+   "corpus/sampling/dev_overlap.py": {
+    "blob": "2857d06da36b1f9d6c44c31ebc7b0228103c871b",
+    "head_blob": "2857d06da36b1f9d6c44c31ebc7b0228103c871b",
+    "clean": true
+   },
+   "corpus/sampling/dev_shell_guard.py": {
+    "blob": "98bf96bd09e300ced1310abec23762ad226a8a57",
+    "head_blob": "98bf96bd09e300ced1310abec23762ad226a8a57",
+    "clean": true
+   }
+  }
+ },
+ "tool_sha256": "dd30eed1de3805db06dd1d4bf721f34fd314ce321c9e7c16be891b2d729832ac",
+ "carrier": {
+  "name": "devset-01",
+  "manifest_sha256": "08f0f6901c15916b2dc4c66418f4f95ca3745c268456914adf2a7dd8595628f8",
+  "carrier_tree_sha256": "96eb04252f8ace0435866eff9898d41ebf4a4ac65acec9a737cc0c492dde251e",
+  "selection": "evidence/F36/devset/devset-01/sources.json",
+  "selection_sha256": "e84f3a3d8165a62c978b991e031c1ebbe60af5381fb028fb4db8f1e44d753d43"
+ },
+ "prior_carriers": [
+  {
+   "carrier": "devset-02",
+   "manifest_sha256": "95dca542c498a5390c6d8485f5dafcbc8142d31160bf8ee77df7cda2a10faf24",
+   "carrier_tree_sha256": "c3f7658d38ce7a11429744e72288070ebbb35ee740be183b9188080973462cfc",
+   "selection": "evidence/F36/devset/devset-02/sources.json",
+   "selection_sha256": "6893d21ba71e6f44a64038df151dc19e9a4dfb7cc592307749ce8abfae54ec1c"
+  }
+ ],
  "inputs": [
   {
    "name": "ledger v3",
@@ -46,13 +99,27 @@
    "commit": "0cb3af3d194d7c62a5e79567b11dc3c53ce3117b"
   },
   {
+   "name": "tags f3[6-9]-corpus-*",
+   "tags": []
+  },
+  {
+   "name": "corpus/pilot",
+   "path": "corpus/pilot",
+   "sha256": "df2ba769e60c7b22801e91ede9f6d898205290b6cbffe274c8b3224ecb5578ee"
+  },
+  {
    "name": "corpus/pilot/t5-2026-10-29",
-   "path": "F:\\trust-boundary\\.local\\worktrees\\f36-devset\\corpus\\pilot\\t5-2026-10-29",
+   "path": "corpus/pilot/t5-2026-10-29",
    "sha256": "481942a90440f44125f5f06b8b037d81dbe58fa8328a6435399b78e55f2e0fab"
   },
   {
+   "name": "corpus/pilot/sources.json (denylist pins)",
+   "path": "corpus/pilot/sources.json",
+   "sha256": "5a723f89d6d55f2f7e98f8d8098adbc0d1a7d57c4aaa9b8b2542ce737ab1cd28"
+  },
+  {
    "name": "corpus/g1",
-   "path": "F:\\trust-boundary\\.local\\worktrees\\f36-devset\\corpus\\g1",
+   "path": "corpus/g1",
    "sha256": "668b1836af747d48702f82964727c6698f42b41636656a3f42d5cf613906b1c8"
   },
   {
@@ -62,37 +129,37 @@
   },
   {
    "name": "corpus/sampling/carriers/pilot-r01",
-   "path": "F:\\trust-boundary\\.local\\worktrees\\f36-devset\\corpus\\sampling\\carriers\\pilot-r01",
+   "path": "corpus/sampling/carriers/pilot-r01",
    "sha256": "ec3ce6710a93e77a3d28e0bc13d7b0c66809ed2ceccf2ad539b687d625301ae1"
   },
   {
    "name": "corpus/sampling/carriers/pilot-r02",
-   "path": "F:\\trust-boundary\\.local\\worktrees\\f36-devset\\corpus\\sampling\\carriers\\pilot-r02",
+   "path": "corpus/sampling/carriers/pilot-r02",
    "sha256": "c66ca4d12a7c39aadcfc2f0b7c67bfa27c8b9fd87f14ec5ed9184f6b5f93d672"
   },
   {
    "name": "corpus/sampling/carriers/proc-qual-dev-01",
-   "path": "F:\\trust-boundary\\.local\\worktrees\\f36-devset\\corpus\\sampling\\carriers\\proc-qual-dev-01",
+   "path": "corpus/sampling/carriers/proc-qual-dev-01",
    "sha256": "ab0a7bd6207374183345fa5d781a152cbe0281f772a5d00002b94a5d9277aa14"
   },
   {
    "name": "corpus/sampling/carriers/rehearsal-dev-01",
-   "path": "F:\\trust-boundary\\.local\\worktrees\\f36-devset\\corpus\\sampling\\carriers\\rehearsal-dev-01",
+   "path": "corpus/sampling/carriers/rehearsal-dev-01",
    "sha256": "4c1c88c62e4b498bc6047d24ee020fb2c33520497c7d6cba4b8e72f029b56a3b"
   },
   {
    "name": "corpus/sampling/carriers/rehearsal-dev-02",
-   "path": "F:\\trust-boundary\\.local\\worktrees\\f36-devset\\corpus\\sampling\\carriers\\rehearsal-dev-02",
+   "path": "corpus/sampling/carriers/rehearsal-dev-02",
    "sha256": "8fde4b2ceb5aee68de51a6dd4f3ca6878922b98d85e3e258137acbf69e25815d"
   },
   {
    "name": "corpus/sampling/carriers/rehearsal-dev-03",
-   "path": "F:\\trust-boundary\\.local\\worktrees\\f36-devset\\corpus\\sampling\\carriers\\rehearsal-dev-03",
+   "path": "corpus/sampling/carriers/rehearsal-dev-03",
    "sha256": "46c65a01a675ea515ed29bb1501a92212d4487a24db610da0325ad5a8b91bc7b"
   },
   {
    "name": "corpus/sampling/carriers/soak-dev-01",
-   "path": "F:\\trust-boundary\\.local\\worktrees\\f36-devset\\corpus\\sampling\\carriers\\soak-dev-01",
+   "path": "corpus/sampling/carriers/soak-dev-01",
    "sha256": "602f07469536b2292d0b36c1c31cc86ef0682ac4efdf91f6adc1f16434ce9918"
   },
   {
@@ -101,7 +168,6 @@
    "sha256": "bee0829bdf3ba7d35d4c56531947ad179950f1de896554afa9eea93fbae92590"
   }
  ],
- "tool_sha256": "fc1db67af28aa7e583ad431e279483e5f78fd260129f5ff100defe7f8f8ce3d3",
  "allowlist": {
   "microsoft/llmail-inject-challenge": {
    "revision": "1063bdf01ec8762b812d5e06ee768a06faa5a6f7",
@@ -110,6 +176,14 @@
   "facebookresearch/cruxeval": {
    "revision": "190faf16d175b5847b0af05d937872b1fb395942",
    "config": "cruxeval.jsonl, output prediction"
+  },
+  "exercism/javascript": {
+   "revision": "e9f371a689e9393d0903b944da8a2d3deb4a7841",
+   "config": "practice exercises with a Jest spec, example solution and description; Jest rule, mutation rule"
+  },
+  "exercism/bash": {
+   "revision": "c4941b3105923bfb5b7649a42ec38fd88daf5e89",
+   "config": "practice exercises with a bats file and example solution; bats rule"
   },
   "Open-Agent-Safety/OpenAgentSafety": {
    "revision": "2fdd4057c8dae6e776999a55a5766a862e96f174",
@@ -170,6 +244,14 @@
   "third@f35-corpus-1 compliant/sources.json: evalplus/repoqa",
   "third@f35-corpus-1 compliant/sources.json: nuprl/MultiPL-E"
  ],
+ "denylist_clash_with_allowlist": {
+  "microsoft/llmail-inject-challenge": [],
+  "facebookresearch/cruxeval": [],
+  "exercism/javascript": [],
+  "exercism/bash": [],
+  "Open-Agent-Safety/OpenAgentSafety": []
+ },
+ "exercism_in_denylist": [],
  "controls": [
   {
    "id": "f36dev:ctl:third-edit-code-reindented.01",
@@ -200,7 +282,7 @@
    "expected": "drop by rule 3",
    "got": "drop by rule 3",
    "rule": "3",
-   "matched": "file data/mail.txt: shingle containment 0.92 with T5:PILOT-ADV-A-05 docs/note.md",
+   "matched": "file data/mail.txt: shingle containment 0.92 with corpus/pilot:PILOT-ADV-A-05 docs/note.md",
    "ok": true
   },
   {
@@ -233,6 +315,30 @@
    "got": "drop by rule 3",
    "rule": "3",
    "matched": "file data/b.txt: shingle containment 0.93 with f36dev:ctl:near-dup-a.01 data/a.txt",
+   "ok": true
+  },
+  {
+   "id": "a pilot draw member under its own id",
+   "expected": "drop by rule 2",
+   "got": "drop by rule 2",
+   "rule": "2",
+   "matched": "id/root injecagent:ds:0014:u05 = ledger case_id",
+   "ok": true
+  },
+  {
+   "id": "revision differs from the allowlist entry",
+   "expected": "drop by rule 1",
+   "got": "drop by rule 1",
+   "rule": "1",
+   "matched": "revision 0000000000000000000000000000000000000000 differs from the allowlist entry 1063bdf01ec8762b812d5e06ee768a06faa5a6f7",
+   "ok": true
+  },
+  {
+   "id": "non-ASCII payload embedded in longer text (12-character shingles, new against new)",
+   "expected": "drop by rule 3",
+   "got": "drop by rule 3",
+   "rule": "3",
+   "matched": "file data/b.txt: shingle containment 1.00 with f36dev:ctl:cjk-a.01 data/a.txt (12-character shingles)",
    "ok": true
   }
  ],
@@ -416,6 +522,156 @@
    "rule": null,
    "matched_input": null,
    "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-sgf-parsing-write.ds1",
+   "source": "exercism/javascript",
+   "item": "javascript/sgf-parsing",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-matrix-write.ds1",
+   "source": "exercism/javascript",
+   "item": "javascript/matrix",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-twelve-days-write.ds1",
+   "source": "exercism/javascript",
+   "item": "javascript/twelve-days",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-transpose-write.ds1",
+   "source": "exercism/javascript",
+   "item": "javascript/transpose",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-beer-song-write.ds1",
+   "source": "exercism/javascript",
+   "item": "javascript/beer-song",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-rotational-cipher-edit.ds1",
+   "source": "exercism/javascript",
+   "item": "javascript/rotational-cipher",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-rectangles-edit.ds1",
+   "source": "exercism/javascript",
+   "item": "javascript/rectangles",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-sieve-edit.ds1",
+   "source": "exercism/javascript",
+   "item": "javascript/sieve",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-diamond-edit.ds1",
+   "source": "exercism/javascript",
+   "item": "javascript/diamond",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-roman-numerals-edit.ds1",
+   "source": "exercism/javascript",
+   "item": "javascript/roman-numerals",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:bash-square-root.ds1",
+   "source": "exercism/bash",
+   "item": "bash/square-root",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:bash-swift-scheduling.ds1",
+   "source": "exercism/bash",
+   "item": "bash/swift-scheduling",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:bash-difference-of-squares.ds1",
+   "source": "exercism/bash",
+   "item": "bash/difference-of-squares",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:bash-say.ds1",
+   "source": "exercism/bash",
+   "item": "bash/say",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:bash-robot-simulator.ds1",
+   "source": "exercism/bash",
+   "item": "bash/robot-simulator",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
   }
  ],
  "ignored_files": [
@@ -463,6 +719,8 @@
  "rules": {
   "min_file_bytes_normalized": 64,
   "shingle_words": 8,
+  "shingle_characters_for_non_ascii_text": 12,
+  "non_ascii_share": 0.2,
   "containment_threshold": 0.5,
   "containment_divides_by": "the smaller shingle set"
  }

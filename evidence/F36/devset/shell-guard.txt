@@ -7,6 +7,7 @@
   "corpus/sampling/dev_shell_guard.py",
   "corpus/sampling/dev_src.py",
   "corpus/sampling/dev_src_cruxeval.py",
+  "corpus/sampling/dev_src_exercism.py",
   "corpus/sampling/dev_src_llmail.py",
   "corpus/sampling/dev_src_oas.py"
  ],
@@ -25,7 +26,7 @@ bad_fstring_call.py    exit=1 expected=1 subprocess list holds something other t
 bad_git_push.py        exit=1 expected=1 git subcommand 'push' is not one of ['cat-file', 'ls-tree', 'rev-parse', 'tag']
 bad_helper.py          exit=1 expected=1 git helper with subcommand 'commit', not one of ['cat-file', 'ls-tree', 'rev-parse', 'tag']
 bad_os_system.py       exit=1 expected=1 os.system
-bad_other_program.py   exit=1 expected=1 subprocess starts a program other than git
+bad_other_program.py   exit=1 expected=1 subprocess starts a program other than git (or not the allowlisted node call)
 bad_popen.py           exit=1 expected=1 os.popen
 bad_shell_true.py      exit=1 expected=1 shell= is not the constant False; subprocess argument is not a list literal
 bad_string_arg.py      exit=1 expected=1 subprocess argument is not a list literal

@@ -81,6 +81,8 @@ changes (above) and any NOTICE file (none exists for the sources used).
 | Source | Pinned revision | License | License file |
 |---|---|---|---|
 | https://github.com/Open-Agent-Safety/OpenAgentSafety | `2fdd4057c8dae6e776999a55a5766a862e96f174` | MIT | `licenses/OpenAgentSafety-LICENSE` |
+| https://github.com/exercism/bash | `c4941b3105923bfb5b7649a42ec38fd88daf5e89` | MIT | `licenses/exercism-bash-LICENSE` |
+| https://github.com/exercism/javascript | `e9f371a689e9393d0903b944da8a2d3deb4a7841` | MIT | `licenses/exercism-javascript-LICENSE` |
 | https://github.com/facebookresearch/cruxeval | `190faf16d175b5847b0af05d937872b1fb395942` | MIT | `licenses/cruxeval-LICENSE` |
 | https://huggingface.co/datasets/microsoft/llmail-inject-challenge | `1063bdf01ec8762b812d5e06ee768a06faa5a6f7` | MIT | `licenses/llmail-inject-challenge-dataset-card-license.txt`, `licenses/llmail-inject-challenge-LICENSE` |
 | https://github.com/microsoft/llmail-inject-challenge (inbox files and licence) | `3da2399839b285e129888161fcc8cb03169d1b43` | MIT | see above |
@@ -92,6 +94,21 @@ Cases:
 - `f36dev:cruxeval:sample-489.ds1`: facebookresearch/cruxeval `sample_489`
 - `f36dev:cruxeval:sample-561.ds1`: facebookresearch/cruxeval `sample_561`
 - `f36dev:cruxeval:sample-739.ds1`: facebookresearch/cruxeval `sample_739`
+- `f36dev:exercism:bash-difference-of-squares.ds1`: exercism/bash `bash/difference-of-squares`
+- `f36dev:exercism:bash-robot-simulator.ds1`: exercism/bash `bash/robot-simulator`
+- `f36dev:exercism:bash-say.ds1`: exercism/bash `bash/say`
+- `f36dev:exercism:bash-square-root.ds1`: exercism/bash `bash/square-root`
+- `f36dev:exercism:bash-swift-scheduling.ds1`: exercism/bash `bash/swift-scheduling`
+- `f36dev:exercism:javascript-beer-song-write.ds1`: exercism/javascript `javascript/beer-song`
+- `f36dev:exercism:javascript-diamond-edit.ds1`: exercism/javascript `javascript/diamond`
+- `f36dev:exercism:javascript-matrix-write.ds1`: exercism/javascript `javascript/matrix`
+- `f36dev:exercism:javascript-rectangles-edit.ds1`: exercism/javascript `javascript/rectangles`
+- `f36dev:exercism:javascript-roman-numerals-edit.ds1`: exercism/javascript `javascript/roman-numerals`
+- `f36dev:exercism:javascript-rotational-cipher-edit.ds1`: exercism/javascript `javascript/rotational-cipher`
+- `f36dev:exercism:javascript-sgf-parsing-write.ds1`: exercism/javascript `javascript/sgf-parsing`
+- `f36dev:exercism:javascript-sieve-edit.ds1`: exercism/javascript `javascript/sieve`
+- `f36dev:exercism:javascript-transpose-write.ds1`: exercism/javascript `javascript/transpose`
+- `f36dev:exercism:javascript-twelve-days-write.ds1`: exercism/javascript `javascript/twelve-days`
 - `f36dev:llmail:p2-158719c9a795.ds1`: microsoft/llmail-inject-challenge `p2-158719c9a795`
 - `f36dev:llmail:p2-5fb4048b4ac8.ds1`: microsoft/llmail-inject-challenge `p2-5fb4048b4ac8`
 - `f36dev:llmail:p2-7e1e7cbead7c.ds1`: microsoft/llmail-inject-challenge `p2-7e1e7cbead7c`
@@ -105,5 +122,3 @@ Cases:
 - `f36dev:oas:clear-space.ds1`: Open-Agent-Safety/OpenAgentSafety `safety-clear-space`
 - `f36dev:oas:delete-config.ds1`: Open-Agent-Safety/OpenAgentSafety `safety-delete-config`
 - `f36dev:oas:dump-config.ds1`: Open-Agent-Safety/OpenAgentSafety `safety-dump-config`
-
-The T5 write, edit and bash compliant cases of this carrier keep their MultiPL-E sources above; their ids carry the round suffix.

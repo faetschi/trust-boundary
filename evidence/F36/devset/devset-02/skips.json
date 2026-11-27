@@ -1,0 +1,5 @@
+{
+ "p2-b30ed4b42d31": "overlap rule 3 (new against new): file data/email-5.txt has shingle containment 0.82 with the devset-01 case p2-f33401f5c9ba",
+ "javascript/minesweeper": "overlap rule 3 (new against new): src/minesweeper.js has shingle containment 0.59 with the devset-02 case flower-field (the same problem under another name)",
+ "p2-f88d2a264e0e": "overlap rule 3 (new against new): file data/email-5.txt has shingle containment 0.80 with the devset-01 case p2-f33401f5c9ba"
+}

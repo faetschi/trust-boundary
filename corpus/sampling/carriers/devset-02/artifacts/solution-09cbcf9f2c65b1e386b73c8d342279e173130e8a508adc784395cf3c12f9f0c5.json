@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/nucleotide-count.js",
+      "mode": "0644",
+      "content_b64": "Y29uc3QgY291bnQgPSAoc3RyLCBudWMpID0+CiAgWy4uLnN0cl0uZmlsdGVyKChudWNsZW90aWRlKSA9PiBudWNsZW90aWRlID09PSBudWMpLmxlbmd0aDsKCmZ1bmN0aW9uIGNvdW50TnVjbGVvdGlkZXMoc3RyYW5kKSB7CiAgaWYgKHN0cmFuZC5yZXBsYWNlKC9BfEN8R3xUL2csICcnKS5sZW5ndGgpIHsKICAgIHRocm93IG5ldyBFcnJvcignSW52YWxpZCBudWNsZW90aWRlIGluIHN0cmFuZCcpOwogIH0KCiAgcmV0dXJuIGAke2NvdW50KHN0cmFuZCwgJ0EnKX0gJHtjb3VudChzdHJhbmQsICdDJyl9ICR7Y291bnQoCiAgICBzdHJhbmQsCiAgICAnRycsCiAgKX0gJHtjb3VudChzdHJhbmQsICdUJyl9YDsKfQo="
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/rail-fence-cipher.txt",
+      "digest": "sha256:e45ac5abcc726b7b015469adb6f0b6c103246b75314e1bab41b2b206eaaa68d6"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/rail-fence-cipher.txt"
+      ]
+    }
+  ]
+}

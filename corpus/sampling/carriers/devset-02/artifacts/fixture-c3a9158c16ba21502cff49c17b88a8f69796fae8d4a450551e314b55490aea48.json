@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/nucleotide-count.instructions.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyBJbnN0cnVjdGlvbnMKCkVhY2ggb2YgdXMgaW5oZXJpdHMgZnJvbSBvdXIgYmlvbG9naWNhbCBwYXJlbnRzIGEgc2V0IG9mIGNoZW1pY2FsIGluc3RydWN0aW9ucyBrbm93biBhcyBETkEgdGhhdCBpbmZsdWVuY2UgaG93IG91ciBib2RpZXMgYXJlIGNvbnN0cnVjdGVkLgpBbGwga25vd24gbGlmZSBkZXBlbmRzIG9uIEROQSEKCj4gTm90ZTogWW91IGRvIG5vdCBuZWVkIHRvIHVuZGVyc3RhbmQgYW55dGhpbmcgYWJvdXQgbnVjbGVvdGlkZXMgb3IgRE5BIHRvIGNvbXBsZXRlIHRoaXMgZXhlcmNpc2UuCgpETkEgaXMgYSBsb25nIGNoYWluIG9mIG90aGVyIGNoZW1pY2FscyBhbmQgdGhlIG1vc3QgaW1wb3J0YW50IGFyZSB0aGUgZm91ciBudWNsZW90aWRlcywgYWRlbmluZSwgY3l0b3NpbmUsIGd1YW5pbmUgYW5kIHRoeW1pbmUuCkEgc2luZ2xlIEROQSBjaGFpbiBjYW4gY29udGFpbiBiaWxsaW9ucyBvZiB0aGVzZSBmb3VyIG51Y2xlb3RpZGVzIGFuZCB0aGUgb3JkZXIgaW4gd2hpY2ggdGhleSBvY2N1ciBpcyBpbXBvcnRhbnQhCldlIGNhbGwgdGhlIG9yZGVyIG9mIHRoZXNlIG51Y2xlb3RpZGVzIGluIGEgYml0IG9mIEROQSBhICJETkEgc2VxdWVuY2UiLgoKV2UgcmVwcmVzZW50IGEgRE5BIHNlcXVlbmNlIGFzIGFuIG9yZGVyZWQgY29sbGVjdGlvbiBvZiB0aGVzZSBmb3VyIG51Y2xlb3RpZGVzIGFuZCBhIGNvbW1vbiB3YXkgdG8gZG8gdGhhdCBpcyB3aXRoIGEgc3RyaW5nIG9mIGNoYXJhY3RlcnMgc3VjaCBhcyAiQVRUQUNHIiBmb3IgYSBETkEgc2VxdWVuY2Ugb2YgNiBudWNsZW90aWRlcy4KJ0EnIGZvciBhZGVuaW5lLCAnQycgZm9yIGN5dG9zaW5lLCAnRycgZm9yIGd1YW5pbmUsIGFuZCAnVCcgZm9yIHRoeW1pbmUuCgpHaXZlbiBhIHN0cmluZyByZXByZXNlbnRpbmcgYSBETkEgc2VxdWVuY2UsIGNvdW50IGhvdyBtYW55IG9mIGVhY2ggbnVjbGVvdGlkZSBpcyBwcmVzZW50LgpJZiB0aGUgc3RyaW5nIGNvbnRhaW5zIGNoYXJhY3RlcnMgdGhhdCBhcmVuJ3QgQSwgQywgRywgb3IgVCB0aGVuIGl0IGlzIGludmFsaWQgYW5kIHlvdSBzaG91bGQgc2lnbmFsIGFuIGVycm9yLgoKRm9yIGV4YW1wbGU6CgpgYGB0ZXh0CiJHQVRUQUNBIiAtPiAnQSc6IDMsICdDJzogMSwgJ0cnOiAxLCAnVCc6IDIKIklOVkFMSUQiIC0+IGVycm9yCmBgYAoKIyBJbnN0cnVjdGlvbnMgYXBwZW5kCgojIyBJbXBsZW1lbnRhdGlvbgoKVGhlIHJlc3VsdCBzaG91bGQgYmUgZm9ybWF0dGVkIGFzIGEgc3RyaW5nIGNvbnRhaW5pbmcgNCBudW1iZXJzIHNlcGFyYXRlZCBieSBzcGFjZXMuCkVhY2ggbnVtYmVyIHJlcHJlc2VudHMgdGhlIGNvdW50IGZvciBBLCBDLCBHIGFuZCBUIGluIHRoaXMgb3JkZXIuCgpGb3IgZXhhbXBsZToKCmBgYGphdmFzY3JpcHQKY291bnROdWNsZW90aWRlcygnR0FUVEFDQScpIC0+ICczIDEgMSAyJwpgYGAK"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

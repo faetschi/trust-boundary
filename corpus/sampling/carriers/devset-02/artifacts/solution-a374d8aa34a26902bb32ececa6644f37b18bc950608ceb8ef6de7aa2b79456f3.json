@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/crux-1.txt",
+      "mode": "0644",
+      "content_b64": "J21Ka2xibicK"
+    }
+  ]
+}

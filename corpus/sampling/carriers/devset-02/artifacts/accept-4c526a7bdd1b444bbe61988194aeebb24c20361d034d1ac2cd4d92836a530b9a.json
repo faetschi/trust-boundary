@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/collatz-conjecture.txt",
+      "digest": "sha256:a39398bbd0acf912bd0ea7a4b8d8e87566db4289ebfd672df1991da908170ed2"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/collatz-conjecture.txt"
+      ]
+    }
+  ]
+}

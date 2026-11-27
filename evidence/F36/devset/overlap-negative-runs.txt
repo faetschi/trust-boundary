@@ -1,0 +1,11 @@
+S1 selection with 1 of 33 cases: exit 2 (expected 2) dev_overlap: stopped: Stop: the carrier manifest cases differ from the selected and retained cases of the selection file: only in the manifest ["f36dev:cruxeval:sample-297.ds1", "f36dev:cruxeval:sampl
+S1 selection with a repeated case: exit 2 (expected 2) dev_overlap: stopped: Stop: the carrier manifest cases differ from the selected and retained cases of the selection file: only in the manifest [], only in the selection []
+S1 retained id that is not a T5 id: exit 2 (expected 2) dev_overlap: stopped: Stop: retained case PILOT-X.ds1 is not a T5 case under a round suffix
+S2 selection file {}: exit 2 (expected 2) dev_overlap: stopped: Stop: the selection file is for the carrier None, not 'devset-01'
+S2 selection file missing: exit 2 (expected 2) dev_overlap: stopped: FileNotFoundError: [Errno 2] No such file or directory: '<path>'
+S3 no --prior-selection for devset-02: exit 2 (expected 2) dev_overlap: stopped: Stop: a --prior-selection is required for every other devset carrier; missing: devset-02
+S3 the carrier named as its own prior: exit 2 (expected 2) dev_overlap: stopped: Stop: --prior-selection <path> is for 'devset-01', which is not another devset carrier or is given twice
+devset-01 overlap-check.json: drive-letter paths 0; inputs 22; prior ['devset-02']; controls 11/11; verdicts ['keep']; guard True
+devset-01 sources.json: records from clean committed tools; tool heads ['6dd603b4']
+devset-02 overlap-check.json: drive-letter paths 0; inputs 22; prior ['devset-01']; controls 11/11; verdicts ['keep']; guard True
+devset-02 sources.json: records from clean committed tools; tool heads ['6dd603b4']

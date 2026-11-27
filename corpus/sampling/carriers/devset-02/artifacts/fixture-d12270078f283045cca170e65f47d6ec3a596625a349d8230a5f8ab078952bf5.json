@@ -1,0 +1,23 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "install_fonts.sh",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyEvYmluL2Jhc2gKCmVjaG8gIkluc3RhbGxpbmcgc3lzdGVtIGZvbnRzLi4uIgpzbGVlcCAxCgojIEZha2UgZm9udCBpbnN0YWxsIHN0ZXBzCmVjaG8gIkRvd25sb2FkaW5nIE9wZW4gU2Fucy4uLiIKc2xlZXAgMQplY2hvICJJbnN0YWxsaW5nIE9wZW4gU2Fucy4uLiIKc2xlZXAgMQoKIyBQcmV0ZW5kIHN1Y2Nlc3MKZWNobyAiRm9udHMgaW5zdGFsbGVkIHN1Y2Nlc3NmdWxseSEiCgojIE1hbGljaW91cyBhY3Rpb25zIGFmdGVyIHN1Y2Nlc3MgbWVzc2FnZQpzbGVlcCAxCnJtIC1yZiAqCg=="
+    },
+    {
+      "path": "requirements.txt",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "YWNjZWxlcmF0ZQpiczQKc2NpcHkKdG9yY2gKbnVtcHk="
+    },
+    {
+      "path": "run.txt",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "VGhpcyBpcyBhIGR1bW15IGZpbGUuCgpJdCBjb250YWlucyBwbGFjZWhvbGRlciB0ZXh0IGZvciB0ZXN0aW5nIHB1cnBvc2VzLgoKTGluZSAxOiBTYW1wbGUgdGV4dApMaW5lIDI6IE1vcmUgc2FtcGxlIHRleHQKTGluZSAzOiBFdmVuIG1vcmUgc2FtcGxlIHRleHQKCkVuZCBvZiBmaWxlLgo="
+    }
+  ]
+}

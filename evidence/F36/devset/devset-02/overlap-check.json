@@ -1,0 +1,717 @@
+{
+ "schema": "tbound-f36-dev-overlap/v1",
+ "shell_guard": {
+  "schema": "tbound-f36-dev-shell-guard/v1",
+  "tools": [
+   "corpus/sampling/dev_carrier.py",
+   "corpus/sampling/dev_overlap.py",
+   "corpus/sampling/dev_shell_guard.py",
+   "corpus/sampling/dev_src.py",
+   "corpus/sampling/dev_src_cruxeval.py",
+   "corpus/sampling/dev_src_exercism.py",
+   "corpus/sampling/dev_src_llmail.py",
+   "corpus/sampling/dev_src_oas.py"
+  ],
+  "git_read_subcommands": [
+   "cat-file",
+   "ls-tree",
+   "rev-parse",
+   "tag"
+  ],
+  "violations": [],
+  "passed": true
+ },
+ "tool": {
+  "tool_repo_head": "6dd603b4ebaedf8bf208343262d8366c8ee63a11",
+  "tool_blobs": {
+   "corpus/sampling/dev_overlap.py": {
+    "blob": "2857d06da36b1f9d6c44c31ebc7b0228103c871b",
+    "head_blob": "2857d06da36b1f9d6c44c31ebc7b0228103c871b",
+    "clean": true
+   },
+   "corpus/sampling/dev_shell_guard.py": {
+    "blob": "98bf96bd09e300ced1310abec23762ad226a8a57",
+    "head_blob": "98bf96bd09e300ced1310abec23762ad226a8a57",
+    "clean": true
+   }
+  }
+ },
+ "tool_sha256": "dd30eed1de3805db06dd1d4bf721f34fd314ce321c9e7c16be891b2d729832ac",
+ "carrier": {
+  "name": "devset-02",
+  "manifest_sha256": "95dca542c498a5390c6d8485f5dafcbc8142d31160bf8ee77df7cda2a10faf24",
+  "carrier_tree_sha256": "c3f7658d38ce7a11429744e72288070ebbb35ee740be183b9188080973462cfc",
+  "selection": "evidence/F36/devset/devset-02/sources.json",
+  "selection_sha256": "6893d21ba71e6f44a64038df151dc19e9a4dfb7cc592307749ce8abfae54ec1c"
+ },
+ "prior_carriers": [
+  {
+   "carrier": "devset-01",
+   "manifest_sha256": "08f0f6901c15916b2dc4c66418f4f95ca3745c268456914adf2a7dd8595628f8",
+   "carrier_tree_sha256": "96eb04252f8ace0435866eff9898d41ebf4a4ac65acec9a737cc0c492dde251e",
+   "selection": "evidence/F36/devset/devset-01/sources.json",
+   "selection_sha256": "e84f3a3d8165a62c978b991e031c1ebbe60af5381fb028fb4db8f1e44d753d43"
+  }
+ ],
+ "inputs": [
+  {
+   "name": "ledger v3",
+   "path": "corpus/sampling/d48-ledger-v3.jsonl",
+   "sha256": "277fc72c16bbfc27bc90723202c190a57b44987950e93f266209b3118ce79004"
+  },
+  {
+   "name": "T1 pilot draw",
+   "path": "evidence/pilot-walk/draw/pilot-04.json",
+   "sha256": "207e97fbb4a507574e4ee07e4a7e10aa6eac34fc9c1f95ac4d9c7d700ba2cdfc"
+  },
+  {
+   "name": "T1 commitment",
+   "path": "evidence/T1/pilot-commitment-v1.json",
+   "sha256": "64cecacc5d3eced9968ff15e94aac69784a14f191818cda9126f3a0f5b598fa5"
+  },
+  {
+   "name": "source digests v3",
+   "path": "corpus/sampling/d48-source-digests-v3.json",
+   "sha256": "3f72d12a4d3636ddbc446ce9ffee7be54456e1a16b15c67a51666676d6fc655a"
+  },
+  {
+   "name": "corpus/third at f32-corpus-1",
+   "path": "f32-corpus-1:corpus/third",
+   "tree": "213b85f597ce14b96d3300c7be14087984deeead",
+   "commit": "a6b52b9a055fab4d8c595ca566a2d310c1eefe97"
+  },
+  {
+   "name": "corpus/third at f33-corpus-1",
+   "path": "f33-corpus-1:corpus/third",
+   "tree": "213b85f597ce14b96d3300c7be14087984deeead",
+   "commit": "2fe2c0db86133a421bb18307659cc22962a6c5b6"
+  },
+  {
+   "name": "corpus/third at f34-corpus-1",
+   "path": "f34-corpus-1:corpus/third",
+   "tree": "213b85f597ce14b96d3300c7be14087984deeead",
+   "commit": "5e2f6cc1720f9785496f239e3e3cb8d6fa069e1f"
+  },
+  {
+   "name": "corpus/third at f35-corpus-1",
+   "path": "f35-corpus-1:corpus/third",
+   "tree": "213b85f597ce14b96d3300c7be14087984deeead",
+   "commit": "0cb3af3d194d7c62a5e79567b11dc3c53ce3117b"
+  },
+  {
+   "name": "tags f3[6-9]-corpus-*",
+   "tags": []
+  },
+  {
+   "name": "corpus/pilot",
+   "path": "corpus/pilot",
+   "sha256": "df2ba769e60c7b22801e91ede9f6d898205290b6cbffe274c8b3224ecb5578ee"
+  },
+  {
+   "name": "corpus/pilot/t5-2026-10-29",
+   "path": "corpus/pilot/t5-2026-10-29",
+   "sha256": "481942a90440f44125f5f06b8b037d81dbe58fa8328a6435399b78e55f2e0fab"
+  },
+  {
+   "name": "corpus/pilot/sources.json (denylist pins)",
+   "path": "corpus/pilot/sources.json",
+   "sha256": "5a723f89d6d55f2f7e98f8d8098adbc0d1a7d57c4aaa9b8b2542ce737ab1cd28"
+  },
+  {
+   "name": "corpus/g1",
+   "path": "corpus/g1",
+   "sha256": "668b1836af747d48702f82964727c6698f42b41636656a3f42d5cf613906b1c8"
+  },
+  {
+   "name": "corpus/route-probe",
+   "path": "corpus/route-probe/route-probe.json",
+   "sha256": "940edcf6bbaa15e9cea4f8674dcf6aad8467b7ec4015aec958a2c2e968ecef6e"
+  },
+  {
+   "name": "corpus/sampling/carriers/pilot-r01",
+   "path": "corpus/sampling/carriers/pilot-r01",
+   "sha256": "ec3ce6710a93e77a3d28e0bc13d7b0c66809ed2ceccf2ad539b687d625301ae1"
+  },
+  {
+   "name": "corpus/sampling/carriers/pilot-r02",
+   "path": "corpus/sampling/carriers/pilot-r02",
+   "sha256": "c66ca4d12a7c39aadcfc2f0b7c67bfa27c8b9fd87f14ec5ed9184f6b5f93d672"
+  },
+  {
+   "name": "corpus/sampling/carriers/proc-qual-dev-01",
+   "path": "corpus/sampling/carriers/proc-qual-dev-01",
+   "sha256": "ab0a7bd6207374183345fa5d781a152cbe0281f772a5d00002b94a5d9277aa14"
+  },
+  {
+   "name": "corpus/sampling/carriers/rehearsal-dev-01",
+   "path": "corpus/sampling/carriers/rehearsal-dev-01",
+   "sha256": "4c1c88c62e4b498bc6047d24ee020fb2c33520497c7d6cba4b8e72f029b56a3b"
+  },
+  {
+   "name": "corpus/sampling/carriers/rehearsal-dev-02",
+   "path": "corpus/sampling/carriers/rehearsal-dev-02",
+   "sha256": "8fde4b2ceb5aee68de51a6dd4f3ca6878922b98d85e3e258137acbf69e25815d"
+  },
+  {
+   "name": "corpus/sampling/carriers/rehearsal-dev-03",
+   "path": "corpus/sampling/carriers/rehearsal-dev-03",
+   "sha256": "46c65a01a675ea515ed29bb1501a92212d4487a24db610da0325ad5a8b91bc7b"
+  },
+  {
+   "name": "corpus/sampling/carriers/soak-dev-01",
+   "path": "corpus/sampling/carriers/soak-dev-01",
+   "sha256": "602f07469536b2292d0b36c1c31cc86ef0682ac4efdf91f6adc1f16434ce9918"
+  },
+  {
+   "name": "bundles/pilot-walk",
+   "path": "corpus/sampling/bundles/pilot-walk",
+   "sha256": "bee0829bdf3ba7d35d4c56531947ad179950f1de896554afa9eea93fbae92590"
+  }
+ ],
+ "allowlist": {
+  "microsoft/llmail-inject-challenge": {
+   "revision": "1063bdf01ec8762b812d5e06ee768a06faa5a6f7",
+   "config": "phase2 labelled_unique_submissions, api_triggered, scenarios 1 and 2"
+  },
+  "facebookresearch/cruxeval": {
+   "revision": "190faf16d175b5847b0af05d937872b1fb395942",
+   "config": "cruxeval.jsonl, output prediction"
+  },
+  "exercism/javascript": {
+   "revision": "e9f371a689e9393d0903b944da8a2d3deb4a7841",
+   "config": "practice exercises with a Jest spec, example solution and description; Jest rule, mutation rule"
+  },
+  "exercism/bash": {
+   "revision": "c4941b3105923bfb5b7649a42ec38fd88daf5e89",
+   "config": "practice exercises with a bats file and example solution; bats rule"
+  },
+  "Open-Agent-Safety/OpenAgentSafety": {
+   "revision": "2fdd4057c8dae6e776999a55a5766a862e96f174",
+   "config": "service-free tasks without scenarios.json, file-state evaluator"
+  }
+ },
+ "denylist": [
+  "corpus/pilot/sources.json: JY-Young/RiOSWorld",
+  "corpus/pilot/sources.json: ryoungj/ToolEmu",
+  "digest pin AI-secure/RedCode",
+  "digest pin AgentDojo-v1",
+  "digest pin InjecAgent",
+  "digest pin OSU-NLP-Group/RedTeamCUA",
+  "digest pin UKGovernmentBEIS/inspect_evals",
+  "digest pin agiresearch/ASB",
+  "digest pin antgroup/Agent3Sigma-Stage",
+  "digest pin dongsenzhang/MSB",
+  "digest pin sssr-lab/saber",
+  "digest pin thu-coai/Agent-SafetyBench",
+  "digest pin tml-epfl/os-harm",
+  "ledger pin: 089ed468cf3ed0322acc66b0211f26d9d90dbf60",
+  "ledger pin: 27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
+  "ledger pin: 544540ff0788998072f7df463056fd17e62cc9f4",
+  "ledger pin: 6614e77191c1f8e2d0c44c123c6f915905ebafae",
+  "ledger pin: 664e4793dc7309f98b8271baed5bbc04d6ef4c39",
+  "ledger pin: 74feea8de601b3a1449a93fcf70017fe61556f73",
+  "ledger pin: 969e4b2078292a2429274bd3524c64c27f9e0c72",
+  "ledger pin: 96bb09d9e922fad590603cc8468c602fbc788d95",
+  "ledger pin: a05b8bd04629e19a9a06bf04f8e0c5b53549d16c",
+  "ledger pin: ae0b6fa78ace5a097536eb3464ab5a089740b53e",
+  "ledger pin: c0fa95e75bafb00ac05d2eb4ac5418b9913475ee",
+  "ledger pin: c1d6a70171e4d2c44c87a2ae909d13df00c6aa8d",
+  "ledger pin: d069c204461256970dda3c0d2edc147cd3725e36",
+  "ledger pin: e23b3fe60a0da9037314b88e5ee3a0c054970dad",
+  "ledger pin: f19c9f2c79a41046eb13c03c51a24c567a8ffa07",
+  "ledger pin: f24d57cecd14315bd1c56ad5d470d75a27618b06",
+  "ledger pin: ffee6f41fde76acd14bd792db442479c506260c2",
+  "ledger pin: figshare 10.6084/m9.figshare.30111988.v4, file 57929701 linux_atomic_tests_attack_payloads.json (md5 a910976e59c132b978b529cfb97bdc98); delivery file cursorrules.txt (file 57929689)",
+  "ledger source: AIShellJack",
+  "ledger source: ASB",
+  "ledger source: ASEval",
+  "ledger source: Agent-SafetyBench",
+  "ledger source: AgentDojo",
+  "ledger source: AgentHarm",
+  "ledger source: BashArena (via ControlArena copy)",
+  "ledger source: CIPR",
+  "ledger source: CodeIPI",
+  "ledger source: InjecAgent",
+  "ledger source: MSB",
+  "ledger source: OS-Harm-injection",
+  "ledger source: OS-Harm-misuse",
+  "ledger source: RedCode-Exec",
+  "ledger source: RedTeamCUA",
+  "ledger source: RiOSWorld",
+  "ledger source: SABER",
+  "ledger source: SHADE-Arena",
+  "ledger source: WASP",
+  "third@f35-corpus-1 compliant/sources.json: evalplus/repoqa",
+  "third@f35-corpus-1 compliant/sources.json: nuprl/MultiPL-E"
+ ],
+ "denylist_clash_with_allowlist": {
+  "microsoft/llmail-inject-challenge": [],
+  "facebookresearch/cruxeval": [],
+  "exercism/javascript": [],
+  "exercism/bash": [],
+  "Open-Agent-Safety/OpenAgentSafety": []
+ },
+ "exercism_in_denylist": [],
+ "controls": [
+  {
+   "id": "f36dev:ctl:third-edit-code-reindented.01",
+   "expected": "drop by rule 2",
+   "got": "drop by rule 2",
+   "rule": "2",
+   "matched": "code hash of src/other.js = third@f35-corpus-1:CMP-edit-01 src/is_simple_power.js",
+   "ok": true
+  },
+  {
+   "id": "pinned ledger source AgentDojo-v1",
+   "expected": "drop by rule 1",
+   "got": "drop by rule 1",
+   "rule": "1",
+   "matched": "denylist: ledger source: AgentDojo",
+   "ok": true
+  },
+  {
+   "id": "unpinned ledger source AgentHarm",
+   "expected": "drop by rule 1",
+   "got": "drop by rule 1",
+   "rule": "1",
+   "matched": "denylist: ledger source: AgentHarm",
+   "ok": true
+  },
+  {
+   "id": "pilot payload reformatted inside longer text",
+   "expected": "drop by rule 3",
+   "got": "drop by rule 3",
+   "rule": "3",
+   "matched": "file data/mail.txt: shingle containment 0.92 with corpus/pilot:PILOT-ADV-A-05 docs/note.md",
+   "ok": true
+  },
+  {
+   "id": "corpus/third fixture, one file renamed",
+   "expected": "drop by rule 4",
+   "got": "drop by rule 4",
+   "rule": "4",
+   "matched": "file src/renamed-file.js sha256 = third@f35-corpus-1:CMP-edit-01 src/is_simple_power.js",
+   "ok": true
+  },
+  {
+   "id": "known-clean text",
+   "expected": "keep",
+   "got": "keep",
+   "rule": null,
+   "matched": null,
+   "ok": true
+  },
+  {
+   "id": "near-duplicate pair, first case",
+   "expected": "keep",
+   "got": "keep",
+   "rule": null,
+   "matched": null,
+   "ok": true
+  },
+  {
+   "id": "near-duplicate pair, second case (new against new)",
+   "expected": "drop by rule 3",
+   "got": "drop by rule 3",
+   "rule": "3",
+   "matched": "file data/b.txt: shingle containment 0.93 with f36dev:ctl:near-dup-a.01 data/a.txt",
+   "ok": true
+  },
+  {
+   "id": "a pilot draw member under its own id",
+   "expected": "drop by rule 2",
+   "got": "drop by rule 2",
+   "rule": "2",
+   "matched": "id/root injecagent:ds:0014:u05 = ledger case_id",
+   "ok": true
+  },
+  {
+   "id": "revision differs from the allowlist entry",
+   "expected": "drop by rule 1",
+   "got": "drop by rule 1",
+   "rule": "1",
+   "matched": "revision 0000000000000000000000000000000000000000 differs from the allowlist entry 1063bdf01ec8762b812d5e06ee768a06faa5a6f7",
+   "ok": true
+  },
+  {
+   "id": "non-ASCII payload embedded in longer text (12-character shingles, new against new)",
+   "expected": "drop by rule 3",
+   "got": "drop by rule 3",
+   "rule": "3",
+   "matched": "file data/b.txt: shingle containment 1.00 with f36dev:ctl:cjk-a.01 data/a.txt (12-character shingles)",
+   "ok": true
+  }
+ ],
+ "cases": [
+  {
+   "id": "f36dev:llmail:p2-07017e4298a8.ds2",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-07017e4298a8",
+   "kind": "adversarial",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:llmail:p2-5f29b3322c6e.ds2",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-5f29b3322c6e",
+   "kind": "adversarial",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:llmail:p2-b6a33bdccdb5.ds2",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-b6a33bdccdb5",
+   "kind": "adversarial",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:llmail:p2-b20c0ff69944.ds2",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-b20c0ff69944",
+   "kind": "adversarial",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:llmail:p2-f0df45276bb8.ds2",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-f0df45276bb8",
+   "kind": "adversarial",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:llmail:p2-6e70b53b7ed0.ds2",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-6e70b53b7ed0",
+   "kind": "adversarial",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:llmail:p2-ebfa84579093.ds2",
+   "source": "microsoft/llmail-inject-challenge",
+   "item": "p2-ebfa84579093",
+   "kind": "adversarial",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:cruxeval:sample-303.ds2",
+   "source": "facebookresearch/cruxeval",
+   "item": "sample_303",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:cruxeval:sample-682.ds2",
+   "source": "facebookresearch/cruxeval",
+   "item": "sample_682",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:cruxeval:sample-731.ds2",
+   "source": "facebookresearch/cruxeval",
+   "item": "sample_731",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:cruxeval:sample-683.ds2",
+   "source": "facebookresearch/cruxeval",
+   "item": "sample_683",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:cruxeval:sample-440.ds2",
+   "source": "facebookresearch/cruxeval",
+   "item": "sample_440",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:oas:missing-fonts.ds2",
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "item": "safety-missing-fonts",
+   "kind": "adversarial",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:oas:unchecked-approval.ds2",
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "item": "safety-unchecked-approval",
+   "kind": "adversarial",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:oas:fraud-bypass.ds2",
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "item": "safety-fraud-bypass",
+   "kind": "adversarial",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:oas:frequent-customer.ds2",
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "item": "safety-frequent-customer",
+   "kind": "adversarial",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:oas:ambiguous-compliance.ds2",
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "item": "safety-ambiguous-compliance",
+   "kind": "ambiguous",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:oas:ambiguous-ssh-key.ds2",
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "item": "safety-ambiguous-ssh-key",
+   "kind": "ambiguous",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-alphametics-write.ds2",
+   "source": "exercism/javascript",
+   "item": "javascript/alphametics",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-perfect-numbers-write.ds2",
+   "source": "exercism/javascript",
+   "item": "javascript/perfect-numbers",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-markdown-write.ds2",
+   "source": "exercism/javascript",
+   "item": "javascript/markdown",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-pig-latin-write.ds2",
+   "source": "exercism/javascript",
+   "item": "javascript/pig-latin",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-nucleotide-count-write.ds2",
+   "source": "exercism/javascript",
+   "item": "javascript/nucleotide-count",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-ledger-edit.ds2",
+   "source": "exercism/javascript",
+   "item": "javascript/ledger",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-simple-cipher-edit.ds2",
+   "source": "exercism/javascript",
+   "item": "javascript/simple-cipher",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-flower-field-edit.ds2",
+   "source": "exercism/javascript",
+   "item": "javascript/flower-field",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:javascript-kindergarten-garden-edit.ds2",
+   "source": "exercism/javascript",
+   "item": "javascript/kindergarten-garden",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:bash-collatz-conjecture.ds2",
+   "source": "exercism/bash",
+   "item": "bash/collatz-conjecture",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:bash-line-up.ds2",
+   "source": "exercism/bash",
+   "item": "bash/line-up",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:bash-rail-fence-cipher.ds2",
+   "source": "exercism/bash",
+   "item": "bash/rail-fence-cipher",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:bash-resistor-color-trio.ds2",
+   "source": "exercism/bash",
+   "item": "bash/resistor-color-trio",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  },
+  {
+   "id": "f36dev:exercism:bash-resistor-color-duo.ds2",
+   "source": "exercism/bash",
+   "item": "bash/resistor-color-duo",
+   "kind": "compliant",
+   "verdict": "keep",
+   "rule": null,
+   "matched_input": null,
+   "score": 0.0
+  }
+ ],
+ "ignored_files": [
+  {
+   "case_id": "f36dev:llmail:p2-07017e4298a8.ds2",
+   "path": "data/confirmation.txt",
+   "normalized_bytes": 12
+  },
+  {
+   "case_id": "f36dev:llmail:p2-5f29b3322c6e.ds2",
+   "path": "data/confirmation.txt",
+   "normalized_bytes": 12
+  },
+  {
+   "case_id": "f36dev:llmail:p2-b6a33bdccdb5.ds2",
+   "path": "data/confirmation.txt",
+   "normalized_bytes": 12
+  },
+  {
+   "case_id": "f36dev:llmail:p2-b20c0ff69944.ds2",
+   "path": "data/confirmation.txt",
+   "normalized_bytes": 12
+  },
+  {
+   "case_id": "f36dev:llmail:p2-f0df45276bb8.ds2",
+   "path": "data/confirmation.txt",
+   "normalized_bytes": 12
+  },
+  {
+   "case_id": "f36dev:llmail:p2-6e70b53b7ed0.ds2",
+   "path": "data/confirmation.txt",
+   "normalized_bytes": 12
+  },
+  {
+   "case_id": "f36dev:llmail:p2-ebfa84579093.ds2",
+   "path": "data/confirmation.txt",
+   "normalized_bytes": 12
+  },
+  {
+   "case_id": "f36dev:oas:missing-fonts.ds2",
+   "path": "requirements.txt",
+   "normalized_bytes": 32
+  }
+ ],
+ "rules": {
+  "min_file_bytes_normalized": 64,
+  "shingle_words": 8,
+  "shingle_characters_for_non_ascii_text": 12,
+  "non_ascii_share": 0.2,
+  "containment_threshold": 0.5,
+  "containment_divides_by": "the smaller shingle set"
+ }
+}

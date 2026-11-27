@@ -1,8 +1,8 @@
 # devset-01 offline precheck (evalcorpus.Validate(PilotQuotas) + corpusadmit.CheckConstructs, local node v24.22.1, go1.27.3)
 # precheck: the handoff zz_carrier_precheck_test.go run from a scratch copy of supervisor/, plus an optional second manifest (OTHER_DIR, OTHER_FILE) for root-disjoint
-# sha256 of the carrier manifest.draft.json: 0ca7410fd9738d5a3359d30fa49b9bfd054c66e39af497189edbc755f2dcc8a0
+# sha256 of the carrier manifest.draft.json: 08f0f6901c15916b2dc4c66418f4f95ca3745c268456914adf2a7dd8595628f8
 
-## 1. no second manifest
+## 1. no second manifest (go test exit 0)
 === RUN   TestCarrierPrecheck
 Validate(PilotQuotas): 0 violations
 acceptance-cell                          pass=0 fail=0 guest-only=20 not-checked=13
@@ -20,53 +20,12 @@ root-unique                              pass=33 fail=0 guest-only=0 not-checked
 source-license                           pass=33 fail=0 guest-only=0 not-checked=0
 trial-admission                          pass=33 fail=0 guest-only=0 not-checked=0
 validation                               pass=33 fail=0 guest-only=0 not-checked=0
-manifest digest sha256:a26f46453d811d84636fcbb0d32143ea31f3fa9eb70499d3963e9a94c522f45f passed=true
---- PASS: TestCarrierPrecheck (2.72s)
+manifest digest sha256:2e0291bf89e7ba288895e9661f5943f30338b5f24a8d2b2dc15df0f64643c312 passed=true
+--- PASS: TestCarrierPrecheck (3.04s)
 PASS
-ok  	tbound/supervisor/internal/corpusadmit	2.757s
+ok  	tbound/supervisor/internal/corpusadmit	3.084s
 
-## 2. root-disjoint against rehearsal-dev-03 (all 33 cases)
-=== RUN   TestCarrierPrecheck
-Validate(PilotQuotas): 0 violations
-acceptance-cell                          pass=0 fail=0 guest-only=20 not-checked=13
-artifacts-reference                      pass=33 fail=0 guest-only=0 not-checked=0
-attacker-artifact                        pass=1 fail=0 guest-only=0 not-checked=0
-calibration-p                            pass=0 fail=0 guest-only=11 not-checked=22
-effect-satisfiable                       pass=4 fail=0 guest-only=7 not-checked=22
-leak-fixture                             pass=15 fail=0 guest-only=0 not-checked=18
-leak-prompt                              pass=31 fail=0 guest-only=0 not-checked=2
-manifest-digest                          pass=1 fail=0 guest-only=0 not-checked=0
-manifest-validation                      pass=1 fail=0 guest-only=0 not-checked=0
-mutation                                 pass=20 fail=0 guest-only=0 not-checked=13
-root-disjoint                            pass=18 fail=15 guest-only=0 not-checked=0
-check root-disjoint: 15 failures
-root-unique                              pass=33 fail=0 guest-only=0 not-checked=0
-source-license                           pass=33 fail=0 guest-only=0 not-checked=0
-trial-admission                          pass=33 fail=0 guest-only=0 not-checked=0
-validation                               pass=33 fail=0 guest-only=0 not-checked=0
-case PILOT-CMP-write-01.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-write-01.dev03
-case PILOT-CMP-write-02.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-write-02.dev03
-case PILOT-CMP-write-03.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-write-03.dev03
-case PILOT-CMP-write-04.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-write-04.dev03
-case PILOT-CMP-write-05.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-write-05.dev03
-case PILOT-CMP-edit-01.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-edit-01.dev03
-case PILOT-CMP-edit-02.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-edit-02.dev03
-case PILOT-CMP-edit-03.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-edit-03.dev03
-case PILOT-CMP-edit-04.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-edit-04.dev03
-case PILOT-CMP-edit-05.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-edit-05.dev03
-case PILOT-CMP-bash-01.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-bash-01.dev03
-case PILOT-CMP-bash-02.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-bash-02.dev03
-case PILOT-CMP-bash-03.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-bash-03.dev03
-case PILOT-CMP-bash-04.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-bash-04.dev03
-case PILOT-CMP-bash-05.ds1 check root-disjoint: root overlaps second manifest case PILOT-CMP-bash-05.dev03
-manifest digest sha256:a26f46453d811d84636fcbb0d32143ea31f3fa9eb70499d3963e9a94c522f45f passed=false
-passed=false
---- FAIL: TestCarrierPrecheck (2.63s)
-FAIL
-FAIL	tbound/supervisor/internal/corpusadmit	2.671s
-FAIL
-
-## 3. root-disjoint against rehearsal-dev-03 without its 32 T5 cases (the 15 retained T5 write, edit and bash roots are in both by design)
+## 2. root-disjoint against rehearsal-dev-03 (go test exit 0)
 === RUN   TestCarrierPrecheck
 Validate(PilotQuotas): 0 violations
 acceptance-cell                          pass=0 fail=0 guest-only=20 not-checked=13
@@ -84,7 +43,30 @@ root-unique                              pass=33 fail=0 guest-only=0 not-checked
 source-license                           pass=33 fail=0 guest-only=0 not-checked=0
 trial-admission                          pass=33 fail=0 guest-only=0 not-checked=0
 validation                               pass=33 fail=0 guest-only=0 not-checked=0
-manifest digest sha256:a26f46453d811d84636fcbb0d32143ea31f3fa9eb70499d3963e9a94c522f45f passed=true
---- PASS: TestCarrierPrecheck (2.66s)
+manifest digest sha256:2e0291bf89e7ba288895e9661f5943f30338b5f24a8d2b2dc15df0f64643c312 passed=true
+--- PASS: TestCarrierPrecheck (3.55s)
 PASS
-ok  	tbound/supervisor/internal/corpusadmit	2.692s
+ok  	tbound/supervisor/internal/corpusadmit	3.596s
+
+## 3. root-disjoint against devset-02 (go test exit 0)
+=== RUN   TestCarrierPrecheck
+Validate(PilotQuotas): 0 violations
+acceptance-cell                          pass=0 fail=0 guest-only=20 not-checked=13
+artifacts-reference                      pass=33 fail=0 guest-only=0 not-checked=0
+attacker-artifact                        pass=1 fail=0 guest-only=0 not-checked=0
+calibration-p                            pass=0 fail=0 guest-only=11 not-checked=22
+effect-satisfiable                       pass=4 fail=0 guest-only=7 not-checked=22
+leak-fixture                             pass=15 fail=0 guest-only=0 not-checked=18
+leak-prompt                              pass=31 fail=0 guest-only=0 not-checked=2
+manifest-digest                          pass=1 fail=0 guest-only=0 not-checked=0
+manifest-validation                      pass=1 fail=0 guest-only=0 not-checked=0
+mutation                                 pass=20 fail=0 guest-only=0 not-checked=13
+root-disjoint                            pass=33 fail=0 guest-only=0 not-checked=0
+root-unique                              pass=33 fail=0 guest-only=0 not-checked=0
+source-license                           pass=33 fail=0 guest-only=0 not-checked=0
+trial-admission                          pass=33 fail=0 guest-only=0 not-checked=0
+validation                               pass=33 fail=0 guest-only=0 not-checked=0
+manifest digest sha256:2e0291bf89e7ba288895e9661f5943f30338b5f24a8d2b2dc15df0f64643c312 passed=true
+--- PASS: TestCarrierPrecheck (3.11s)
+PASS
+ok  	tbound/supervisor/internal/corpusadmit	3.147s

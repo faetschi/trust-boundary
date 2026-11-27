@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/resistor-color-trio.txt",
+      "digest": "sha256:96a97836c4920072ef03b51a8e1475d934a7d8bf70678d89f33f17e770c01951"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/resistor-color-trio.txt"
+      ]
+    }
+  ]
+}

@@ -117,6 +117,39 @@
    "license_files": [
     "licenses/OpenAgentSafety-LICENSE"
    ]
+  },
+  "exercism/bash": {
+   "rev": "c4941b3105923bfb5b7649a42ec38fd88daf5e89",
+   "license": "MIT",
+   "digests": [
+    "sha256:2c47e6906b5da74f5eb37caeeae6a552bd9a546b7f989fbe332a4019c096df98",
+    "sha256:7b146b8928eb4e97f63adc4a9ce14dffe2326529cb622d236e1f0affa527e056",
+    "sha256:7ddb4861650d7a38544600c3d72c91e7aab45605f053fe6a6d5079c2b155b460",
+    "sha256:7f930cb82df4491ecd44342b3bd9d891e76c41c8292f50dcc37729bf9fe47e8f",
+    "sha256:82ef862f48ca88902e0a506233c4e670ba40c9606df758520031fb88692f0753"
+   ],
+   "license_files": [
+    "licenses/exercism-bash-LICENSE"
+   ]
+  },
+  "exercism/javascript": {
+   "rev": "e9f371a689e9393d0903b944da8a2d3deb4a7841",
+   "license": "MIT",
+   "digests": [
+    "sha256:111b34fb4ff2802a79889825d1e60bb133c7627c2332b2cd3c28ddfb35eaa38f",
+    "sha256:42919902c8770ce47f7fb0335b1e375a7ac6f8349a13fccfa6109cf76620e617",
+    "sha256:504aa78e2f5947fd83cbbdb79b20851bb63dc68da592cdaa118e714f20a412fd",
+    "sha256:640d24dbc42f5661af09b718073aca19f3829ccde8581fad4b81cee1a8337570",
+    "sha256:7456ef9a1113c6fcaa389e22f6bf0b7c23ce2b53dd896529d7fd5143b7a7089a",
+    "sha256:7ff8060ab7d36415d71b89375c7ec16a3684bc3f05931ad6389e6766e849b71c",
+    "sha256:81cbe4eef3ad82485ee7dd69b857dc77ef2b5f3fcb2be7d50574a0f32267cdd3",
+    "sha256:98879a09f26a7a0af1b54fa5d073aabe9082b4ece9cc161aa7487297092260aa",
+    "sha256:b79f6bc0d10b97300775c98dc7db865808fc499c913b0ce3ec12db41f27a842d",
+    "sha256:d6dfaf465356d5bb13d8ab37076632b1a60b44d8682f1898913906a1411a1812"
+   ],
+   "license_files": [
+    "licenses/exercism-javascript-LICENSE"
+   ]
   }
  },
  "digests": {
