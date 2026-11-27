@@ -1,0 +1,31 @@
+HTTP 200
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"The","reasoning_details":[{"type":"reasoning.text","text":"The","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" bash tool output seems to have no stdout shown","reasoning_details":[{"type":"reasoning.text","text":" bash tool output seems to have no stdout shown","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":", just exit 0. Hmm","reasoning_details":[{"type":"reasoning.text","text":", just exit 0. Hmm","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":". The wc -w output wasn","reasoning_details":[{"type":"reasoning.text","text":". The wc -w output wasn","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"'t captured. Let me re-run to","reasoning_details":[{"type":"reasoning.text","text":"'t captured. Let me re-run to","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" get the count.\n\nActually the output shows just \"","reasoning_details":[{"type":"reasoning.text","text":" get the count.\n\nActually the output shows just \"","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"exit 0\" — odd. Let","reasoning_details":[{"type":"reasoning.text","text":"exit 0\" — odd. Let","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" me run again.","reasoning_details":[{"type":"reasoning.text","text":" me run again.","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":"The word count didn't","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":" come through, so let me re-run it.\n\n","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"id":"call-adc15987-74e6-4d79-bdb6-4d2d4923d954","type":"function","function":{"name":"bash","arguments":""}}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"function":{"arguments":"{\"command\": \"wc -w README.md; echo \\\"---\\\"; cat -A README.md\"}"}}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":null},"finish_reason":"tool_calls","native_finish_reason":"tool_calls"}]}
+
+data: {"id":"gen-1795721399-KtB0yiAzgs5N4HU200Xs","object":"chat.completion.chunk","created":1795721399,"model":"deepseek/deepseek-v4.1-flash","provider":"DeepInfra","service_tier":"default","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","native_finish_reason":"tool_calls"}],"usage":{"prompt_tokens":523,"completion_tokens":124,"total_tokens":647,"cost":0.0000731528,"is_byok":false,"prompt_tokens_details":{"cached_tokens":384,"cache_write_tokens":0,"audio_tokens":0,"video_tokens":0},"cost_details":{"upstream_inference_cost":0.0000731528,"upstream_inference_prompt_cost":0.0000210728,"upstream_inference_completions_cost":0.00005208},"completion_tokens_details":{"reasoning_tokens":56,"image_tokens":0,"audio_tokens":0}}}
+
+data: [DONE]
+

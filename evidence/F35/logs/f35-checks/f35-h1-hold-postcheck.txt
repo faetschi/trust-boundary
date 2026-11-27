@@ -1,0 +1,29 @@
+# F35 hold post-check after the pre-F31 restore (read-only)
+2026-11-26T21:31:14Z
+2026-11-21 18:46:31
+7.0.0-38-generic
+== holds
+crun
+fuse-overlayfs
+gcc
+gcc-13
+gcc-13-x86-64-linux-gnu
+libseccomp2
+linux-generic-hwe-24.04
+linux-headers-generic-hwe-24.04
+linux-image-7.0.0-38-generic
+linux-image-generic-hwe-24.04
+podman
+slirp4netns
+uidmap
+== sudo narrowed
+sudo: a password is required
+== provider dir
+total 4
+-r-------- 1 tbound-pi tbound-pi 51 Oct 20 16:57 opencode-go.key
+== research ledger
+absent (or unreadable)
+drwx------ 109 tbound-pi tbound-pi 12288 Nov 10 16:23 /var/lib/tbound/sessions
+== service
+active
+active

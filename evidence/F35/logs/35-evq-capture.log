@@ -1,0 +1,25 @@
+== 35-evq-capture start 2026-11-26T20:52:59Z as tbound freeze=F35
+commit 9165c43657951f7b3db972cfe228b68249312a7e
+git_tree 3979713e7326e3120ad60acd4121ced9b9bc8caa
+archive_tree_digest sha256:5768517e238ca7e7180e181342e67a8ac6d1766ba12b25a96d435c5863d8188f
+archive_files 5077
+go go version go1.27.1 linux/amd64
+argv go test -race -count=1 -timeout 40m -json ./...
+packages 63
+exit_status 0
+test_json_sha256 sha256:3ea464fdaaf71ac4c74cd4d1eef2d3531ab189948f3fdecd79e8396f3fc16a54
+capture_sha256 sha256:1720c6540220052ce34018d5903befbbf1c4aedae96a03ed169ebff6696c1f5a
+guest_test_binary tbound/supervisor/cmd/tbound-cell-entrypoint sha256:d878abe09d2c64e6f2683a34cc02b92038abdb10d0abd194967eef4987c52a71
+guest_test_binary tbound/supervisor/internal/procoracle sha256:9005d3963f40f746740a86d2aa6584965d45662f7fbd3db05538fbe8cc02e1cf
+exit=0
+OK sync done; no 0-byte output under /home/tbound/tbh/f35 nor in: /home/tbound/tbh/cf35/capture.json /home/tbound/tbh/cf35/go-test.json /home/tbound/tbh/cf35/guest-tests/procoracle.test /home/tbound/tbh/cf35/guest-tests/tbound-cell-entrypoint.test
+OK capture commit = 9165c43657951f7b3db972cfe228b68249312a7e
+OK capture archive_tree_digest == SRC_DIGEST = sha256:5768517e238ca7e7180e181342e67a8ac6d1766ba12b25a96d435c5863d8188f
+OK capture exit_status = 0
+OK guest-tests/procoracle.test sha256 == test_binaries = sha256:9005d3963f40f746740a86d2aa6584965d45662f7fbd3db05538fbe8cc02e1cf
+OK guest-tests/tbound-cell-entrypoint.test sha256 == test_binaries = sha256:d878abe09d2c64e6f2683a34cc02b92038abdb10d0abd194967eef4987c52a71
+TEST_PROCORACLE: sha256:9005d3963f40f746740a86d2aa6584965d45662f7fbd3db05538fbe8cc02e1cf  (NEW; F23 was sha256:72274bf50b9977652d540999940fc9791444ed675302cb9f609c703aad5a86b9)
+TEST_ENTRYPOINT: sha256:d878abe09d2c64e6f2683a34cc02b92038abdb10d0abd194967eef4987c52a71  (NEW; F23 was sha256:e29b6f8b22e3c38a01274b628bf24a239b116648a00f2c32d994b8a854a5f4d6)
+capture_sha256 file digest: sha256:1720c6540220052ce34018d5903befbbf1c4aedae96a03ed169ebff6696c1f5a
+OK sync done; no 0-byte output under /home/tbound/tbh/f35 nor in: /home/tbound/tbh/cf35/capture.json /home/tbound/tbh/cf35/go-test.json /home/tbound/tbh/cf35/guest-tests/procoracle.test /home/tbound/tbh/cf35/guest-tests/tbound-cell-entrypoint.test
+== DONE 35-evq-capture: /home/tbound/tbh/cf35

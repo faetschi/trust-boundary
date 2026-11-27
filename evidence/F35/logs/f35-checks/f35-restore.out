@@ -1,0 +1,46 @@
+﻿
+2026-11-26T21:30:01.5867441Z start state=Running mac=00155D0C4002
+2026-11-26T21:30:14.0903849Z checkpoint pre-F35-restore-2026-11-26 created (F34 research-pilot state: research config, openrouter.key, genesis ledger bea5ce06, service stopped)
+2026-11-26T21:30:36.3073758Z restored pre-F31-2026-11-20 state=Saved
+2026-11-26T21:30:55.8367112Z Start-VM returned state=Running
+2026-11-26T21:30:55.8387112Z waiting up to 360 min for markers pre34 or abort
+2026-11-26T22:42:11.2389978Z checkpoint pre-F35-34-2026-11-26 created (right before 34)
+2026-11-26T22:42:11.2409990Z waiting up to 180 min for marker post34 (34 and 40 v-stub ended, pass or fail)
+2026-11-26T22:46:21.4673709Z marker: post34; restoring pre-F35-34-2026-11-26 in every case
+2026-11-26T22:46:41.4661062Z restored pre-F35-34-2026-11-26 state=Saved
+2026-11-26T22:46:51.5964932Z Start-VM returned state=Running
+
+Name                             CreationTime       
+----                             ------------       
+pre-F15-2026-11-04               04.11.2026 19:08:33
+pre-B9-2026-11-05                05.11.2026 15:48:11
+pre-F16-2026-11-06               06.11.2026 10:12:02
+pre-F17-2026-11-06               06.11.2026 14:29:58
+pre-F18-2026-11-07               07.11.2026 10:33:02
+pre-F19-2026-11-07               07.11.2026 23:19:52
+pre-F21-2026-11-08               08.11.2026 14:55:32
+pre-F24-2026-11-13               13.11.2026 16:40:31
+pre-F25-2026-11-13               13.11.2026 19:28:48
+pre-F26-2026-11-13               13.11.2026 23:57:50
+pre-F27-2026-11-15               15.11.2026 17:15:10
+pre-F28-2026-11-15               15.11.2026 18:46:19
+pre-F29-2026-11-16               17.11.2026 18:20:05
+pre-F30-2026-11-18               18.11.2026 13:17:55
+post-F30-2026-11-20              20.11.2026 20:17:40
+pre-F31-2026-11-20               20.11.2026 20:20:25
+post-F31-qual-barrier-2026-11-20 20.11.2026 23:55:55
+post-F31-chain2-2026-11-20       21.11.2026 00:10:17
+post-F31-rounds-2026-11-21       21.11.2026 04:27:30
+post-F32-chain-2026-11-21        21.11.2026 04:39:52
+post-F32-qual-barrier-2026-11-21 21.11.2026 10:41:12
+post-pilot-walk-2026-11-24       24.11.2026 08:41:22
+pre-F33-restore-2026-11-24       24.11.2026 15:34:34
+pre-F34-restore-2026-11-24       24.11.2026 22:49:42
+post-F34-chain1-2026-11-24       24.11.2026 23:24:24
+post-F34-chain2-2026-11-24       25.11.2026 00:19:56
+pre-F35-restore-2026-11-26       26.11.2026 22:30:13
+pre-F35-34-2026-11-26            26.11.2026 23:42:10
+
+
+
+2026-11-26T22:46:52.0029932Z DONE

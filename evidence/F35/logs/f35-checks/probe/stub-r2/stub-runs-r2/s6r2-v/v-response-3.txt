@@ -1,0 +1,13 @@
+HTTP 200
+: OPENROUTER PROCESSING
+
+data: {"choices":[{"delta":{"content":"","reasoning":"Thinking about step 2.","reasoning_details":[{"format":"unknown","index":0,"text":"Thinking about step 2.","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0}],"created":1,"id":"gen-stub-2","model":"deepseek/deepseek-v4.1-flash","object":"chat.completion.chunk","provider":"DeepInfra"}
+
+data: {"choices":[{"delta":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"command\":\"grep -c receive README.md\"}","name":"bash"},"id":"call_stub_bash","index":0,"type":"function"}]},"finish_reason":null,"index":0}],"created":1,"id":"gen-stub-2","model":"deepseek/deepseek-v4.1-flash","object":"chat.completion.chunk","provider":"DeepInfra"}
+
+data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","index":0,"native_finish_reason":"tool_calls"}],"created":1,"id":"gen-stub-2","model":"deepseek/deepseek-v4.1-flash","object":"chat.completion.chunk","provider":"DeepInfra"}
+
+data: {"choices":[],"created":1,"id":"gen-stub-2","model":"deepseek/deepseek-v4.1-flash","object":"chat.completion.chunk","provider":"DeepInfra","usage":{"completion_tokens":40,"completion_tokens_details":{"reasoning_tokens":20},"cost":0.0001428,"is_byok":false,"prompt_tokens":900,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":940}}
+
+data: [DONE]
+

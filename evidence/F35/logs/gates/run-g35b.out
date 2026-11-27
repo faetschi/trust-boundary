@@ -1,0 +1,11 @@
+46f62ad5ea335b1db1ee24f42577b4ee76a47df92209245f31caae134e366965  /home/tbound/tbound-work/g35b.tar
+BLOBS checked=5077 mismatched=0 extra_files=0
+GATE_TOOL kf19 == freeze tree
+meta load=0.64 0.61 0.57 start=2026-11-26T19:54:24Z
+GATE_RC=0 end=2026-11-26T20:19:21Z
+BOUNDARY_OK
+TEST_RC=0
+boot 70f6d505-8a5a-4571-acde-c2f9cdfde391 2026-11-26T20:19:21Z
+tests {'pass': 7912, 'skip': 52} packages {'skip': 4, 'pass': 59}
+
+[exited with code 0]

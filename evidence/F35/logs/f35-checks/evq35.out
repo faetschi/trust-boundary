@@ -1,0 +1,12 @@
+adapter-capture exit=0
+evq exit=0
+route-report exit=0
+passed 22
+not_passed 0
+unmapped 0
+cells 4
+covered 4
+pending_guest 0
+missing 0
+complete true
+EXIT=0

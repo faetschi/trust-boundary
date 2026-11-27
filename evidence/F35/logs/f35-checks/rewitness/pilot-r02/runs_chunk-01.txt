@@ -1,0 +1,13 @@
+plan_digest sha256:12bb69d9a2e0837700209371501dd5834d4abcd3fd3ddb3effc570ccf42f8aeb
+planned_units 11
+units_used 11
+executed 11
+already_done 0
+abandoned 0
+setup_failures 0
+exec_failures 0
+remaining 0
+finished true
+stop ""
+spent_micro_usd 0
+resumed 0

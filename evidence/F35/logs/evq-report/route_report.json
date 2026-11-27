@@ -1,0 +1,33 @@
+{
+  "Total": 4,
+  "ByStatus": {
+    "Covered": 4,
+    "Missing": 0,
+    "Pending_Guest": 0
+  },
+  "ByRoute": {
+    "bash-view": {
+      "Covered": 1,
+      "Missing": 0,
+      "Pending_Guest": 0
+    },
+    "declared-read": {
+      "Covered": 1,
+      "Missing": 0,
+      "Pending_Guest": 0
+    },
+    "direct-runtime": {
+      "Covered": 1,
+      "Missing": 0,
+      "Pending_Guest": 0
+    },
+    "provider-broker": {
+      "Covered": 1,
+      "Missing": 0,
+      "Pending_Guest": 0
+    }
+  },
+  "Reasons": [],
+  "Complete": true,
+  "Binding": "commit=9165c43657951f7b3db972cfe228b68249312a7e;evq-capture=sha256:1720c6540220052ce34018d5903befbbf1c4aedae96a03ed169ebff6696c1f5a;route-matrix=80b8d546861e4126e5a605894f57aaf75039475672285d85ddd31892abb16aee;artifact:guest-route-bash-view=sha256:69d0ee46fa2c235de003df6e6c52b09c5550ffe9b1c2b53c7f058a1d47c9e1ab;artifact:guest-route-direct-runtime=sha256:ae7e0ccc1e8c1e4b3c946eb64cedf434e1745737e028186f9038f78be39f45a8"
+}

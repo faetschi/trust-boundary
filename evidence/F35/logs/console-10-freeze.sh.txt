@@ -1,0 +1,139 @@
+disk /home/tbound/tbound-work/f35-src/.local: 777 GiB free (need 10)
+disk /: 777 GiB free (need 10)
+== 10-freeze start 2026-11-26T20:51:09Z as tbound freeze=F35
+NOTE: replacing /home/tbound/tbound-work/env.sh of an earlier freeze (8627adeb4ab3fb01728136d8b4995bf8d7c07b41) with F35
+/home/tbound/tbound-work/f35-src
+F=9165c43657951f7b3db972cfe228b68249312a7e
+status-porcelain-bytes=0
+
+H names:
+ADMIN_PUB_DIGEST
+BUNDLE_DIGEST
+COSIGN_PUB_DIGEST
+FROZEN-COMMIT
+LOAD_TAR_DIGEST
+SRC_DIGEST
+admin.key
+admin.pub
+authorized_keys.tbound
+cal-ro.unsigned.json
+cal-rw.unsigned.json
+census-live-base.jsonl
+census-live-base2.jsonl
+census-live-probe.jsonl
+census-runtime-base.jsonl
+census-runtime-probe.jsonl
+cf1
+cf10
+cf11
+cf12
+cf13
+cf14
+cf14.failed-20261029T221236Z
+cf15
+cf16
+cf17
+cf18
+cf19
+cf2
+cf20
+cf21
+cf22
+cf23
+cf24
+cf25
+cf26
+cf27
+cf28
+cf29
+cf3
+cf30
+cf31
+cf31.failed-20261120T205613Z
+cf32
+cf33
+cf33.failed-20261124T1253Z
+cf34
+cf4
+cf5
+cf6
+cf7
+cf8
+cf9
+cl.key
+cl.key.pub
+cosign-gen.key
+cosign-gen.pub
+cosign.pub
+d09-xattr-enumeration-calibration-readonly.ed25519
+d09-xattr-enumeration-calibration-readonly.json
+d09-xattr-enumeration-calibration.ed25519
+d09-xattr-enumeration-calibration.json
+ev.key
+ev.key.pub
+f1
+f10
+f11
+f12
+f13
+f14
+f15
+f16
+f17
+f18
+f19
+f2
+f20
+f21
+f22
+f23
+f24
+f25
+f26
+f27
+f28
+f29
+f3
+f30
+f31
+f32
+f33
+f33.failed-20261124T1253Z
+f34
+f34.failed-20261124T2050Z
+f4
+f5
+f6
+f7
+f8
+f9
+managed-live-root.unsigned.json
+pi-cell-load.tar
+pi-cell-oci
+serve-pi-service.json
+serve-pi-service.json.prev
+tr.key
+tr.key.pub
+xattr-measure-runtime.json
+OK PREV_* constants equal the /home/tbound/tbh/f23 records
+OK admission ids: g1 and route-probe templates differ from F23, dr id is new
+700 tbound /home/tbound/tbound-w.E8zFIG
+700 tbound /home/tbound/tbound-b.bEchh3
+700 tbound /home/tbound/tbh
+700 tbound /home/tbound/tbh/f35
+fs=ext2/ext3 /home/tbound/tbound-w.E8zFIG
+fs=ext2/ext3 /home/tbound/tbh/f35
+W=/home/tbound/tbound-w.E8zFIG
+B=/home/tbound/tbound-b.bEchh3
+H=/home/tbound/tbh
+F=9165c43657951f7b3db972cfe228b68249312a7e
+REPO=/home/tbound/tbound-work/f35-src
+HF=/home/tbound/tbh/f35
+CF=/home/tbound/tbh/cf35
+LOG=/home/tbound/tbound-work/receipts/F35/logs
+total 12
+drwx------  2 tbound tbound 4096 Nov 26 21:51 .
+drwx------ 77 tbound tbound 4096 Nov 26 21:51 ..
+-rw-------  1 tbound tbound   41 Nov 26 21:51 FROZEN-COMMIT
+OK sync done; no 0-byte output under /home/tbound/tbh/f35 nor in: /home/tbound/tbound-work/env.sh
+== DONE 10-freeze: F35=9165c43657951f7b3db972cfe228b68249312a7e

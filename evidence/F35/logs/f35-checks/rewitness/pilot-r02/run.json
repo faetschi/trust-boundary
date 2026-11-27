@@ -1,0 +1,79 @@
+{
+  "freeze_commit": "9165c43657951f7b3db972cfe228b68249312a7e",
+  "v_image_digest": "sha256:18cbaa9ad6031472102eab68ec1cdff13f1ad1570ff89b35b27b489e7f71a504",
+  "pins": {
+    "frozen_source_digest": "sha256:5768517e238ca7e7180e181342e67a8ac6d1766ba12b25a96d435c5863d8188f",
+    "base_template_digest": "sha256:5bf041d4509fb5d2f8cb0bf59a1019f320167796ace8fc75223ccd47ed4d8dbe",
+    "admin_pubkey_digest": "sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac",
+    "runtime_bundle_digest": "sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1",
+    "runner_digest": "sha256:18c12c02ef46c39d2e08b6117eadd7257350fe90e6e46b89800adbbaafb884d7",
+    "profile_hash": "sha256:9231d8ca0d4e7f435de0d5c3091d9404fe3982f040bb56032c8b5188dbb1d46d",
+    "containment_profile_digest": "sha256:011d1d7093e3e1348294615fc46bc3ac742979bb16875c87b74a7f0800567131"
+  },
+  "manifest": "F:/trust-boundary/.local/round-pilot-r02-f35/inputs/manifest.json",
+  "quota_profile": "pilot",
+  "evq_obligations": [
+    "EVQ-IDENTITY",
+    "EVQ-SURFACE-INVENTORY",
+    "EVQ-SURFACE-ADAPTER-EQUIVALENCE",
+    "EVQ-PROPOSAL-INTEGRITY",
+    "EVQ-PROVIDER-CORRELATION",
+    "EVQ-PROVIDER-ROUTE",
+    "EVQ-PROVIDER-REAL-EXCHANGE",
+    "EVQ-WORKSPACE-CONFINEMENT",
+    "EVQ-STAGING-DELTA",
+    "EVQ-PUBLICATION-PROVENANCE",
+    "EVQ-RECOVERY-ADMISSION",
+    "EVQ-RECOVERY-LIFECYCLE-CUTPOINTS",
+    "EVQ-JOURNAL-FAULTS",
+    "EVQ-ORACLE-WORKSPACE",
+    "EVQ-ORACLE-TRANSIENT",
+    "EVQ-ORACLE-NETWORK",
+    "EVQ-NETWORK-SINK-GUEST",
+    "EVQ-ORACLE-PROCESS",
+    "EVQ-PROCESS-CONTAINMENT",
+    "EVQ-LINUX-CONTAINMENT",
+    "EVQ-LINUX-CAPABILITY-GUEST",
+    "EVQ-COMMAND-VIEW-FAULTS"
+  ],
+  "artifacts_dir": "F:/trust-boundary/.local/round-pilot-r02-f35/inputs/artifacts",
+  "only_cases": [],
+  "admission_policy": {
+    "policy_digest": "sha256:e6a77851e90357efcba0fdc8036493acab5f74e911f38d5f32e001477419f683",
+    "metadata_policy_digest": "sha256:bf937a0d4d98f54111e82d025dc3b9aa7eeec939f71343547ba4392624e0785c"
+  },
+  "route_report": "F:/trust-boundary/.local/round-pilot-r02-f35/inputs/route_report.json",
+  "evq_results": {
+    "path": "F:/trust-boundary/.local/round-pilot-r02-f35/inputs/evq_results.json",
+    "sha256": "sha256:f95535d953ecfaf92bc551c3debe48895b92bbd79a223724edd7d6c8e625f956"
+  },
+  "ledger": "synthetic-empty",
+  "run_dir": "F:/trust-boundary/.local/round-pilot-r02-f35/runs/pilot",
+  "ssh": {
+    "path": "C:/Program Files/Git/usr/bin/ssh.exe",
+    "known_hosts": "F:/trust-boundary/.local/round-pilot-r02-f35/known_hosts",
+    "host": "172.29.57.244",
+    "host_key_alias": "172.18.155.19",
+    "client": {
+      "user": "root",
+      "key": "F:/trust-boundary/.local/secrets/abi8-forced/cl.key"
+    },
+    "evidence": {
+      "user": "root",
+      "key": "F:/trust-boundary/.local/secrets/abi8-forced/ev.key"
+    },
+    "trial": {
+      "user": "root",
+      "key": "F:/trust-boundary/.local/secrets/abi8-forced/tr.key"
+    }
+  },
+  "proc": {
+    "cell_uid": 1000,
+    "cell_gid": 1000,
+    "monitor_seconds": 300,
+    "teardown_grace_seconds": 30,
+    "authorized_sockets": [],
+    "drain_grace_seconds": 10
+  },
+  "purpose": "construct-witness"
+}

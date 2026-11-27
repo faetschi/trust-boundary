@@ -1,0 +1,35 @@
+commit 7cbc9e52 (green) in /home/tbound/f35-probe/rg-green.Xhzq
+=== RUN   TestForwardedRequestTranslatesThePiReplayOfTheProbeReply
+--- PASS: TestForwardedRequestTranslatesThePiReplayOfTheProbeReply (0.00s)
+=== RUN   TestForwardedRequestJoinsReasoningDetailsInIndexOrder
+=== RUN   TestForwardedRequestJoinsReasoningDetailsInIndexOrder/no_index
+=== RUN   TestForwardedRequestJoinsReasoningDetailsInIndexOrder/null_id_signature
+=== RUN   TestForwardedRequestJoinsReasoningDetailsInIndexOrder/in_order
+=== RUN   TestForwardedRequestJoinsReasoningDetailsInIndexOrder/out_of_order
+--- PASS: TestForwardedRequestJoinsReasoningDetailsInIndexOrder (0.00s)
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/summary_type
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/encrypted_type
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/no_text
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/format_not_string
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/with_reasoning
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/unknown_member
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/signature
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/id
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/negative_index
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/index_not_integer
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/not_an_array
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/on_a_tool_message
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/on_a_system_message
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/text_not_a_string
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/mixed_index
+=== RUN   TestForwardedRequestRefusesEveryOtherReasoningDetailsShape/on_a_user_message
+--- PASS: TestForwardedRequestRefusesEveryOtherReasoningDetailsShape (0.01s)
+PASS
+ok  	tbound/supervisor/internal/broker/openrouter	1.040s
+=== RUN   TestForwarderSendsAReplayedReasoningDetailsAsReasoningAtTheSameReservation
+--- PASS: TestForwarderSendsAReplayedReasoningDetailsAsReasoningAtTheSameReservation (0.05s)
+=== RUN   TestForwarderHoldsTheTranslatedReasoningToTheInputBound
+--- PASS: TestForwarderHoldsTheTranslatedReasoningToTheInputBound (0.01s)
+PASS
+ok  	tbound/supervisor/internal/researchroute	1.082s

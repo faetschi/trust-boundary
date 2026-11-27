@@ -1,0 +1,1 @@
+The repository has a file README.md that contains a spelling mistake. Read README.md, fix the misspelled word with the edit tool, then check the fix with bash by running grep -c receive README.md. When you are done, reply with one short sentence.

@@ -1,0 +1,5 @@
+{"case": "PILOT-CMP-read-05", "step": "open"}
+{"reached_stub": 1, "status": 200, "step": "a cost above the reservation settles as an overage"}
+{"reached_stub": 0, "status": 503, "step": "after an overage the ledger refuses before sending"}
+{"status": "completed", "step": "unit totals after the overage", "totals": {"booked": 1, "cost_micro_usd": 60000, "overage": true, "settled": 1, "tokens_in": 11, "tokens_out": 3, "uncertain": 0}}
+{"phase": "overage", "step": "DONE"}

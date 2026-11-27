@@ -1,0 +1,32 @@
+{
+ "stopReason": "toolUse",
+ "usage": {
+  "input": 385,
+  "output": 47,
+  "cacheRead": 0,
+  "cacheWrite": 0,
+  "reasoning": 0,
+  "totalTokens": 432,
+  "cost": {
+   "input": 0,
+   "output": 0,
+   "cacheRead": 0,
+   "cacheWrite": 0,
+   "total": 0
+  }
+ },
+ "content": [
+  {
+   "type": "text",
+   "chars": 34
+  },
+  {
+   "type": "toolCall",
+   "chars": 0,
+   "name": "read",
+   "arguments": {
+    "path": "README.md"
+   }
+  }
+ ]
+}
