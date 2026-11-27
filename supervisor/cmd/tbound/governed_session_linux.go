@@ -62,7 +62,8 @@ type providerExchangeEvidence struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
 	} `json:"refused_tool_call,omitempty"`
-	HostCall *providerbridge.HostCallBinding `json:"host_call,omitempty"`
+	HostCall         *providerbridge.HostCallBinding `json:"host_call,omitempty"`
+	DroppedToolCalls int                             `json:"dropped_tool_calls,omitempty"`
 }
 
 type providerRetryEvidence struct {
@@ -918,6 +919,9 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 			} else if exchange.HostCall != nil {
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
+			if exchange.DroppedToolCalls != 0 && !truncatedTurnFromStream(exchange, route) {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
 			providerTurn = exchange.Turn
 			if exchange.ToolCall == nil {
 				if activeCaptureKey != "" {
@@ -1575,6 +1579,19 @@ func auditHeadHash(records []audit.Record) string {
 		return ""
 	}
 	return records[len(records)-1].Hash
+}
+
+func truncatedTurnFromStream(exchange providerExchangeEvidence, route openrouter.Route) bool {
+	captured, err := openrouter.CaptureSSEForRoute(bytes.NewReader(exchange.Response), route)
+	if err != nil || captured.DroppedToolCalls() != exchange.DroppedToolCalls || captured.ResponseID() != exchange.ResponseID {
+		return false
+	}
+	call, ok := captured.ToolCall()
+	if exchange.ToolCall == nil {
+		return exchange.RefusedToolCall != nil || !ok
+	}
+	digest, err := protocol.CanonicalArgumentsDigest(exchange.ToolCall.Name, exchange.ToolCall.Arguments)
+	return ok && err == nil && call.ID == exchange.ToolCall.ID && call.Name == exchange.ToolCall.Name && digest == call.CanonicalArgumentsDigest
 }
 
 func unmarshalGovernedJSON(raw []byte, target any) error {

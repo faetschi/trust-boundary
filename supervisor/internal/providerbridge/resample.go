@@ -14,8 +14,8 @@ import (
 //
 // A provider may stream a second tool call although the engineering request sets parallel_tool_calls=false
 // (the research request omits that member, 2026-11-19, because require_parameters then drops its pinned
-// provider). The capture refuses that stream (openrouter.ErrParallelToolCall) and still does. When the refusal is
-// exactly that class, on a complete HTTP 200 response, the turn may send the same request bytes again:
+// provider). Off the research route the capture refuses that stream (openrouter.ErrParallelToolCall); on it, call 0
+// is kept since F36 (D64). When a refusal is that class, on a complete HTTP 200 response, the turn may resend:
 //
 //   - the refused attempt is closed like a retryable failure (retry.go): a
 //     provider_exchange_retryable_failure record carries its exact request and the whole refused stream,
@@ -54,13 +54,9 @@ func resampleRepeats(refused, request broker.RequestRecord) bool {
 }
 
 // ParallelToolCallResample reports whether a journaled attempt is the decision 13 class: an HTTP 200
-// response whose capture on route is refused for a parallel tool call.
+// response that the single-call capture of every route before F36 refuses for a parallel tool call.
 func ParallelToolCallResample(status int, response []byte, route openrouter.Route) bool {
-	if status != http.StatusOK {
-		return false
-	}
-	_, err := openrouter.CaptureSSEForRoute(bytes.NewReader(response), route)
-	return errors.Is(err, openrouter.ErrParallelToolCall)
+	return status == http.StatusOK && openrouter.IsParallelToolCallRefusal(response, route)
 }
 
 // resampleableExchange is ParallelToolCallResample for the one attempt the broker retained, which must

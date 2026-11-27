@@ -52,6 +52,7 @@ func applyProviderLineage(receipt *productionPiReceipt, trace audit.Trace, route
 		if exchange.RefusedToolCall != nil {
 			receipt.RefusedToolCalls++
 		}
+		receipt.DroppedToolCalls += exchange.DroppedToolCalls
 		if exchange.ToolCall != nil && len(receipt.ToolSequence) < 32 {
 			receipt.ToolSequence = append(receipt.ToolSequence, exchange.ToolCall.Name)
 		}

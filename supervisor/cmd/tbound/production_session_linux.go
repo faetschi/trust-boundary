@@ -260,6 +260,7 @@ type productionPiReceipt struct {
 	// RefusedToolCalls the tool calls a provider still returned on such a request, refused and never run.
 	ToolsDisabledCalls int `json:"tools_disabled_calls,omitempty"`
 	RefusedToolCalls   int `json:"refused_tool_calls,omitempty"`
+	DroppedToolCalls   int `json:"dropped_tool_calls,omitempty"`
 	// InTokens and OutTokens are the provider-reported usage of the run's completed exchanges, from the
 	// provider audit (applyProviderLineage has the definition). The runner journals them as the unit's
 	// in_tokens and out_tokens. A run without usage (scripted) writes neither, so its receipt is unchanged.

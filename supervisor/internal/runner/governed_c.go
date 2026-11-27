@@ -341,6 +341,7 @@ type governedReceipt struct {
 	UsageUnread        int   `json:"provider_usage_unread"`
 	ToolsDisabledCalls int   `json:"tools_disabled_calls"`
 	RefusedToolCalls   int   `json:"refused_tool_calls"`
+	DroppedToolCalls   int   `json:"dropped_tool_calls"`
 
 	// Identity and delta fields that Attest compares (see ReceiptFacts).
 	ProfileHash              string `json:"profile_hash"`
@@ -532,6 +533,7 @@ func (g GovernedC) applyReceipt(ctx context.Context, o *Outcome, ref *EvidenceRe
 	o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD
 	o.Metrics.Retries, o.Metrics.UsageUnread = receipt.ProviderRetries, receipt.UsageUnread
 	o.Metrics.ToolsDisabledCalls, o.Metrics.RefusedToolCalls = receipt.ToolsDisabledCalls, receipt.RefusedToolCalls
+	o.Metrics.DroppedToolCalls = receipt.DroppedToolCalls
 	pf, err := g.anchor(ctx, *ref, receipt)
 	o.PublicationFree = pf
 	if err != nil {

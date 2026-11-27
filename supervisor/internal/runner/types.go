@@ -213,6 +213,7 @@ type Metrics struct {
 	// provider still returned on such a call, refused and never run. Both are omitted when zero, as above.
 	ToolsDisabledCalls int `json:"tools_disabled_calls,omitempty"`
 	RefusedToolCalls   int `json:"refused_tool_calls,omitempty"`
+	DroppedToolCalls   int `json:"dropped_tool_calls,omitempty"`
 }
 
 // CalibrationEvidence is what a P step reports about its witness. Whether the

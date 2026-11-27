@@ -271,8 +271,9 @@ type exchangeEvidence struct {
 	ToolCall         *ToolCallProjection `json:"tool_call,omitempty"`
 	// RefusedToolCall is a tool call the provider returned on a tools-disabled request. It was never captured
 	// or executed, and the exchange ended the turn as the final reply.
-	RefusedToolCall *ToolCallProjection `json:"refused_tool_call,omitempty"`
-	HostCall        *HostCallBinding    `json:"host_call,omitempty"`
+	RefusedToolCall  *ToolCallProjection `json:"refused_tool_call,omitempty"`
+	HostCall         *HostCallBinding    `json:"host_call,omitempty"`
+	DroppedToolCalls int                 `json:"dropped_tool_calls,omitempty"`
 }
 
 type hostCallReservationEvidence struct {
@@ -777,7 +778,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		StatusCode: records[0].StatusCode(), Response: records[0].ResponseBody(),
 		ResponseIDIssuer: responseIssuer, ToolCallIDIssuer: callIssuer,
 		ResponseID: captured.ResponseID(), Model: captured.Model(), ToolCall: projection.ToolCall, RefusedToolCall: refusedCall,
-		HostCall: hostCallBinding,
+		HostCall: hostCallBinding, DroppedToolCalls: captured.DroppedToolCalls(),
 	}
 	encodedEvidence, err := json.Marshal(evidence)
 	if err != nil {

@@ -508,7 +508,8 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				return TranscriptProjection{}, replayError("provider exchange exceeds its durable raw-byte budget")
 			}
 			captured, err := openrouter.CaptureSSEForRoute(bytes.NewReader(evidence.Response), route)
-			if err != nil || !route.AcceptsResponseModel(captured.Model()) || captured.ResponseID() != evidence.ResponseID {
+			if err != nil || !route.AcceptsResponseModel(captured.Model()) || captured.ResponseID() != evidence.ResponseID ||
+				captured.DroppedToolCalls() != evidence.DroppedToolCalls {
 				return TranscriptProjection{}, replayError("captured response does not parse to the recorded provider identity")
 			}
 			if !validText(captured.ResponseID(), MaxIdentityBytes) {
