@@ -77,7 +77,7 @@ func TestPilotCasesMarksAnUnfinishedCaseNotRun(t *testing.T) {
 	if last.Status != calibration.NotRun || last.Reason == "" {
 		t.Fatalf("the last case of a run stopped early is %+v; want not_run with a reason", last)
 	}
-	if _, err := calibration.DerivePilotCaps(got, 5, true); err == nil {
+	if _, err := calibration.DerivePilotCaps(got, 5, true, 1_200_000); err == nil {
 		t.Fatal("a pilot with an unfinished case derived caps")
 	}
 }

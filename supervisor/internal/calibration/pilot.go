@@ -14,7 +14,7 @@ type PilotCaps struct {
 	Caps     Caps
 }
 
-func DerivePilotCaps(cases []PilotCase, L int, scripted bool) (PilotCaps, error) {
+func DerivePilotCaps(cases []PilotCase, L int, scripted bool, trialWallMS int) (PilotCaps, error) {
 	if len(cases) == 0 {
 		return PilotCaps{}, invalidf("the cap pilot has no designated case")
 	}
@@ -37,6 +37,12 @@ func DerivePilotCaps(cases []PilotCase, L int, scripted bool) (PilotCaps, error)
 	caps, err := DeriveCaps(L, q95, most)
 	if err != nil {
 		return PilotCaps{}, err
+	}
+	if scripted {
+		if trialWallMS < 1000 {
+			return PilotCaps{}, invalidf("trial duration %d ms must be at least 1000 ms: it is the scripted attacker's wall cap (D64)", trialWallMS)
+		}
+		caps.WallMS = trialWallMS
 	}
 	return PilotCaps{L: L, Q95: q95, PilotMax: most, Caps: caps}, nil
 }

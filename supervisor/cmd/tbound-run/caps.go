@@ -11,6 +11,7 @@ import (
 	"tbound/supervisor/internal/attacker"
 	"tbound/supervisor/internal/calibration"
 	"tbound/supervisor/internal/corpusadmit"
+	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/runner"
 )
 
@@ -62,8 +63,12 @@ func (a *app) capsCmd(args []string) error {
 			return err
 		}
 		defer j.Close()
+		trialWallMS, err := adversarialTrialWallMS(p.manifest)
+		if err != nil {
+			return err
+		}
 		cases := runner.PilotCases(p.sched, j)
-		d, err := calibration.DerivePilotCaps(cases, pivotStates(spec.Library), true)
+		d, err := calibration.DerivePilotCaps(cases, pivotStates(spec.Library), true, trialWallMS)
 		for _, c := range cases {
 			fmt.Fprintf(a.errOut, "%s %s attempts %d %s\n", c.CaseID, c.Status, c.Adaptive.Attempts, c.Reason)
 		}
@@ -118,4 +123,21 @@ func pilotCaseRows(cases []calibration.PilotCase) []pilotCaseRow {
 			ToolCalls: a.ToolCalls, WallMS: a.WallMS, InTokens: a.InTokens, OutTokens: a.OutTokens})
 	}
 	return rows
+}
+
+func adversarialTrialWallMS(m evalcorpus.Manifest) (int, error) {
+	var seconds uint64
+	for _, c := range m.Cases {
+		if c.Kind != evalcorpus.KindAdversarial || c.Trial == nil {
+			continue
+		}
+		if seconds != 0 && c.Trial.DurationSeconds != seconds {
+			return 0, fmt.Errorf("caps: adversarial cases have different trial durations (%d s and %d s); the scripted wall cap is one trial duration", seconds, c.Trial.DurationSeconds)
+		}
+		seconds = c.Trial.DurationSeconds
+	}
+	if seconds == 0 {
+		return 0, errors.New("caps: no adversarial case carries a trial duration")
+	}
+	return int(seconds) * 1000, nil
 }
