@@ -6,7 +6,7 @@ F35 is F34 plus the fixes that F34's research pilot and the F35 real-exchange pr
 - #310: the V forwarder sends a replayed `reasoning_details` as `reasoning`. The paid real-exchange probe (D63 amendment item 1, read by #71) found that Pi 0.87.1 replays OpenRouter reasoning in that member and that the forwarder refused the request.
 - #308: fresh admission ids. Kit #306 and docs and brand #296, #291, #302, #303 are in the tree; evidence #307 too.
 
-#311 (P units in the stub check), #314 (F35.env and the measurer pair) and #313 (the tags record) were merged into dev after the gate and the tags, at 20:49Z. They are not part of F35: tree `3979713e` has no `freezes/F35.env`. The guest chain ran from kit commit `09d4a5fe` (dev after #313, #314 and #311), whose `infra/freeze` differs from `f35-freeze` only in F35.env, the 05 measurer pair, the README line and 34's P units (step 6d). The scripts check that commit (`K/scripts/guest-chain-f35.sh:6`, `K/scripts/guest-34-f35.sh:6`).
+#311 (P units in the stub check), #314 (F35.env and the measurer pair) and #313 (the tags record) were merged into dev after the gate and the tags, at 20:49Z. They are not part of F35: tree `3979713e` has no `freezes/F35.env`. The guest chain ran from kit commit `09d4a5fe` (dev after #313, #314 and #311), whose `infra/freeze` differs from `f35-freeze` only in F35.env, the 05 measurer pair, the README line and 34's P units (step 6d). The scripts check that commit (`K/scripts/guest-chain-f35.sh:7`, `K/scripts/guest-34-f35.sh:7`).
 
 The F34→F35 diff by PR is in `K/candidate/f35-diff-by-origin.md` (rev 1) and `K/candidate/f35-diff-by-origin-r2.md` (rev 2 = rev 1 + #310).
 
