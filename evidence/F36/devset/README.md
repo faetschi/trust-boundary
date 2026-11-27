@@ -29,8 +29,7 @@ Why nothing happened. `../data` did not exist, `/mnt` does not exist on this hos
 
 The rule now. Benchmark and case text is handled only in Python and written only to files. No shell command, heredoc or shell
 string contains or interpolates it, and commit messages carry none. Python that reads it runs with `py -3 -I`. Code from a
-download is never executed, with one exception: the Exercism example solutions and converted tests, which the project's own
-precheck also runs (see below).
+download is never executed on the host. The one exception is past and closed: see "d. Host execution ruling".
 
 The guard. `corpus/sampling/dev_shell_guard.py` fails when a non-Python script (.sh .bash .ps1 .cmd .bat, or a `#!` file) exists
 among `corpus/sampling/dev_*`, `carriers/devset-*` or `evidence/F36/devset`, or when a dev tool uses `shell=True`, `os.system`,
@@ -57,9 +56,22 @@ negative controls.
 - Exercism: Jest is replaced by a fixed node shim of node:assert (no Jest reporter, skip flags or error text); bats is replaced by
   a node program that spawns `bash` with merged output. The conversion rules are fixed in `dev_src_exercism.py`, and each case
   records its conversion. The tests run in one process with the solution (as in T5), so a tampering solution is not detected.
-- Exercism: the example solutions and converted tests were run under node (and bash for the bash track) in a temp directory
-  after a static screen, which is an exception to "never execute code from the downloads". The project's own precheck runs the
-  same code. The bash tasks' expected stdout was produced with Git for Windows bash; the cell's bash may differ in rare edge cases.
+- Exercism: the example solutions and converted tests were run on the Windows host under node (and Git for Windows bash for the
+  bash track) in temp directories after a static screen. This was accepted only as a one-time, recorded exception (section d).
+  The bash tasks' expected stdout was produced with Git for Windows bash; the cell's bash may differ in rare edge cases, and the
+  round's acceptance-cell check is where that shows (a failure there is a case-building finding, not a TBound defect).
+
+## d. Host execution ruling (next-steps thread, 2026-11-27)
+
+- The past Exercism runs on the Windows host are accepted only as a one-time, recorded exception for what already ran. Git for
+  Windows bash and node on the host can reach C: and F:, the same exposure as the 2026-10-31 incident and the heredoc slip; a
+  static screen lowers the risk but does not remove it.
+- From now on, downloaded or benchmark code runs ONLY in the guest's cell during a dev round. Never on the host, and never in
+  WSL (WSL automounts the host drives).
+- The carriers are built. A case that needs re-validation gets it in the round's acceptance-cell check; a case that fails there
+  is a case-building finding.
+- The rule is in the dev-loop runbook and in every builder brief. An independent re-check lists every past host execution
+  (files, interpreter, directory, timeout) and checks that it stayed in its temp directory.
 
 ## c. Low diversity of devset-02
 
@@ -89,6 +101,11 @@ negative controls.
 - Time box: the Exercism work did not reach the 4-hour limit; the only fallback is the one edit slot of devset-02 above.
 
 ## Rebuild
+
+**Barred on the host since 2026-11-27 (section d).** `dev_src_exercism.py` executes downloaded example solutions and converted
+tests, and the offline precheck's `CheckConstructs` with local node executes the reference solutions. Neither may run on the
+host or in WSL again; the commands below record how the carriers were built, not a procedure to repeat. A rebuild of a case
+that carries downloaded code needs a new ruling; re-validation happens in the guest cell (acceptance-cell).
 
 `SRC` = the download directories, `EXE` = a `tbound-run` built from the repository, `OUT` and `REC` new. Run from the repository
 root with the tools committed (the renderers stop on a dirty tool file).
