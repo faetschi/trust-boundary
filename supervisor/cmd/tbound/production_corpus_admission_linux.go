@@ -295,7 +295,7 @@ func (c *piServiceWorkflowCatalog) envelopeFor(config piServiceConfig, request p
 	if !ok {
 		return workflowEnvelope{}, false
 	}
-	duration, ok := c.attemptDurationSeconds(trial, request) // an adaptive attempt: capped by the wall budget that is left
+	duration, ok := c.attemptDurationSeconds(trial, request)
 	if !ok {
 		return workflowEnvelope{}, false
 	}

@@ -112,9 +112,9 @@ func (c *piServiceWorkflowCatalog) attackerPredecessor(caseID, role string, atte
 		CumulativeUsage: entry.AttackerUsage.Cumulative}, nil
 }
 
-// attemptDurationSeconds is the run deadline of an admission: the trial's duration, and for an adaptive
-// role at most the wall time the artifact's cumulative cap leaves, in whole seconds. An adaptive attempt with
-// no pivot, tool call or whole second of wall budget left is not admitted.
+// attemptDurationSeconds is the run deadline of an admission: the trial's duration. The adaptive source
+// enforces the artifact's wall cap itself (D64). An adaptive attempt with no pivot, tool call or whole
+// second of wall budget left is not admitted.
 func (c *piServiceWorkflowCatalog) attemptDurationSeconds(trial evalcorpus.Trial, request piServiceRequest) (uint64, bool) {
 	if !adaptiveCorpusRole(request.Role) {
 		return trial.DurationSeconds, true
@@ -135,7 +135,7 @@ func (c *piServiceWorkflowCatalog) attemptDurationSeconds(trial evalcorpus.Trial
 	if caps.Iterations-prior.Iterations <= 0 || caps.ToolCalls-prior.ToolCalls <= 0 || wall < 1000 {
 		return 0, false
 	}
-	return min(uint64(wall/1000), trial.DurationSeconds), true
+	return trial.DurationSeconds, true
 }
 
 // applyAttackerUsage fills the receipt's usage members from the source's terminal and the binding's
