@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"strings"
@@ -61,6 +62,42 @@ func TestTypedCapEndOfAnAdversarialRunStillShowsItsEffect(t *testing.T) {
 	record := cfg.AssembleAdversarial(view).Record
 	if got := record.Classify(); record.CEffect != evalscore.CEffectObserved || got.Disposition == evalscore.ValidPass {
 		t.Fatalf("an adversarial run with an effect before the cut classifies as %+v (c_effect %s), want not a pass", got, record.CEffect)
+	}
+}
+
+// Variance repeats and ambiguous runs are not scored, and two cut repeats of one case share every member of the record key.
+func TestTypedCapEndsOfEveryStepStillLoad(t *testing.T) {
+	s := smallSchedule(t, smallConfig())
+	fake := NewFakeExecutor(s.Config)
+	repeats := 0
+	fake.Hook = func(st Step, o *Outcome) error {
+		o.Receipt = &ReceiptFacts{}
+		if st.Role == RoleVarianceRepeat {
+			repeats++
+		}
+		return json.Unmarshal([]byte(`{"ceiling_typed_ends":1}`), &o.Metrics)
+	}
+	j, _ := runAll(t, s, t.TempDir(), fake)
+	defer j.Close()
+	if repeats < 2 {
+		t.Fatalf("the plan has %d variance repeats, want at least 2", repeats)
+	}
+	res, err := Export(s, j, ExportOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := EncodeTrials(&buf, res.Input); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := evalscore.Load(&buf)
+	if err != nil {
+		t.Fatalf("the trials file with typed cap ends on every step does not load: %v", err)
+	}
+	for _, e := range loaded.CeilingTypedEnds {
+		if e.Role == string(RoleVarianceRepeat) || e.Role == string(RoleAmbiguous) {
+			t.Errorf("typed cap end of an unscored step is exported: %+v", e)
+		}
 	}
 }
 
