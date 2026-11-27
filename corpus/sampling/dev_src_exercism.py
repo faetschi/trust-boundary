@@ -13,7 +13,8 @@ Static screen (an exercise is skipped, with the reason recorded, when it fails; 
      function|class`; the names the spec imports are all exported by the stub and by the example; no `export default`;
   S3 bash: `.meta/example.sh`, `.bats` and a `.sh` stub exist; the example has none of: curl wget nc ncat ssh scp rm mv cp dd
      chmod chown sudo eval source exec kill mkfs touch mkdir tee python perl, an output redirect other than `>&2` or `>&1`,
-     an input redirect other than `<<<`, or /dev/ or `..`.
+     an input redirect other than `<<<` (the bodies of `(( ))` and `[[ ]]` are not read for redirects; amended after the
+     first run found 75 of 100 exercises screened out by `<` and `>` in comparisons), or /dev/ or `..`.
 JEST RULE (mechanical conversion of `<slug>.spec.js`): remove the import statement and the `@jest/globals` import (amended
   before any JS selection: the first run found every spec has it; the shim defines those names); `xtest(` and `xit(` become `test(`
   and `it(` (the exercise skips them by default, the conversion runs all); prepend the fixed shim (SHIM below, which maps
@@ -106,7 +107,8 @@ const expect = (actual) => {
 """
 JS_SPEC_BAN = re.compile(r"\bjest\.|\basync\b|\bawait\b|\b(beforeEach|afterEach|beforeAll|afterAll)\b|\.(resolves|rejects|each|skip|only)\b|\btoMatch(Inline)?Snapshot\b|\bexpect\.|\brequire\s*\(")
 JS_EX_BAN = re.compile(r"\b(require|process|child_process|globalThis|eval|fetch|setTimeout|setInterval|XMLHttpRequest|WebSocket)\b|\bFunction\s*\(|\bimport\b")
-BASH_BAN = re.compile(r"\b(curl|wget|nc|ncat|ssh|scp|rm|mv|cp|dd|chmod|chown|sudo|eval|source|exec|kill|mkfs|touch|mkdir|tee|python|perl)\b|>(?!&[12])|<(?!<<)|/dev/|\.\.")
+BASH_WORD_BAN = re.compile(r"(curl|wget|nc|ncat|ssh|scp|rm|mv|cp|dd|chmod|chown|sudo|eval|source|exec|kill|mkfs|touch|mkdir|tee|python|perl)|/dev/|\.\.")
+BASH_REDIR_BAN = re.compile(r">(?!&[12])|<(?!<<)")  # applied with (( )) and [[ ]] bodies removed: `<` and `>` there are comparisons
 OPERATORS = [("ROR_LT", r"(?<![<=!>-])<(?![<=])", "<="), ("ROR_LE", r"(?<![<=!>])<=(?!=)", "<"), ("ROR_GT", r"(?<![=>-])>(?![>=])", ">="),
              ("ROR_GE", r"(?<![>=])>=(?!=)", ">"), ("AOR_ADD", r"(?<=\s)\+(?=\s)", "-"), ("AOR_SUB", r"(?<=\s)-(?=\s)", "+"),
              ("COR_AND", r"&&", "||"), ("COR_OR", r"\|\|", "&&"), ("BLF_T", r"\btrue\b", "false"), ("BLF_F", r"\bfalse\b", "true"),
@@ -250,7 +252,7 @@ def js_passes(program_body, tests):
 
 def bats_to_node(slug, bats, example):
     """(program text, meta) per the BATS RULE, or Skip(reason)."""
-    if BASH_BAN.search(example):
+    if BASH_WORD_BAN.search(example) or BASH_REDIR_BAN.search(re.sub(r"\(\([^)]*\)\)|\[\[.*?\]\]", " ", example)):
         raise Skip("S3: the example uses a banned construct")
     funcs = re.findall(r"^(test_\w+)\(\)\s*\{\s*#\s*@test\s*$(.*?)^\}", bats, re.M | re.S)
     if len(funcs) < 4 or len(funcs) > 40:
