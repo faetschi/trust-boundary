@@ -274,6 +274,7 @@ type exchangeEvidence struct {
 	RefusedToolCall  *ToolCallProjection `json:"refused_tool_call,omitempty"`
 	HostCall         *HostCallBinding    `json:"host_call,omitempty"`
 	DroppedToolCalls int                 `json:"dropped_tool_calls,omitempty"`
+	CeilingTypedEnd  bool                `json:"ceiling_typed_end,omitempty"`
 }
 
 type hostCallReservationEvidence struct {
@@ -533,7 +534,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	resamplable := hostCallAccounting && !c.cfg.ProductCaptureRefusals
 	// resampleOf is the refused request a resample must repeat (resampleRepeats); nil for any other attempt.
 	var resampleOf *broker.RequestRecord
-	toolsDisabled := false
+	toolsDisabled, ceilingTypedEnd := false, false
 	for attempt := uint64(0); ; attempt++ {
 		hostCallBinding, dispatched = nil, false
 		// Decided per attempt: a retried or resampled attempt has charged a host call, so a later attempt of
@@ -615,6 +616,11 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			return nil
 		})
 		records = requestBroker.Records()
+		if errors.Is(exchangeErr, runend.ErrCeiling) && hostCallBinding != nil && len(records) == 1 && records[0].ResponseComplete() && records[0].StatusCode() == 200 {
+			if cut, err := openrouter.CaptureExchange(records[0].ResponseBody(), c.route, completionLimit, true); err == nil {
+				captured, exchangeErr, ceilingTypedEnd = cut, nil, true
+			}
+		}
 		if exchangeErr == nil || attempt >= MaxProviderRetries || ctx.Err() != nil || hostCallBinding == nil {
 			break
 		}
@@ -697,6 +703,9 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		Created: captured.Created(), Generation: c.generation, Sequence: nextSequence,
 		AssistantText: captured.AssistantText(), FinishReason: captured.FinishReason(), Usage: captured.Usage(),
 	}
+	if ceilingTypedEnd {
+		projection.AssistantText, projection.FinishReason = "", "stop"
+	}
 	var priorCall openrouter.PriorToolCall
 	var capturedCall *openrouter.ToolCall
 	var refusedCall *ToolCallProjection
@@ -715,9 +724,9 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			capturedCall = &call
 		}
 	}
-	assistantText := captured.AssistantText()
+	assistantText := projection.AssistantText
 	// An empty reply to a tools-disabled request is the run's final answer (D56 amendment, 2026-11-19).
-	if assistantText == "" && projection.ToolCall == nil && refusedCall == nil && !toolsDisabled {
+	if assistantText == "" && projection.ToolCall == nil && refusedCall == nil && !toolsDisabled && !ceilingTypedEnd {
 		emptyErr := errors.New("provider response has neither assistant text nor a tool call")
 		if !c.route.Reasoning {
 			return Turn{}, c.failLocked(emptyErr) // the product route keeps its pre-D50 behaviour
@@ -778,7 +787,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		StatusCode: records[0].StatusCode(), Response: records[0].ResponseBody(),
 		ResponseIDIssuer: responseIssuer, ToolCallIDIssuer: callIssuer,
 		ResponseID: captured.ResponseID(), Model: captured.Model(), ToolCall: projection.ToolCall, RefusedToolCall: refusedCall,
-		HostCall: hostCallBinding, DroppedToolCalls: captured.DroppedToolCalls(),
+		HostCall: hostCallBinding, DroppedToolCalls: captured.DroppedToolCalls(), CeilingTypedEnd: ceilingTypedEnd,
 	}
 	encodedEvidence, err := json.Marshal(evidence)
 	if err != nil {
@@ -836,7 +845,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 // same parsed response, so the two give identical request bytes.
 func assistantMessage(route openrouter.Route, captured openrouter.CapturedResponse, text string, calls []openrouter.PriorToolCall) openrouter.Message {
 	message := openrouter.Message{Role: openrouter.Assistant, Content: &text, ToolCalls: calls}
-	if route.Reasoning {
+	if route.Reasoning && captured.FinishReason() != "length" {
 		message.Reasoning = captured.Reasoning()
 	}
 	return message

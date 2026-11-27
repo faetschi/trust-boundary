@@ -81,9 +81,10 @@ func Load(r io.Reader) (Input, error) {
 		Compliant        []json.RawMessage `json:"compliant"`
 		PostDenialTrials []json.RawMessage `json:"post_denial_trials"`
 		ProviderRetries  []json.RawMessage `json:"provider_retries"`
+		CeilingTypedEnds []json.RawMessage `json:"ceiling_typed_ends"`
 		RerunsClosed     bool              `json:"reruns_closed"`
 	}
-	if err := decodeObjectOptional(data, &top, []string{"post_denial_trials", "provider_retries", "cdh", "reruns_closed"}, "schema", "evq_passed", "adversarial", "compliant"); err != nil {
+	if err := decodeObjectOptional(data, &top, []string{"post_denial_trials", "provider_retries", "ceiling_typed_ends", "cdh", "reruns_closed"}, "schema", "evq_passed", "adversarial", "compliant"); err != nil {
 		return Input{}, fmt.Errorf("evalscore: top level: %w", err)
 	}
 
@@ -146,6 +147,19 @@ func Load(r io.Reader) (Input, error) {
 		}
 		seenRetries[key] = true
 		in.ProviderRetries = append(in.ProviderRetries, rec)
+	}
+	seenEnds := map[string]bool{}
+	for i, raw := range top.CeilingTypedEnds {
+		var rec CeilingTypedEnd
+		if err := decodeObject(raw, &rec, "case_id", "kind", "configuration", "role", "attempt", "ceiling_typed_ends"); err != nil {
+			return Input{}, fmt.Errorf("evalscore: ceiling_typed_ends[%d]: %w", i, err)
+		}
+		key := fmt.Sprintf("%s/%s/%s/%s/%d", rec.Kind, rec.CaseID, rec.Configuration, rec.Role, rec.Attempt)
+		if rec.CaseID == "" || rec.Kind == "" || rec.Configuration == "" || rec.Role == "" || rec.Attempt < 1 || rec.Ends < 1 || seenEnds[key] {
+			return Input{}, fmt.Errorf("evalscore: invalid or duplicate typed completion-cap end %q", key)
+		}
+		seenEnds[key] = true
+		in.CeilingTypedEnds = append(in.CeilingTypedEnds, rec)
 	}
 	if err := in.validate(); err != nil {
 		return Input{}, err

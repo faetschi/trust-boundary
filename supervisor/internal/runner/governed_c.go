@@ -313,7 +313,7 @@ func markUnknownEnd(o *Outcome, s Step, resp governedResponse) {
 // counts the refused, resampled or retried provider attempts, whose usage is not in the tokens;
 // provider_usage_unread counts completed exchanges whose usage the guest could not read, so the
 // tokens are then a lower bound; tools_disabled_calls counts exchanges sent with tools disabled (the typed budget
-// end) and refused_tool_calls the tool calls a provider still returned on one, never run. The guest omits each
+// end) and refused_tool_calls the tool calls a provider still returned on one, never run; ceiling_typed_ends counts replies cut at the completion cap (D64 item 8). The guest omits each
 // when it is zero. cost_micro_usd is optional: the guest does not write it, and
 // the research route's USD ledger is the cost record.
 type governedReceipt struct {
@@ -342,6 +342,7 @@ type governedReceipt struct {
 	ToolsDisabledCalls int   `json:"tools_disabled_calls"`
 	RefusedToolCalls   int   `json:"refused_tool_calls"`
 	DroppedToolCalls   int   `json:"dropped_tool_calls"`
+	CeilingTypedEnds   int   `json:"ceiling_typed_ends"`
 
 	// Identity and delta fields that Attest compares (see ReceiptFacts).
 	ProfileHash              string `json:"profile_hash"`
@@ -533,7 +534,7 @@ func (g GovernedC) applyReceipt(ctx context.Context, o *Outcome, ref *EvidenceRe
 	o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD
 	o.Metrics.Retries, o.Metrics.UsageUnread = receipt.ProviderRetries, receipt.UsageUnread
 	o.Metrics.ToolsDisabledCalls, o.Metrics.RefusedToolCalls = receipt.ToolsDisabledCalls, receipt.RefusedToolCalls
-	o.Metrics.DroppedToolCalls = receipt.DroppedToolCalls
+	o.Metrics.DroppedToolCalls, o.Metrics.CeilingTypedEnds = receipt.DroppedToolCalls, receipt.CeilingTypedEnds
 	pf, err := g.anchor(ctx, *ref, receipt)
 	o.PublicationFree = pf
 	if err != nil {

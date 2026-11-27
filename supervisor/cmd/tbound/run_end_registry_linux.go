@@ -171,6 +171,8 @@ var runEndNotCeilings = []string{
 
 	// Bounds of the reply stream. Under D50 a reply within the 4,096-token cap stays inside them, so a stream past
 	// one is the provider's; it is a rerun cause only inside a disposed provider turn failure.
+	"a reply cut at the completion cap is typed only on the research route with a known cap",
+	"the reply is not cut at the completion cap",
 	"malformed or oversized SSE line",
 	"SSE event exceeds byte limit",
 	"response byte length out of bounds",

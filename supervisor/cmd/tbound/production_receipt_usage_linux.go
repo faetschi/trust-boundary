@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,10 +52,17 @@ func applyProviderLineage(receipt *productionPiReceipt, trace audit.Trace, route
 			receipt.RefusedToolCalls++
 		}
 		receipt.DroppedToolCalls += exchange.DroppedToolCalls
+		if exchange.CeilingTypedEnd {
+			receipt.CeilingTypedEnds++
+		}
 		if exchange.ToolCall != nil && len(receipt.ToolSequence) < 32 {
 			receipt.ToolSequence = append(receipt.ToolSequence, exchange.ToolCall.Name)
 		}
-		in, out, err := exchangeTokens(exchange.Response, route)
+		limit := uint64(0)
+		if exchange.HostCall != nil {
+			limit = exchange.HostCall.TokenUpperBound
+		}
+		in, out, err := exchangeTokens(exchange.Response, route, limit, exchange.CeilingTypedEnd)
 		if err != nil {
 			receipt.ProviderUsageUnread++
 			continue
@@ -68,8 +74,8 @@ func applyProviderLineage(receipt *productionPiReceipt, trace audit.Trace, route
 }
 
 // exchangeTokens reads the token counts of one completed exchange's response.
-func exchangeTokens(response []byte, route openrouter.Route) (in, out int, err error) {
-	captured, err := openrouter.CaptureSSEForRoute(bytes.NewReader(response), route)
+func exchangeTokens(response []byte, route openrouter.Route, completionLimit uint64, cut bool) (in, out int, err error) {
+	captured, err := openrouter.CaptureExchange(response, route, completionLimit, cut)
 	if err != nil {
 		return 0, 0, err
 	}

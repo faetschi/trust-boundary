@@ -577,6 +577,26 @@ func TruncatedUsage(raw []byte, route Route) (json.RawMessage, bool) {
 	return captured.Usage(), true
 }
 
+func CaptureExchange(raw []byte, route Route, completionLimit uint64, cut bool) (CapturedResponse, error) {
+	if !cut {
+		return CaptureSSEForRoute(bytes.NewReader(raw), route)
+	}
+	if !route.IsResearch() || !route.Reasoning || completionLimit == 0 {
+		return CapturedResponse{}, errors.New("a reply cut at the completion cap is typed only on the research route with a known cap")
+	}
+	captured, err := captureSSE(bytes.NewReader(raw), false, route, true)
+	if err != nil {
+		return CapturedResponse{}, err
+	}
+	var usage struct {
+		Completion *uint64 `json:"completion_tokens"`
+	}
+	if captured.finish != "length" || json.Unmarshal(captured.usage, &usage) != nil || usage.Completion == nil || *usage.Completion != completionLimit {
+		return CapturedResponse{}, errors.New("the reply is not cut at the completion cap")
+	}
+	return captured, nil
+}
+
 // CaptureSSELegacyNulls parses with the strictness before f53fd29f: JSON null in a
 // delta role or tool_calls, or a tool delta id or type, is an error. Only replay of
 // capture-refusal records journaled before that fix may use it.
