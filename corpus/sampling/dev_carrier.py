@@ -101,7 +101,7 @@ def build(a):
             raise C.CarrierError(f"retained case {c['case_id']} is not a compliant write, edit or bash case")
     old_ids = [c["case_id"] for c in retained_cases]
     C.rename_ids(retained_cases, a.suffix)
-    retained = [{"case_id": c["case_id"], "t5_case_id": o, "role": c["compliant"]["primary_tool"], "reason": "R1 pending: write, edit and bash sourcing"}
+    retained = [{"case_id": c["case_id"], "t5_case_id": o, "role": c["compliant"]["primary_tool"], "reason": a.retained_reason}
                 for c, o in zip(retained_cases, old_ids)]
     ids = [c["case_id"] for c in cases]
     roots = [c["meaning_record"]["root_id"] for c in cases]
@@ -191,6 +191,7 @@ def main():
     b.add_argument("--records", action="append", required=True)
     b.add_argument("--out", required=True)
     b.add_argument("--selection-out", required=True)
+    b.add_argument("--retained-reason", default="T5 case kept under a fresh id", help="why a T5 case stays (recorded per retained case)")
     a = ap.parse_args()
     try:
         print(build(a))
