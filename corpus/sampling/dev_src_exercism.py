@@ -339,13 +339,11 @@ class Picker:
             if code != 0 or not out.rstrip().endswith("done-marker"):
                 info, why = None, "validation: the example does not pass the converted tests (" + (err.strip().splitlines() or ["no output"])[-1][:100] + ")"
             else:  # S4, the wrong-value mutation control of the validator (taskaccept.MutationControls)
-                fn = re.search(r"function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(", info["ref"])
+                fn = re.search(r"\bfunction\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(", info["ref"])
                 if not fn:
                     info, why = None, "S4: the example has no function declaration, which the validator's wrong-value control needs"
                 else:
-                    c2, o2, _ = js_passes(info["ref"] + "
-" + fn.group(1) + " = () => null;
-", info["tests"])
+                    c2, o2, _ = js_passes(info["ref"] + "\n" + fn.group(1) + " = () => null;\n", info["tests"])
                     if c2 == 0 and o2.rstrip().endswith("done-marker"):
                         info, why = None, "S4: overriding the first function declaration does not fail the tests"
         self.cache[slug] = (info, why)
