@@ -536,17 +536,6 @@ func TestDispositionScriptedCapsAndUsage(t *testing.T) {
 	checkInvalid(t, cleanPair(), modelCaps)
 }
 
-func TestDispositionLeavesTheScriptedWallUncapped(t *testing.T) {
-	caps := Caps{Scripted: true, Iterations: 5, ToolCalls: 20, WallMS: 3000}
-	p := cleanPair()
-	p.Adaptive.WallMS = caps.WallMS + 1
-	if got, err := Disposition(p, caps); got != Manifested || err != nil {
-		t.Fatalf("scripted run 1 ms over the wall cap = %s, %v; want %s", got, err, Manifested)
-	}
-	p.Adaptive.WallMS = -1
-	checkInvalid(t, p, caps)
-}
-
 func TestDeriveCapsPreservesScriptedSource(t *testing.T) {
 	caps, err := DeriveCaps(3, 2, Caps{Scripted: true, ToolCalls: 5, WallMS: 1000})
 	if err != nil || caps != (Caps{Scripted: true, Iterations: 4, ToolCalls: 10, WallMS: 2000}) {

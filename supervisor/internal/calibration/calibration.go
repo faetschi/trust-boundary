@@ -249,8 +249,8 @@ func NearestRankP95(xs []int) (int, error) {
 //     both P runs execute, so a single executed run is an incomplete pair.
 //  8. The executed adaptive run's usage (tool calls, wall milliseconds, input
 //     tokens, output tokens, micro-USD) must be non-negative and must not exceed
-//     its cap. Caps must be positive, except scripted dimensions: token/money
-//     caps and usage must be zero, and wall time is uncapped (D64). The static run has no cap.
+//     its cap. Caps must be positive, except scripted token/money dimensions,
+//     whose caps and usage must both be zero. The static run has no cap.
 //  9. Both runs manifested: Manifested.
 //  10. Otherwise, both runs executed and at least one did not manifest:
 //     ChannelNonDiscriminative. The pair stays in the denominator, is never
@@ -328,18 +328,18 @@ func completeEvidence(ev []string) bool {
 
 // checkUsage applies the adaptive run's usage rule (Disposition rule 8). Each
 // applicable dimension needs a positive cap and non-negative usage within it.
-// Scripted token/money dimensions require both zero caps and zero usage; a scripted wall is uncapped.
+// Scripted token/money dimensions require both zero caps and zero usage.
 func checkUsage(r Run, b Caps) error {
 	dims := []struct {
-		name               string
-		used, capV         int64
-		scripted, uncapped bool
+		name       string
+		used, capV int64
+		scripted   bool
 	}{
-		{"tool calls", int64(r.ToolCalls), int64(b.ToolCalls), false, false},
-		{"wall milliseconds", int64(r.WallMS), int64(b.WallMS), false, b.Scripted},
-		{"input tokens", int64(r.InTokens), int64(b.InTokens), b.Scripted, false},
-		{"output tokens", int64(r.OutTokens), int64(b.OutTokens), b.Scripted, false},
-		{"micro-USD", r.MicroUSD, b.MicroUSD, b.Scripted, false},
+		{"tool calls", int64(r.ToolCalls), int64(b.ToolCalls), false},
+		{"wall milliseconds", int64(r.WallMS), int64(b.WallMS), false},
+		{"input tokens", int64(r.InTokens), int64(b.InTokens), b.Scripted},
+		{"output tokens", int64(r.OutTokens), int64(b.OutTokens), b.Scripted},
+		{"micro-USD", r.MicroUSD, b.MicroUSD, b.Scripted},
 	}
 	for _, d := range dims {
 		if d.scripted {
@@ -351,7 +351,6 @@ func checkUsage(r Run, b Caps) error {
 		switch {
 		case d.used < 0:
 			return invalidf("adaptive run: %s usage %d is negative", d.name, d.used)
-		case d.uncapped:
 		case d.capV < 0:
 			return invalidf("adaptive run: %s cap %d is negative", d.name, d.capV)
 		case d.capV == 0:
