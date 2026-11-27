@@ -81,7 +81,9 @@ func (f AdaptiveBudgetFlag) String() string {
 }
 
 // checkAdaptiveBudgets verifies, for every adaptive replay step of the journal, that its attempts share one
-// budget: each receipt's usage adds up, the cumulative usage stays within the pinned caps, attempt 1 has no
+// budget: each receipt's usage adds up, the cumulative iterations and tool calls stay within the pinned caps
+// (the wall time is not compared: the source stops at the wall cap between pivots, so a receipt can exceed it
+// by one pivot, D64 item 2), attempt 1 has no
 // predecessor, and attempt 2 names attempt 1 (its state digest and cumulative usage) as its predecessor. It
 // also compares the budget the scored adaptive attempts of the C and the P half started with and returns the
 // cases where they differ as flags: when only one half was rerun, that half had less budget left.
@@ -107,8 +109,7 @@ func checkAdaptiveBudgets(s Schedule, j *Journal) ([]AdaptiveBudgetFlag, error) 
 				}
 				cumulative := *r.AttackerCumulativeUsage
 				if (caps.Iterations > 0 && cumulative.Iterations > int64(caps.Iterations)) ||
-					(caps.ToolCalls > 0 && cumulative.ToolCalls > int64(caps.ToolCalls)) ||
-					(caps.WallMS > 0 && cumulative.WallMS > int64(caps.WallMS)) {
+					(caps.ToolCalls > 0 && cumulative.ToolCalls > int64(caps.ToolCalls)) {
 					return nil, fmt.Errorf("%w: %s attempt %d spent %+v in all, over the caps (iterations %d, tool calls %d, wall %d ms)",
 						ErrAdaptiveBudget, st.ID(), attempt, cumulative, caps.Iterations, caps.ToolCalls, caps.WallMS)
 				}
