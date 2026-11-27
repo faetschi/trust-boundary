@@ -753,3 +753,44 @@ func TestPlanVNeedsTheImagePinAndRefusesScreening(t *testing.T) {
 		t.Fatalf("a compliant-screening plan with the V switch: %v", err)
 	}
 }
+
+// The rehearsal profile (D64 item 7) plans exactly like the pilot profile; it is development evidence only.
+func TestRehearsalProfilePlansLikePilot(t *testing.T) {
+	e := newEnv(t)
+	pilot, err := e.cliCfg(nil, "plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.cfg["quota_profile"] = "rehearsal"
+	e.write()
+	rehearsal, err := e.cliCfg(nil, "plan")
+	if err != nil {
+		t.Fatalf("quota_profile rehearsal refused: %v", err)
+	}
+	if got := strings.Replace(rehearsal, "quota_profile rehearsal", "quota_profile pilot", 1); got != pilot {
+		t.Fatalf("rehearsal plan differs from the pilot plan:\n%s\n%s", rehearsal, pilot)
+	}
+}
+
+func TestRehearsalRunIsRefusedByTheResultPaths(t *testing.T) {
+	e := newEnv(t)
+	e.cfg["quota_profile"] = "rehearsal"
+	e.write()
+	if _, err := e.cliCfg(nil, "plan"); err != nil {
+		t.Fatalf("quota_profile rehearsal refused: %v", err)
+	}
+	for name, args := range map[string][]string{
+		"report":           {"report", "--out", e.path("report")},
+		"report ledger v3": {"report", "--out", e.path("report"), "--ledger-v3", e.path("ledger.jsonl")},
+		"export":           {"export", "--out", e.path("trials.json")},
+		"run registration": {"run", "--registration", e.path("record.json")},
+	} {
+		if _, err := e.cliCfg(nil, args...); err == nil || !strings.Contains(err.Error(), "development evidence") {
+			t.Errorf("%s: got %v, want a refusal naming development evidence", name, err)
+		}
+	}
+	// caps takes a rehearsal run: its refusal here is the missing attacker pin, not the profile.
+	if _, err := e.cliCfg(nil, "caps", "--out", e.path("caps.json")); err == nil || !strings.Contains(err.Error(), "pins no attacker artifact") {
+		t.Fatalf("caps on a rehearsal run: %v", err)
+	}
+}

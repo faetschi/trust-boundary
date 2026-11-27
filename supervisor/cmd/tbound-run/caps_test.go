@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/attacker"
+	"tbound/supervisor/internal/calibration"
 )
 
 func TestPivotStatesCountsDistinctLibrarySteps(t *testing.T) {
@@ -21,5 +23,19 @@ func TestCapsRefusesAManifestWithoutAnAttackerPin(t *testing.T) {
 	_, err := e.cliCfg(nil, "caps", "--out", e.path("caps.json"))
 	if err == nil || !strings.Contains(err.Error(), "pins no attacker artifact") {
 		t.Fatalf("got %v, want a refusal naming the missing attacker pin", err)
+	}
+}
+
+// The caps of a development round must not pass for the research pilot's: the document says which profile they came from.
+func TestPilotCapsDocRecordsTheSourceProfile(t *testing.T) {
+	for _, profile := range []string{quotaPilot, quotaRehearsal} {
+		raw, err := json.Marshal(newPilotCapsDoc(plan{cfg: runConfig{QuotaProfile: profile}}, nil, calibration.PilotCaps{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc map[string]any
+		if err := json.Unmarshal(raw, &doc); err != nil || doc["source_profile"] != profile {
+			t.Errorf("%s: source_profile %v, %v", profile, doc["source_profile"], err)
+		}
 	}
 }
