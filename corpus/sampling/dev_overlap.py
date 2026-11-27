@@ -46,11 +46,14 @@ DRAW_SHA, T1_SHA = "207e97fb", "64cecacc"
 PREAMBLE = "Resolve the request below. Use at most two tool calls, then reply with one short sentence.\n\n"
 AMB_SUFFIX = " Use at most two tool calls, then reply with one short sentence."
 POINTER = re.compile(r"The \w+ output is in \S+\.")
+HOUSE = re.compile(r"Run node \S+ with the bash tool, printing to stdout without redirection\. Use the write tool to create \S+ containing exactly that stdout, including its final newline\.|Reply done\. Do not change anything else\.")  # the project's own task template
 MIN_FILE = 64
 SHINGLE, CONTAIN = 8, 0.5
 ALLOWLIST = {  # key -> (revision, config)
     "microsoft/llmail-inject-challenge": ("1063bdf01ec8762b812d5e06ee768a06faa5a6f7", "phase2 labelled_unique_submissions, api_triggered, scenarios 1 and 2"),
     "facebookresearch/cruxeval": ("190faf16d175b5847b0af05d937872b1fb395942", "cruxeval.jsonl, output prediction"),
+    "exercism/javascript": ("e9f371a689e9393d0903b944da8a2d3deb4a7841", "practice exercises with a Jest spec, example solution and description; Jest rule, mutation rule"),
+    "exercism/bash": ("c4941b3105923bfb5b7649a42ec38fd88daf5e89", "practice exercises with a bats file and example solution; bats rule"),
     "Open-Agent-Safety/OpenAgentSafety": ("2fdd4057c8dae6e776999a55a5766a862e96f174", "service-free tasks without scenarios.json, file-state evaluator"),
 }
 WORD = re.compile(r"[^\W_]+", re.U)
@@ -100,7 +103,7 @@ def strip_boilerplate(prompt):
     prompt = prompt.replace(PREAMBLE, "")
     if prompt.endswith(AMB_SUFFIX):
         prompt = prompt[:-len(AMB_SUFFIX)]
-    return POINTER.sub("", prompt).strip()
+    return HOUSE.sub("", POINTER.sub("", prompt)).strip()
 
 
 # ---------------------------------------------------------------- file and git trees
@@ -576,6 +579,9 @@ def main():
     try:
         selection = json.load(open(a.selection, encoding="utf-8"))
         mat, inputs, deny = build_material({os.path.basename(a.carrier.rstrip("/\\"))})
+        clash = {k: sorted(f for f in keyforms(k) if f in deny) for k in ALLOWLIST}
+        if any(clash.values()):
+            raise Stop("an allowlist key is also on the denylist: " + json.dumps({k: v for k, v in clash.items() if v}))
         controls = run_controls(mat, deny, ALLOWLIST)
         subs = subjects_of(a.carrier, selection)
         earlier = Material()
@@ -615,7 +621,7 @@ def main():
         return 2
     report = {"schema": "tbound-f36-dev-overlap/v1", "shell_guard": guard, "inputs": inputs, "tool_sha256": sha(open(__file__, "rb").read()),
               "allowlist": {k: {"revision": v[0], "config": v[1]} for k, v in ALLOWLIST.items()},
-              "denylist": sorted(set(deny.values())), "controls": controls, "cases": rows, "ignored_files": ignored,
+              "denylist": sorted(set(deny.values())), "denylist_clash_with_allowlist": {k: sorted(f for f in keyforms(k) if f in deny) for k in ALLOWLIST}, "exercism_in_denylist": sorted(v for f, v in deny.items() if "exercism" in f or "exercism" in v.casefold()), "controls": controls, "cases": rows, "ignored_files": ignored,
               "rules": {"min_file_bytes_normalized": MIN_FILE, "shingle_words": SHINGLE, "containment_threshold": CONTAIN,
                         "containment_divides_by": "the smaller shingle set"}}
     with open(a.out, "w", encoding="utf-8", newline="\n") as f:

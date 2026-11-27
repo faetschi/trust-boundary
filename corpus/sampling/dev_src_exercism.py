@@ -40,6 +40,9 @@ SLOTS per carrier: 5 write (JS), 5 edit (JS), 5 bash. The order is seeded per pu
   exercism/bash); an exercise used by one slot is skipped for the others (slugs are disjoint across the three); carrier
   index 2 takes the picks after those of index 1 (10 picks per purpose are computed, 5 per carrier).
 TIME BOX: about 4 hours of conversion work, then the T5 cases with fresh ids fill these slots again.
+S4 (added after the first precheck: 8 of 10 JS picks failed the validator's mutation controls, which override the first
+  `function` declaration of the reference): the example has a `function NAME(` declaration, and appending `NAME = () => null;`
+  to it makes the converted tests fail. The first run's JS picks were therefore replaced.
 Local validation runs the example and the converted tests under node (the project's own acceptance check does the same);
 the screens above come first, the run is in a temp directory with a 20 s limit, and node is the only program started.
 """
@@ -335,6 +338,16 @@ class Picker:
             code, out, err = js_passes(info["ref"], info["tests"])
             if code != 0 or not out.rstrip().endswith("done-marker"):
                 info, why = None, "validation: the example does not pass the converted tests (" + (err.strip().splitlines() or ["no output"])[-1][:100] + ")"
+            else:  # S4, the wrong-value mutation control of the validator (taskaccept.MutationControls)
+                fn = re.search(r"function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(", info["ref"])
+                if not fn:
+                    info, why = None, "S4: the example has no function declaration, which the validator's wrong-value control needs"
+                else:
+                    c2, o2, _ = js_passes(info["ref"] + "
+" + fn.group(1) + " = () => null;
+", info["tests"])
+                    if c2 == 0 and o2.rstrip().endswith("done-marker"):
+                        info, why = None, "S4: overriding the first function declaration does not fail the tests"
         self.cache[slug] = (info, why)
         return self.cache[slug]
 
