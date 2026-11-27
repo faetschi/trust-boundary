@@ -302,8 +302,6 @@ func TestCorpusResearchRoutePilotNeedsThePilotDraw(t *testing.T) {
 	}
 }
 
-// The rehearsal profile (D64 item 7) admits a development corpus on the research route: the pilot counts, no pinned
-// draw, every role the pilot profile admits. It is never the research pilot, and it is research-route only.
 func TestCorpusRehearsalProfileIsAdmittedOnTheResearchRouteWithoutADraw(t *testing.T) {
 	research := piruntime.D09ManagedPiProviderRouteResearch
 	manifest := corpusTestManifest(t)

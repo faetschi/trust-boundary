@@ -84,6 +84,9 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	if *schema != evalscore.SchemaVersion {
 		return fmt.Errorf("--evalscore-schema %q is not the registered %q", *schema, evalscore.SchemaVersion)
 	}
+	if *profile == corpusadmit.ProfileRehearsal {
+		return errors.New("a rehearsal corpus is development evidence and cannot be pre-registered")
+	}
 	names, err := parseReviewers(*reviewers)
 	if err != nil {
 		return err

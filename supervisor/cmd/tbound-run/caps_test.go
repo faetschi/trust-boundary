@@ -26,7 +26,6 @@ func TestCapsRefusesAManifestWithoutAnAttackerPin(t *testing.T) {
 	}
 }
 
-// The caps of a development round must not pass for the research pilot's: the document says which profile they came from.
 func TestPilotCapsDocRecordsTheSourceProfile(t *testing.T) {
 	for _, profile := range []string{quotaPilot, quotaRehearsal} {
 		raw, err := json.Marshal(newPilotCapsDoc(plan{cfg: runConfig{QuotaProfile: profile}}, nil, calibration.PilotCaps{}))

@@ -89,7 +89,7 @@ type productionCorpus struct {
 	cdh           *runner.CDHConfig
 	hintProviders map[string]providerbridge.HintProvider
 	digest        string
-	// quotaProfile is the profile the manifest was validated under: "thesis" or "pilot".
+	// quotaProfile is the profile the manifest was validated under: "thesis", "pilot", "screening" or "rehearsal".
 	quotaProfile string
 	trials       map[string]evalcorpus.Trial
 	cases        map[string]corpusCase
@@ -214,17 +214,21 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 	}
 	profile := config.effectiveCorpusQuotaProfile()
 	if profile != piruntime.D09ManagedPiCorpusQuotaProfilePilot && profile != piruntime.D09ManagedPiCorpusQuotaProfileThesis &&
-		profile != piruntime.D09ManagedPiCorpusQuotaProfileScreening {
+		profile != piruntime.D09ManagedPiCorpusQuotaProfileScreening && profile != piruntime.D09ManagedPiCorpusQuotaProfileRehearsal {
 		return nil, fmt.Errorf("%w: unknown corpus quota profile %q", ErrPiServiceCorpus, profile)
 	}
 	// The research pilot's adversarial cases are the random pilot draw (D40 as amended by D48), so a pilot corpus on the
-	// research route must pin it; the rehearsal counts are for the engineering route only.
+	// research route must pin it; a rehearsal corpus (D64) never does, so it can never be the research pilot.
 	if profile == piruntime.D09ManagedPiCorpusQuotaProfilePilot && config.ProviderRoute == piruntime.D09ManagedPiProviderRouteResearch &&
 		manifest.Pins.DrawDigest == "" {
 		return nil, fmt.Errorf("%w: a pilot corpus on the research route is the research pilot and must pin its D48 pilot draw (pins.draw_digest)", ErrPiServiceCorpus)
 	}
-	if profile == piruntime.D09ManagedPiCorpusQuotaProfileScreening && config.ProviderRoute != piruntime.D09ManagedPiProviderRouteResearch {
-		return nil, fmt.Errorf("%w: the screening profile runs on the research route only", ErrPiServiceCorpus)
+	if profile == piruntime.D09ManagedPiCorpusQuotaProfileRehearsal && manifest.Pins.DrawDigest != "" {
+		return nil, fmt.Errorf("%w: a rehearsal corpus is a development corpus and must not pin a D48 draw (pins.draw_digest)", ErrPiServiceCorpus)
+	}
+	if (profile == piruntime.D09ManagedPiCorpusQuotaProfileScreening || profile == piruntime.D09ManagedPiCorpusQuotaProfileRehearsal) &&
+		config.ProviderRoute != piruntime.D09ManagedPiProviderRouteResearch {
+		return nil, fmt.Errorf("%w: the %s profile runs on the research route only", ErrPiServiceCorpus, profile)
 	}
 	quotas, err := corpusQuotasFor(profile, manifest)
 	if err != nil {
@@ -254,7 +258,7 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 	for _, c := range manifest.Cases {
 		corpus.trials[c.CaseID] = *c.Trial
 		corpus.cases[c.CaseID] = corpusCase{kind: c.Kind, variance: c.Adversarial != nil && c.Adversarial.VarianceSubset,
-			pOnly: profile == piruntime.D09ManagedPiCorpusQuotaProfilePilot && c.Adversarial != nil && c.Adversarial.ThreatClass == evalcorpus.ClassTMC}
+			pOnly: (profile == piruntime.D09ManagedPiCorpusQuotaProfilePilot || profile == piruntime.D09ManagedPiCorpusQuotaProfileRehearsal) && c.Adversarial != nil && c.Adversarial.ThreatClass == evalcorpus.ClassTMC}
 		if digest, ok := corpusadmit.FixtureDigest(c); ok {
 			corpus.fixtures[c.CaseID] = digest
 		}

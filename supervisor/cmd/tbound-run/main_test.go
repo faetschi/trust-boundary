@@ -754,7 +754,6 @@ func TestPlanVNeedsTheImagePinAndRefusesScreening(t *testing.T) {
 	}
 }
 
-// The rehearsal profile (D64 item 7) plans exactly like the pilot profile; it is development evidence only.
 func TestRehearsalProfilePlansLikePilot(t *testing.T) {
 	e := newEnv(t)
 	pilot, err := e.cliCfg(nil, "plan")
@@ -789,7 +788,6 @@ func TestRehearsalRunIsRefusedByTheResultPaths(t *testing.T) {
 			t.Errorf("%s: got %v, want a refusal naming development evidence", name, err)
 		}
 	}
-	// caps takes a rehearsal run: its refusal here is the missing attacker pin, not the profile.
 	if _, err := e.cliCfg(nil, "caps", "--out", e.path("caps.json")); err == nil || !strings.Contains(err.Error(), "pins no attacker artifact") {
 		t.Fatalf("caps on a rehearsal run: %v", err)
 	}

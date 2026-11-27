@@ -32,6 +32,7 @@ type pilotCapsDoc struct {
 	Schema         string            `json:"schema"`
 	PlanDigest     string            `json:"plan_digest"`
 	ManifestDigest string            `json:"manifest_digest"`
+	SourceProfile  string            `json:"source_profile"`
 	AttackerDigest string            `json:"attacker_digest"`
 	Cases          []pilotCaseRow    `json:"cases"`
 	PivotStates    int               `json:"pivot_states"`
@@ -75,10 +76,7 @@ func (a *app) capsCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		doc := pilotCapsDoc{Schema: pilotCapsSchema, PlanDigest: p.sched.Digest, ManifestDigest: p.digest,
-			AttackerDigest: p.manifest.Pins.AttackerDigest, Cases: pilotCaseRows(cases), PivotStates: d.L, Q95: d.Q95,
-			PilotMaximum: specCaps(d.PilotMax), Caps: specCaps(d.Caps)}
-		raw, err := json.MarshalIndent(doc, "", "  ")
+		raw, err := json.MarshalIndent(newPilotCapsDoc(p, cases, d), "", "  ")
 		if err != nil {
 			return err
 		}
@@ -98,6 +96,12 @@ func (a *app) capsCmd(args []string) error {
 			out, d.L, d.Q95, d.Caps.Iterations, d.Caps.ToolCalls, d.Caps.WallMS, sha256.Sum256(raw))
 		return nil
 	})
+}
+
+func newPilotCapsDoc(p plan, cases []calibration.PilotCase, d calibration.PilotCaps) pilotCapsDoc {
+	return pilotCapsDoc{Schema: pilotCapsSchema, PlanDigest: p.sched.Digest, ManifestDigest: p.digest, SourceProfile: p.cfg.QuotaProfile,
+		AttackerDigest: p.manifest.Pins.AttackerDigest, Cases: pilotCaseRows(cases), PivotStates: d.L, Q95: d.Q95,
+		PilotMaximum: specCaps(d.PilotMax), Caps: specCaps(d.Caps)}
 }
 
 func pivotStates(l attacker.SpecLibrary) int {

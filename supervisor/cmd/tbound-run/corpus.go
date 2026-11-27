@@ -30,7 +30,7 @@ type plan struct {
 // quotasFor returns the quotas of a profile for m, from the D48 draw it pins in the artifact directory
 // (corpusadmit.QuotasFor), as the corpus-mode service resolves them.
 func quotasFor(profile string, m evalcorpus.Manifest, artifactsDir string) (evalcorpus.Quotas, error) {
-	if profile != quotaThesis && profile != quotaPilot && profile != quotaScreening {
+	if profile != quotaThesis && profile != quotaPilot && profile != quotaScreening && profile != quotaRehearsal {
 		return evalcorpus.Quotas{}, fmt.Errorf("unknown quota profile %q", profile)
 	}
 	var artifacts fs.FS

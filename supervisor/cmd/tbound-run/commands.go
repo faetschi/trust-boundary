@@ -87,6 +87,9 @@ func (a *app) runCmd(args []string) error {
 			return fmt.Errorf("%w: --max-steps must not be negative", errUsage)
 		}
 		if registration != "" {
+			if err := refuseRehearsal(p, "run --registration"); err != nil {
+				return err
+			}
 			if _, err := checkRegistration(registration, p); err != nil {
 				return err
 			}
@@ -173,6 +176,9 @@ func (a *app) exportCmd(args []string) error {
 		if out == "" {
 			return fmt.Errorf("%w: export needs --out", errUsage)
 		}
+		if err := refuseRehearsal(p, "export"); err != nil {
+			return err
+		}
 		res, err := a.exportJournal(p, closeReruns)
 		if err != nil {
 			return err
@@ -190,6 +196,13 @@ func (a *app) exportCmd(args []string) error {
 
 // closeRerunsUsage explains --close-reruns (register D30 as amended 2026-11-18).
 const closeRerunsUsage = "close the run: a unit still waiting for its registered rerun is CONSERVATIVE_FAILURE (rerun_not_taken)"
+
+func refuseRehearsal(p plan, command string) error {
+	if p.cfg.QuotaProfile == quotaRehearsal {
+		return fmt.Errorf("%s: a rehearsal run is development evidence, not a result for the research pilot, screening or H1", command)
+	}
+	return nil
+}
 
 func (a *app) exportJournal(p plan, closeReruns bool) (runner.ExportResult, error) {
 	j, err := existingJournal(p)
@@ -278,6 +291,9 @@ func (a *app) reportCmd(args []string) error {
 	}, func(p plan) error {
 		if dir == "" {
 			return fmt.Errorf("%w: report needs --out", errUsage)
+		}
+		if err := refuseRehearsal(p, "report"); err != nil {
+			return err
 		}
 		d48, err := d48Inputs(p, ledgerV3, certification)
 		if err != nil {

@@ -92,10 +92,11 @@ const (
 
 	// Corpus quota profiles. "thesis" (the default when the member is absent) validates a
 	// corpus manifest against the pre-registered quotas; "pilot" against the small explicit
-	// pilot quotas of a pilot or G4 dry run, whose results are not thesis results.
+	// pilot quotas of a pilot or G4 dry run, whose results are not thesis results; "rehearsal" (D64) is a pilot-count development corpus.
 	D09ManagedPiCorpusQuotaProfileThesis    = "thesis"
 	D09ManagedPiCorpusQuotaProfilePilot     = "pilot"
 	D09ManagedPiCorpusQuotaProfileScreening = "screening"
+	D09ManagedPiCorpusQuotaProfileRehearsal = "rehearsal"
 )
 
 // D09ManagedPiServiceSocket is the fixed systemd activation policy for the
@@ -194,7 +195,7 @@ type D09ManagedPiServiceConfig struct {
 	CorpusManifestDigest string `json:"corpus_manifest_digest,omitempty"`
 
 	// CorpusQuotaProfile selects the quotas a corpus manifest is validated against: absent
-	// or "thesis", or "pilot". Corpus mode only. AllowPilotOnResearch is the explicit
+	// or "thesis", "pilot", "screening" or "rehearsal". Corpus mode only. AllowPilotOnResearch is the explicit
 	// allowance that a "pilot" profile needs, and only needs, on the research provider route
 	// (default false); it is refused in every other combination. Both are members of the
 	// signed document, so the config digest the registration pins covers them.
@@ -256,7 +257,7 @@ func (c D09ManagedPiServiceConfig) validCorpusQuotaProfile() bool {
 		return !c.AllowPilotOnResearch
 	case D09ManagedPiCorpusQuotaProfilePilot:
 		return c.AllowPilotOnResearch == (c.ProviderRoute == D09ManagedPiProviderRouteResearch)
-	case D09ManagedPiCorpusQuotaProfileScreening:
+	case D09ManagedPiCorpusQuotaProfileScreening, D09ManagedPiCorpusQuotaProfileRehearsal:
 		return !c.AllowPilotOnResearch && c.ProviderRoute == D09ManagedPiProviderRouteResearch
 	}
 	return false
