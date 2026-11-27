@@ -16,8 +16,10 @@ constant subcommand out of GIT_READ. Stdlib only. The dev_overlap precheck runs 
 import argparse
 import ast
 import glob
+import hashlib
 import json
 import os
+import subprocess
 import sys
 
 sys.dont_write_bytecode = True
@@ -131,6 +133,33 @@ class Visitor(ast.NodeVisitor):
         indirect = self.stack and self.stack[-1] == INDIRECT_GIT[1] and self.rel.endswith(INDIRECT_GIT[0])
         if sub not in GIT_READ and not indirect:
             self.fail(node, f"git subcommand {sub!r} is not one of {sorted(GIT_READ)}")
+
+
+def tool_state(paths):
+    """For each tool file: its git blob id in the working tree, the blob id at HEAD, and whether they are equal (clean).
+    Records made by a renderer, the carrier builder or the checker say which committed tools made them."""
+    top = os.path.dirname(HERE)
+    out = {}
+    for p in paths:
+        rel = os.path.relpath(os.path.abspath(p), REPO).replace("\\", "/")
+        with open(p, "rb") as f:
+            data = f.read()
+        work = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+        r = subprocess.run(["git", "-C", top, "rev-parse", f"HEAD:{rel}"], capture_output=True, text=True)
+        head = r.stdout.strip() if r.returncode == 0 else None
+        out[rel] = {"blob": work, "head_blob": head, "clean": work == head}
+    return out
+
+
+def require_clean(paths):
+    """Returns (repo HEAD, tool_state); exits when a tool file differs from HEAD: records come from committed tools only."""
+    state = tool_state(paths)
+    dirty = sorted(k for k, v in state.items() if not v["clean"])
+    if dirty:
+        sys.exit("a tool file differs from HEAD (commit it first, records come from committed tools only): " + ", ".join(dirty))
+    top = os.path.dirname(HERE)
+    head = subprocess.run(["git", "-C", top, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    return head, state
 
 
 def check(extra=()):

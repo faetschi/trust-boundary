@@ -150,6 +150,9 @@ def classify_all(src, tasks):
         if not prot or any(p not in ws for p in prot):
             skips[name] = "O4: the evaluator names a file absent from the workspace"
             continue
+        if any(not re.fullmatch(r"[A-Za-z0-9_.][A-Za-z0-9_./-]*", p) or ".." in p.split("/") or "//" in p for p in prot):
+            skips[name] = "O4: a protected path has characters outside [A-Za-z0-9_.][A-Za-z0-9_./-]* (it goes into guest bash commands)"
+            continue
         if cls == "content" and prot[0].rsplit("/", 1)[-1] not in task:
             skips[name] = "O4: the task text does not name the file"
             continue
@@ -348,7 +351,7 @@ def main():
     ext = D.load_skips(a.skips)
     by_class = {c: sorted(n for n, g in good.items() if g["class"] == c) for c in ("delete", "mode", "content")}
     rec = {"source": "OpenAgentSafety", "pin_key": PIN_KEY, "pin": {k: pin[k] for k in ("rev", "license", "repository")}, "tasks": len(tasks),
-           "tool": "corpus/sampling/dev_src_oas.py", "tool_sha256": D.self_sha(__file__), "tool_repo_head": D.repo_head(),
+           **D.provenance(__file__),
            "domain": D.DOMAIN, "seed": D.SEED, "index": index, "pool": by_class,
            "filtered_out": filt, "cases": [], "order": {}, "skips": []}
     os.makedirs(a.out, exist_ok=True)
@@ -366,7 +369,7 @@ def main():
             return tmb_case(a.src, "f36dev:oas:x", n, good[n], pin, D.PB.Artifacts(a.tbound_run))[1]
         chosen, head, seen = D.take(purpose, pool, take_n, ext, reject)
         rec["order"][purpose] = head
-        rec["skips"] += [dict(s, purpose=purpose) for s in seen if s not in rec["skips"]]
+        rec["skips"] += [dict(s, purpose=purpose) for s in seen if (s["id"], s["reason"]) not in {(k["id"], k["reason"]) for k in rec["skips"]}]
         name = chosen[take_n - 1]
         cid = f"f36dev:oas:{name.replace('safety-', '')}{a.suffix}"
         art = D.PB.Artifacts(a.tbound_run)
@@ -381,7 +384,10 @@ def main():
         case, files = amb_case(a.src, cid, name, tasks[name], pin, art)
         write(a, cid, case, art, pin, lic, name, {"files": files})
         rec["cases"].append({"case_id": cid, "kind": "ambiguous", "role": "ambiguous", "source": PIN_KEY, "item": name,
-                             "bundle": cid.replace(":", "_"), "shared_files": []})
+                             "bundle": cid.replace(":", "_"), "shared_files": [],
+                             **({"repeat_of": cid.replace(a.suffix, ".ds1"), "note": "a repeat of the devset-01 task under a fresh id; at temperature 0 this only keeps the quota"} if index == 2 else {})})
+    if index == 2:
+        rec["diversity_note"] = "TM-B takes the 4 remaining eligible tasks as they are: 1 delete and 3 content tasks on one workspace (no filter change); low diversity"
     rec["ambiguous_not_used"] = {"safety-ambiguous-cron-job": "F-FIXTURE: no workspace, and the task names /var (rule step 5)"}
     D.record(a.record, rec)
     print(json.dumps({"cases": [c["case_id"] for c in rec["cases"]]}, indent=1))

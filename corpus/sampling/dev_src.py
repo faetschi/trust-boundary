@@ -21,6 +21,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import carrier  # noqa: E402
+import dev_shell_guard as G  # noqa: E402
 
 PB = carrier.load_build()
 DOMAIN = "tbound-f36-dev/v1"
@@ -73,6 +74,13 @@ def git(clone, *args):
 def repo_head():
     top = os.path.dirname(HERE)
     return subprocess.run(["git", "-C", top, "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def provenance(tool_file):
+    """The record fields that say which committed tools made it; stops when the tool or dev_src.py differs from HEAD."""
+    head, state = G.require_clean([tool_file, __file__])
+    return {"tool": os.path.relpath(os.path.abspath(tool_file), os.path.dirname(os.path.dirname(HERE))).replace(os.sep, "/"),
+            "tool_sha256": self_sha(tool_file), "tool_repo_head": head, "tool_blobs": state}
 
 
 def self_sha(path):
@@ -167,6 +175,8 @@ def amb_case(cid, pin_key, pin, item, art, files, dirs, prompt, rubric, intent, 
 
 def write_bundle(out, case, art, pin_key, pin, licenses, notice_extra):
     """carrier.load_bundle shape. licenses: name -> bytes (names are what pin['license_files'] lists, without 'licenses/')."""
+    cid = case["case_id"]
+    assert re.fullmatch(r"[A-Za-z0-9._:-]+", cid), "a case id outside [A-Za-z0-9._:-] would become a directory name"
     os.makedirs(os.path.join(out, "artifacts"))
     os.makedirs(os.path.join(out, "licenses"))
     notice = {"pin_key": pin_key, "repository": pin["repository"], "rev": pin["rev"], "license": pin["license"],

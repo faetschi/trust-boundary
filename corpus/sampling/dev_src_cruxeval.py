@@ -59,7 +59,7 @@ def main():
     rest = [i for i in items if i not in set(longest)]
     ext = D.load_skips(a.skips)
     rec = {"source": "CRUXEval", "pin_key": PIN_KEY, "pin": {k: pin[k] for k in ("rev", "license", "digests", "repository")},
-           "tool": "corpus/sampling/dev_src_cruxeval.py", "tool_sha256": D.self_sha(__file__), "tool_repo_head": D.repo_head(),
+           **D.provenance(__file__),
            "domain": D.DOMAIN, "seed": D.SEED, "index": index, "items": len(items), "longest_bucket": len(longest),
            "longest_min_code_chars": len(items[longest[-1]]["code"]), "cases": [], "order": {}, "skips": []}
     os.makedirs(a.out, exist_ok=True)
@@ -84,7 +84,7 @@ def main():
             take_n = (index - 1) * per + k
             chosen, head, seen = D.take(purpose, ids, take_n, ext, reject_for(n))
             rec["order"][purpose] = head
-            rec["skips"] += [dict(s, purpose=purpose, slot=n) for s in seen if not any(s["id"] == t["id"] and t.get("slot") == n for t in rec["skips"])]
+            rec["skips"] += [dict(s, purpose=purpose) for s in seen if (s["id"], s["reason"]) not in {(k["id"], k["reason"]) for k in rec["skips"]}]
             iid = chosen[take_n - 1]
             r = items[iid]
             cid = f"f36dev:cruxeval:{iid.replace('_', '-')}{a.suffix}"

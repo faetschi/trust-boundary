@@ -20,7 +20,10 @@ rule fires; the first that does decides, in this order:
 The same rules compare the new cases with each other (and with --prior-selection cases), apart from the files a selection
 lists as shared_files. The tool reads ids and fields of the ledger (never candidate text), corpus/third at git tags (read-only;
 f32..f35-corpus-1 must be the same tree), the T1 pilot draw, corpus/pilot (T5), every carrier but the devset ones, the g1 and
-route-probe sets and bundles/pilot-walk. A missing input stops it (exit 2). Before the verdicts it runs the controls of R7
+route-probe sets and bundles/pilot-walk. A missing input stops it (exit 2), and so does any crash (exit 1 means only that a
+case was dropped). The manifest must hold exactly the selected plus the retained (T5) cases. Every other carriers/devset-*
+directory needs its own --prior-selection. The tool files must equal HEAD. The text rule also uses 12-character shingles for
+texts that are at least 20% non-ASCII. Before the verdicts it runs the controls of R7
 and stops (exit 2) if one gets another result than expected. Stdlib only.
 """
 import argparse
@@ -79,6 +82,21 @@ def norm_hash(text):
 def shingles(ws):
     return {int.from_bytes(hashlib.blake2b(" ".join(ws[i:i + SHINGLE]).encode("utf-8"), digest_size=8).digest(), "big")
             for i in range(len(ws) - SHINGLE + 1)}
+
+
+CHARSH, NONASCII = 12, 0.2
+
+
+def spaceless(text):
+    """True for a text that is at least 20% non-ASCII letters: scripts written without spaces give almost no word tokens."""
+    letters = [c for c in text if c.isalpha()]
+    return bool(letters) and sum(ord(c) > 127 for c in letters) / len(letters) >= NONASCII
+
+
+def cshingles(text):
+    """12-character shingles of the word runs of a text joined together (case-folded, no spaces or punctuation)."""
+    cs = "".join(words(text))
+    return {int.from_bytes(hashlib.blake2b(cs[i:i + CHARSH].encode("utf-8"), digest_size=8).digest(), "big") for i in range(len(cs) - CHARSH + 1)}
 
 
 def idnorm(s):
@@ -152,6 +170,9 @@ class Material:
         self.units = []     # (origin, word list)
         self.unit_hash = {}
         self.index = {}     # shingle -> [unit numbers]
+        self.cunits = []    # (origin, 12-character shingle count) of the texts that are mostly non-ASCII
+        self.cindex = {}    # character shingle -> [cunit numbers]
+        self.draw_ids = []  # the ids of the T1 pilot draw
 
     def add_id(self, value, origin):
         if isinstance(value, str) and value.strip():
@@ -178,29 +199,67 @@ class Material:
             self.units.append((origin, ws))
             for s in shingles(ws):
                 self.index.setdefault(s, []).append(n)
+        if spaceless(text):
+            cs = cshingles(text)
+            if cs:
+                n = len(self.cunits)
+                self.cunits.append((origin, len(cs)))
+                for s in cs:
+                    self.cindex.setdefault(s, []).append(n)
 
-    def containment(self, ws):
-        """(best score, origin) of the 8-word shingle containment over the smaller set against every unit."""
-        if len(ws) < SHINGLE:
-            return 0.0, None
-        mine = shingles(ws)
-        counts = {}
-        for s in mine:
-            for n in self.index.get(s, ()):
-                counts[n] = counts.get(n, 0) + 1
+    def absorb(self, other):
+        """Adds everything of another Material (earlier new cases) to this one."""
+        for k in ("ids", "last", "files", "norm", "fixtures", "unit_hash"):
+            for h, o in getattr(other, k).items():
+                getattr(self, k).setdefault(h, o)
+        for origin, ws in other.units:
+            n = len(self.units)
+            self.units.append((origin, ws))
+            for sh in shingles(ws):
+                self.index.setdefault(sh, []).append(n)
+        for (origin, size), n0 in zip(other.cunits, range(len(other.cunits))):
+            n = len(self.cunits)
+            self.cunits.append((origin, size))
+            for sh, ns in other.cindex.items():
+                if n0 in ns:
+                    self.cindex.setdefault(sh, []).append(n)
+
+    def containment(self, text):
+        """(best score, origin) of the shingle containment over the SMALLER set against every unit: 8-word shingles, and for
+        a text that is mostly non-ASCII also 12-character shingles."""
         best = (0.0, None)
-        for n, c in counts.items():
-            theirs = len(self.units[n][1]) - SHINGLE + 1
-            score = c / min(len(mine), theirs)
-            if score > best[0]:
-                best = (score, self.units[n][0])
+        ws = words(text)
+        if len(ws) >= SHINGLE:
+            mine = shingles(ws)
+            counts = {}
+            for s in mine:
+                for n in self.index.get(s, ()):
+                    counts[n] = counts.get(n, 0) + 1
+            for n, c in counts.items():
+                theirs = len(self.units[n][1]) - SHINGLE + 1
+                score = c / min(len(mine), theirs)
+                if score > best[0]:
+                    best = (score, self.units[n][0])
+        if spaceless(text):
+            mine = cshingles(text)
+            counts = {}
+            for s in mine:
+                for n in self.cindex.get(s, ()):
+                    counts[n] = counts.get(n, 0) + 1
+            for n, c in counts.items():
+                score = c / min(len(mine), self.cunits[n][1])
+                if score > best[0]:
+                    best = (score, self.cunits[n][0] + " (12-character shingles)")
         return best
 
 
-def fixture_files(art, digest):
-    """path -> bytes of a tbound-fixture/v1 artifact, or {} when the artifact is not in this tree."""
+def fixture_files(art, digest, must=False):
+    """path -> bytes of a tbound-fixture/v1 artifact. When the artifact is not in this tree: {} for old material, Stop for a
+    subject (`must`), so a missing fixture never passes silently."""
     name = "artifacts/fixture-" + digest.removeprefix("sha256:") + ".json"
     if name not in art.files():
+        if must:
+            raise Stop(f"the fixture artifact {name} is not in the carrier")
         return {}
     spec = json.loads(art.read(name).decode("utf-8"))
     return {e["path"]: base64.b64decode(e.get("content_b64", "")) for e in spec["entries"] if e["type"] == "file"}
@@ -265,7 +324,8 @@ def load_manifest_tree(tree, mat, origin, inputs, name):
     if any(f.startswith("artifacts/") for f in tree.files()):
         add_artifacts(SubTree(tree, "artifacts/"), mat, origin)
     if name:
-        inputs.append({"name": name, "path": tree.root or f"{tree.tag}:{tree.prefix}", "sha256": tree.digest()})
+        where = os.path.relpath(tree.root, REPO).replace(os.sep, "/") if tree.root else f"{tree.tag}:{tree.prefix}"
+        inputs.append({"name": name, "path": where, "sha256": tree.digest()})
 
 
 class SubTree:
@@ -337,6 +397,7 @@ def build_material(sel_dirs_skip):
     walk(json.loads(draw_raw.decode("utf-8")))
     for i in ids:
         mat.add_id(i, "pilot draw")
+    mat.draw_ids = list(ids)
     t1_raw = rb(t1)
     if not sha(t1_raw).startswith(T1_SHA):
         raise Stop("evidence/T1/pilot-commitment-v1.json is not the commitment with sha256 64cecacc...")
@@ -357,20 +418,29 @@ def build_material(sel_dirs_skip):
         raise Stop("corpus/third differs between the tags f32..f35-corpus-1: " + json.dumps(trees))
     for tag, (tree_id, commit) in trees.items():
         inputs.append({"name": f"corpus/third at {tag}", "path": f"{tag}:{THIRD}", "tree": tree_id, "commit": commit})
-    extra = subprocess.run(["git", "-C", REPO, "tag", "-l", "f3[6-9]-corpus-*"], capture_output=True, text=True).stdout.split()
+    extra = sorted(subprocess.run(["git", "-C", REPO, "tag", "-l", "f3[6-9]-corpus-*"], capture_output=True, text=True).stdout.split())
+    inputs.append({"name": "tags f3[6-9]-corpus-*", "tags": extra})
     third_tags = [CORPUS_TAGS[-1]] + extra
     seen_trees = set()
     for tag in third_tags:
-        tid = subprocess.run(["git", "-C", REPO, "rev-parse", f"{tag}:{THIRD}"], capture_output=True, text=True).stdout.strip()
+        r = subprocess.run(["git", "-C", REPO, "rev-parse", f"{tag}:{THIRD}", f"{tag}^{{commit}}"], capture_output=True, text=True)
+        if r.returncode:
+            raise Stop(f"git tag {tag} has no {THIRD}")
+        tid, commit = r.stdout.split()
+        if tag in extra:
+            inputs.append({"name": f"corpus/third at {tag}", "path": f"{tag}:{THIRD}", "tree": tid, "commit": commit})
         if tid in seen_trees:
             continue
         seen_trees.add(tid)
         third = Tree(tag=tag, prefix=THIRD)
         load_third(third, mat, deny, f"third@{tag}")
-    # T5, g1, carriers (not the devset ones), route-probe, pilot-walk bundles
+    # corpus/pilot (the top-level manifest and artifacts, T5 and the provenance folder), g1, carriers, route-probe, pilot-walk bundles
+    pilot = Tree(root=os.path.join(REPO, "corpus", "pilot"))
+    load_manifest_tree(pilot, mat, "corpus/pilot", inputs, "corpus/pilot")
     t5 = Tree(root=os.path.join(REPO, "corpus", "pilot", "t5-2026-10-29"))
     load_manifest_tree(t5, mat, "T5", inputs, "corpus/pilot/t5-2026-10-29")
     pilot_src = os.path.join(REPO, "corpus", "pilot", "sources.json")
+    inputs.append({"name": "corpus/pilot/sources.json (denylist pins)", "path": "corpus/pilot/sources.json", "sha256": sha(rb(pilot_src))})
     add_pins(rb(pilot_src), deny, "corpus/pilot/sources.json")
     load_manifest_tree(Tree(root=os.path.join(REPO, "corpus", "g1")), mat, "g1", inputs, "corpus/g1")
     rp = os.path.join(REPO, "corpus", "route-probe", "route-probe.json")
@@ -439,7 +509,19 @@ class Subject:
 def subjects_of(carrier_dir, selection):
     art = Tree(root=carrier_dir)
     manifest = json.loads(open(os.path.join(carrier_dir, "manifest.draft.json"), "rb").read().decode("utf-8"))
+    ids = [c["case_id"] for c in manifest["cases"]]
     by_id = {c["case_id"]: c for c in manifest["cases"]}
+    selected = [e["case_id"] for e in selection["cases"]]
+    retained = selection.get("retained", [])
+    t5 = json.loads(open(os.path.join(REPO, "corpus", "pilot", "t5-2026-10-29", "manifest.draft.json"), "rb").read().decode("utf-8"))
+    t5_ids = {c["case_id"] for c in t5["cases"]}
+    for r in retained:
+        if r["t5_case_id"] not in t5_ids or SUFFIX.sub("", r["case_id"]) != r["t5_case_id"]:
+            raise Stop(f"retained case {r['case_id']} is not a T5 case under a round suffix")
+    listed = selected + [r["case_id"] for r in retained]
+    if len(set(listed)) != len(listed) or len(set(ids)) != len(ids) or set(listed) != set(ids):
+        raise Stop("the carrier manifest cases differ from the selected and retained cases of the selection file: only in the manifest "
+                   + json.dumps(sorted(set(ids) - set(listed))[:5]) + ", only in the selection " + json.dumps(sorted(set(listed) - set(ids))[:5]))
     out = []
     for e in selection["cases"]:
         c = by_id.get(e["case_id"])
@@ -449,7 +531,7 @@ def subjects_of(carrier_dir, selection):
         part = c.get("adversarial") or c.get("compliant") or c.get("ambiguous")
         fd = part["workspace_fixture_digest"]
         out.append(Subject(c["case_id"], e.get("source"), e.get("item"), c["kind"], mr["benchmark_key"], mr["benchmark_revision"],
-                           mr["root_id"], fixture_files(art, fd), c["trial"]["prompt"], fd, e.get("shared_files", [])))
+                           mr["root_id"], fixture_files(art, fd, must=True), c["trial"]["prompt"], fd, e.get("shared_files", [])))
     return out
 
 
@@ -497,7 +579,7 @@ def check_one(s, mat, deny, allow, extra=None):
             h = sha(" ".join(ws).encode())
             if h in pool.unit_hash:
                 return "drop", "3", f"{name}: same normalized text as {pool.unit_hash[h]}", 1.0, ignored
-            score, origin = pool.containment(ws)
+            score, origin = pool.containment(text)
             if score >= CONTAIN:
                 return "drop", "3", f"{name}: shingle containment {score:.2f} with {origin}", round(score, 3), ignored
     return "keep", None, None, 0.0, ignored
@@ -559,10 +641,25 @@ def run_controls(mat, deny, allow):
     second = subj("f36dev:ctl:near-dup-b.01", {"data/b.txt": base.replace("mu3 ", "mu999 ").replace("mu40 ", "mu998 ").encode()})
     run("near-duplicate pair, first case", ("keep", None), first)
     run("near-duplicate pair, second case (new against new)", ("drop", ("3",)), second, sub_material(first))
+    run("a pilot draw member under its own id", ("drop", ("2",)), subj("f36dev:ctl:draw-member.01", {}, item=mat.draw_ids[0]))
+    run("revision differs from the allowlist entry", ("drop", ("1",)), subj("f36dev:ctl:revision.01", {}, rev_="0" * 40))
+    kana = "".join(chr(0x3041 + (i * 7) % 80) for i in range(70))
+    cjk_first = subj("f36dev:ctl:cjk-a.01", {"data/a.txt": kana.encode("utf-8")})
+    cjk_second = subj("f36dev:ctl:cjk-b.01", {"data/b.txt": ("Q" * 30 + " " + kana[:35] + " , " + kana[35:] + " " + "Z" * 30).encode("utf-8")})
+    run("non-ASCII payload embedded in longer text (12-character shingles, new against new)", ("drop", ("3",)), cjk_second, sub_material(cjk_first))
     bad = [c for c in controls if not c["ok"]]
     if bad:
         raise Stop("controls failed: " + json.dumps(bad))
     return controls
+
+
+def sha_file(path):
+    with open(path, "rb") as f:
+        return sha(f.read())
+
+
+def rel(path):
+    return os.path.relpath(os.path.abspath(path), REPO).replace(os.sep, "/")
 
 
 def main():
@@ -570,36 +667,49 @@ def main():
     ap.add_argument("--carrier", required=True)
     ap.add_argument("--selection", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--prior-selection", action="append", default=[], help="selection record of an earlier carrier whose carrier dir sits beside --carrier")
+    ap.add_argument("--prior-selection", action="append", default=[], help="selection record of another devset carrier; one is required for every other carriers/devset-* directory")
     a = ap.parse_args()
-    guard = dev_shell_guard.check()  # a required step: no script and no shell call among the dev tools
-    if not guard["passed"]:
-        print("dev_overlap: stopped: shell guard failed: " + "; ".join(guard["violations"]), file=sys.stderr)
-        return 2
+    carrier_name = os.path.basename(a.carrier.rstrip("/\\"))
     try:
-        selection = json.load(open(a.selection, encoding="utf-8"))
-        mat, inputs, deny = build_material({os.path.basename(a.carrier.rstrip("/\\"))})
+        guard = dev_shell_guard.check()  # a required step: no script and no shell call among the dev tools
+        if not guard["passed"]:
+            raise Stop("shell guard failed: " + "; ".join(guard["violations"]))
+        state = dev_shell_guard.tool_state([__file__, dev_shell_guard.__file__])
+        dirty = sorted(k for k, v in state.items() if not v["clean"])
+        if dirty:
+            raise Stop("a tool file differs from HEAD (commit it first, records come from committed tools only): " + ", ".join(dirty))
+        head = subprocess.run(["git", "-C", REPO, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        with open(a.selection, encoding="utf-8") as f:
+            selection = json.load(f)
+        if selection.get("carrier") != carrier_name:
+            raise Stop(f"the selection file is for the carrier {selection.get('carrier')!r}, not {carrier_name!r}")
+        others = sorted(os.path.basename(d) for d in glob.glob(os.path.join(HERE, "carriers", "devset-*")) if os.path.basename(d) != carrier_name)
+        priors = {}
+        for pfile in a.prior_selection:
+            with open(pfile, encoding="utf-8") as f:
+                psel = json.load(f)
+            name = psel.get("carrier")
+            if name not in others or name in priors:
+                raise Stop(f"--prior-selection {pfile} is for {name!r}, which is not another devset carrier or is given twice")
+            priors[name] = (pfile, psel)
+        missing = [o for o in others if o not in priors]
+        if missing:
+            raise Stop("a --prior-selection is required for every other devset carrier; missing: " + ", ".join(missing))
+        mat, inputs, deny = build_material({carrier_name})
         clash = {k: sorted(f for f in keyforms(k) if f in deny) for k in ALLOWLIST}
         if any(clash.values()):
             raise Stop("an allowlist key is also on the denylist: " + json.dumps({k: v for k, v in clash.items() if v}))
         controls = run_controls(mat, deny, ALLOWLIST)
         subs = subjects_of(a.carrier, selection)
         earlier = Material()
-        prior = []
-        for pfile in a.prior_selection:
-            psel = json.load(open(pfile, encoding="utf-8"))
-            pcar = os.path.join(os.path.dirname(a.carrier.rstrip("/\\")), psel["carrier"])
-            prior += [ps for ps in subjects_of(pcar, psel) if ps.kind != "ambiguous"]  # D4: an ambiguous task may repeat under a fresh id
-        for ps in prior:
-            sub = sub_material(ps)
-            for k in ("ids", "last", "files", "norm", "fixtures", "unit_hash"):
-                for h, o in getattr(sub, k).items():
-                    getattr(earlier, k).setdefault(h, o)
-            for origin, ws in sub.units:
-                n = len(earlier.units)
-                earlier.units.append((origin, ws))
-                for sh in shingles(ws):
-                    earlier.index.setdefault(sh, []).append(n)
+        prior_rows = []
+        for name, (pfile, psel) in sorted(priors.items()):
+            pcar = os.path.join(HERE, "carriers", name)
+            for ps in subjects_of(pcar, psel):
+                if ps.kind != "ambiguous":  # D4: an ambiguous task may repeat under a fresh id
+                    earlier.absorb(sub_material(ps))
+            prior_rows.append({"carrier": name, "manifest_sha256": sha_file(os.path.join(pcar, "manifest.draft.json")), "carrier_tree_sha256": Tree(root=pcar).digest(),
+                               "selection": rel(pfile), "selection_sha256": sha_file(pfile)})
         rows, ignored = [], []
         for s in subs:
             verdict, rule, matched, score, ign = check_one(s, mat, deny, ALLOWLIST, earlier)
@@ -607,26 +717,27 @@ def main():
             rows.append({"id": s.case_id, "source": s.key, "item": s.item, "kind": s.kind, "verdict": verdict, "rule": rule,
                          "matched_input": matched, "score": score})
             if verdict == "keep":  # a later case is compared with the kept earlier ones
-                sub = sub_material(s)
-                for k in ("ids", "last", "files", "norm", "fixtures", "unit_hash"):
-                    for h, o in getattr(sub, k).items():
-                        getattr(earlier, k).setdefault(h, o)
-                for origin, ws in sub.units:
-                    n = len(earlier.units)
-                    earlier.units.append((origin, ws))
-                    for sh in shingles(ws):
-                        earlier.index.setdefault(sh, []).append(n)
-    except (Stop, OSError, ValueError) as e:
-        print(f"dev_overlap: stopped: {e}", file=sys.stderr)
-        return 2
-    report = {"schema": "tbound-f36-dev-overlap/v1", "shell_guard": guard, "inputs": inputs, "tool_sha256": sha(open(__file__, "rb").read()),
-              "allowlist": {k: {"revision": v[0], "config": v[1]} for k, v in ALLOWLIST.items()},
-              "denylist": sorted(set(deny.values())), "denylist_clash_with_allowlist": {k: sorted(f for f in keyforms(k) if f in deny) for k in ALLOWLIST}, "exercism_in_denylist": sorted(v for f, v in deny.items() if "exercism" in f or "exercism" in v.casefold()), "controls": controls, "cases": rows, "ignored_files": ignored,
-              "rules": {"min_file_bytes_normalized": MIN_FILE, "shingle_words": SHINGLE, "containment_threshold": CONTAIN,
-                        "containment_divides_by": "the smaller shingle set"}}
+                earlier.absorb(sub_material(s))
+        report = {"schema": "tbound-f36-dev-overlap/v1", "shell_guard": guard, "tool": {"tool_repo_head": head, "tool_blobs": state},
+                  "tool_sha256": sha_file(__file__),
+                  "carrier": {"name": carrier_name, "manifest_sha256": sha_file(os.path.join(a.carrier, "manifest.draft.json")), "carrier_tree_sha256": Tree(root=a.carrier).digest(),
+                              "selection": rel(a.selection), "selection_sha256": sha_file(a.selection)},
+                  "prior_carriers": prior_rows, "inputs": inputs,
+                  "allowlist": {k: {"revision": v[0], "config": v[1]} for k, v in ALLOWLIST.items()},
+                  "denylist": sorted(set(deny.values())), "denylist_clash_with_allowlist": clash,
+                  "exercism_in_denylist": sorted(v for f, v in deny.items() if "exercism" in f or "exercism" in v.casefold()),
+                  "controls": controls, "cases": rows, "ignored_files": ignored,
+                  "rules": {"min_file_bytes_normalized": MIN_FILE, "shingle_words": SHINGLE, "shingle_characters_for_non_ascii_text": CHARSH,
+                            "non_ascii_share": NONASCII, "containment_threshold": CONTAIN, "containment_divides_by": "the smaller shingle set"}}
+        text = json.dumps(report, indent=1, ensure_ascii=False) + "\n"
+        for bad in (REPO, REPO.replace("\\", "/"), json.dumps(REPO)[1:-1]):
+            if bad in text:
+                raise Stop("the report holds a local absolute path")
+    except (Stop, OSError, ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
+        print(f"dev_overlap: stopped: {type(e).__name__}: {e}", file=sys.stderr)
+        return 2  # 1 is reserved for "a case was dropped"
     with open(a.out, "w", encoding="utf-8", newline="\n") as f:
-        json.dump(report, f, indent=1, ensure_ascii=False)
-        f.write("\n")
+        f.write(text)
     dropped = [r for r in rows if r["verdict"] == "drop"]
     print(json.dumps({"cases": len(rows), "kept": len(rows) - len(dropped), "dropped": [(r["id"], r["rule"], r["matched_input"]) for r in dropped],
                       "controls_ok": all(c["ok"] for c in controls)}, indent=1))

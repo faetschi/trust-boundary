@@ -20,6 +20,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import carrier as C  # noqa: E402
+import dev_shell_guard as G  # noqa: E402
 
 
 def bundle_dirs(roots):
@@ -56,7 +57,17 @@ def build(a):
     build_mod = C.load_build()
     if os.path.exists(a.out):
         raise C.CarrierError(f"--out {a.out} already exists")
+    head, tool_blobs = G.require_clean([__file__])
     bundles = [C.load_bundle(d) for d in bundle_dirs(a.bundles)]
+    records = {}
+    for p in a.records:
+        r = C.read_json(p)
+        if r["source"] in records:
+            raise C.CarrierError(f"two records for the source {r['source']}")
+        records[r["source"]] = r
+    rec_ids = [c["case_id"] for r in records.values() for c in r["cases"]]
+    if len(set(rec_ids)) != len(rec_ids) or set(rec_ids) != {b["case"]["case_id"] for b in bundles}:
+        raise C.CarrierError("the bundle case ids differ from the case ids of the records")
     for b in bundles:
         case = b["case"]
         mr = case["meaning_record"]
@@ -86,8 +97,8 @@ def build(a):
     new_ids = {b["case"]["case_id"] for b in bundles}
     retained_cases = [c for c in cases if c["case_id"] not in new_ids]
     for c in retained_cases:
-        if c["kind"] != "compliant":
-            raise C.CarrierError(f"retained case {c['case_id']} is {c['kind']}; only compliant write, edit and bash cases may stay")
+        if c["kind"] != "compliant" or c["compliant"]["primary_tool"] not in ("write", "edit", "bash"):
+            raise C.CarrierError(f"retained case {c['case_id']} is not a compliant write, edit or bash case")
     old_ids = [c["case_id"] for c in retained_cases]
     C.rename_ids(retained_cases, a.suffix)
     retained = [{"case_id": c["case_id"], "t5_case_id": o, "role": c["compliant"]["primary_tool"], "reason": "R1 pending: write, edit and bash sourcing"}
@@ -115,9 +126,13 @@ def build(a):
 
     sources = C.merge_sources(C.read_json(os.path.join(C.PILOT, "sources.json")), bundles)
     licenses = C.merge_files(C.read_tree(os.path.join(C.PILOT, "licenses")), bundles, "licenses", "licence")
-    notices = C.read_bytes(os.path.join(C.PILOT, "THIRD_PARTY_NOTICES.md")) + b"\n" + notices_section(a.round, bundles).encode("utf-8")
+    notices = C.read_bytes(os.path.join(C.PILOT, "THIRD_PARTY_NOTICES.md")) + b"\n" + notices_section(a.round, bundles, bool(retained)).encode("utf-8")
 
     manifest_bytes = C.dump_json(manifest, 2)
+    for name in dropped:
+        digest = name.split("-", 1)[1].rsplit(".", 1)[0]
+        if digest in manifest_bytes.decode("utf-8"):
+            raise C.CarrierError(f"the dropped artifact {name} is still named in the manifest")
     os.makedirs(a.out)
     for sub, files in (("artifacts", artifacts), ("licenses", licenses)):
         os.makedirs(os.path.join(a.out, sub))
@@ -127,12 +142,12 @@ def build(a):
     for name, data in (("manifest.draft.json", manifest_bytes), ("sources.json", C.dump_json(sources, 1)), ("THIRD_PARTY_NOTICES.md", notices)):
         with open(os.path.join(a.out, name), "wb") as f:
             f.write(data)
-    write_selection(a, bundles, replaced, retained, dropped, manifest, cases)
+    write_selection(a, records, replaced, retained, dropped, manifest, head, tool_blobs)
     import hashlib
     return hashlib.sha256(manifest_bytes).hexdigest()
 
 
-def notices_section(round_, bundles):
+def notices_section(round_, bundles, retained):
     pins = {}
     for b in bundles:
         pins[b["notice"]["pin_key"]] = b["notice"]
@@ -147,23 +162,19 @@ def notices_section(round_, bundles):
     for b in sorted(bundles, key=lambda b: b["case"]["case_id"]):
         n = b["notice"]
         lines.append(f"- `{n['case_id']}`: {n['pin_key']} `{n['source_item_id']}`")
-    lines += ["", "The T5 write, edit and bash compliant cases of this carrier keep their MultiPL-E sources above; their ids carry the round suffix."]
+    if retained:
+        lines += ["", "The T5 write, edit and bash compliant cases of this carrier keep their MultiPL-E sources above; their ids carry the round suffix."]
     return "\n".join(lines) + "\n"
 
 
-def write_selection(a, bundles, replaced, retained, dropped, manifest, cases):
-    records = {}
-    for p in a.records:
-        with open(p, encoding="utf-8") as f:
-            r = json.load(f)
-        records[r["source"]] = r
+def write_selection(a, records, replaced, retained, dropped, manifest, head, tool_blobs):
     rows = []
     for r in records.values():
         for c in r["cases"]:
-            rows.append(dict(c, source=r["pin_key"]))
+            rows.append({"source": r["pin_key"], **c})
     rec = {"schema": "tbound-f36-devset-selection/v1", "carrier": os.path.basename(a.out.rstrip("/\\")), "round": a.round,
            "split_seed": manifest["split_seed"], "cases": rows, "retained": retained, "replaced_t5_cases": replaced,
-           "dropped_artifacts": dropped, "records": records}
+           "dropped_artifacts": dropped, "carrier_tool": {"tool_repo_head": head, "tool_blobs": tool_blobs}, "records": records}
     os.makedirs(os.path.dirname(os.path.abspath(a.selection_out)), exist_ok=True)
     with open(a.selection_out, "w", encoding="utf-8", newline="\n") as f:
         json.dump(rec, f, indent=1, ensure_ascii=False)

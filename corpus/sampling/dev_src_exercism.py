@@ -326,8 +326,8 @@ def bash_validate(program, script, example, bash_path):
 # ------------------------------------------------------------------ picking
 
 class Picker:
-    def __init__(self, js, bash, rev_js, rev_bash, bash_path):
-        self.js, self.bash, self.rj, self.rb, self.bp = js, bash, rev_js, rev_bash, bash_path
+    def __init__(self, js, bash, rev_js, rev_bash, bash_path, ext):
+        self.js, self.bash, self.rj, self.rb, self.bp, self.ext = js, bash, rev_js, rev_bash, bash_path, ext
         self.cache, self.skips = {}, []
 
     def js_ok(self, slug):
@@ -368,8 +368,8 @@ class Picker:
         for slug in D.seeded_order(purpose, slugs(self.js, self.rj)):
             if len(out) == n:
                 break
-            if slug in taken:
-                self.skips.append({"id": f"javascript/{slug}", "purpose": purpose, "reason": "used by another slot"})
+            if slug in taken or f"javascript/{slug}" in self.ext:
+                self.skips.append({"id": f"javascript/{slug}", "purpose": purpose, "reason": "used by another slot" if slug in taken else self.ext[f"javascript/{slug}"]})
                 continue
             info, why = self.js_ok(slug)
             if info and purpose.endswith("edit"):
@@ -387,8 +387,8 @@ class Picker:
         for slug in D.seeded_order(purpose, slugs(self.bash, self.rb)):
             if len(out) == n:
                 break
-            if slug in taken:
-                self.skips.append({"id": f"bash/{slug}", "purpose": purpose, "reason": "used by another slot"})
+            if slug in taken or f"bash/{slug}" in self.ext:
+                self.skips.append({"id": f"bash/{slug}", "purpose": purpose, "reason": "used by another slot" if slug in taken else self.ext[f"bash/{slug}"]})
                 continue
             files = read_exercise(self.bash, self.rb, f"exercises/practice/{slug}")
             bats = [k for k in files if k.endswith(".bats")]
@@ -428,13 +428,13 @@ def main():
         assert lic.startswith(b"MIT License"), key + ": the licence at the pin is not MIT"
         name = key.replace("/", "-") + "-LICENSE"
         pins[key] = {"rev": rev, "license": "MIT", "digests": [], "repository": url, "license_files": ["licenses/" + name], "_lic": (name, lic)}
-    pk = Picker(a.js, a.bash, rj, rb, a.node_bash)
+    pk = Picker(a.js, a.bash, rj, rb, a.node_bash, D.load_skips(a.skips))
     write = pk.pick_js("exercism/js/write", 10, set())
     edit = pk.pick_js("exercism/js/edit", 10, {i["slug"] for i in write})
     bash = pk.pick_bash("exercism/bash", 10, {i["slug"] for i in write} | {i["slug"] for i in edit})
     lo, hi = (index - 1) * 5, index * 5
     rec = {"source": "Exercism", "pin_key": JS_KEY + " + " + BASH_KEY, "pins": {k: {x: v[x] for x in ("rev", "license", "repository")} for k, v in pins.items()},
-           "tool": "corpus/sampling/dev_src_exercism.py", "tool_sha256": D.self_sha(__file__), "tool_repo_head": D.repo_head(), "domain": D.DOMAIN,
+           **D.provenance(__file__), "domain": D.DOMAIN,
            "seed": D.SEED, "index": index, "shim_sha256": hashlib.sha256(SHIM.encode()).hexdigest(), "operators": [o[0] for o in OPERATORS],
            "picks": {"write": [i["slug"] for i in write], "edit": [i["slug"] for i in edit], "bash": [i["slug"] for i in bash]},
            "skips": pk.skips, "cases": []}

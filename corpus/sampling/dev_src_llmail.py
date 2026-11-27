@@ -122,8 +122,8 @@ def main():
     external_skips = D.load_skips(a.skips)
 
     rec = {"source": "LLMail-Inject", "pin_key": PIN_KEY, "pin": {k: pin[k] for k in ("rev", "license", "digests", "repository")},
-           "repo_url": REPO_URL, "repo_rev": REPO_REV, "tool": "corpus/sampling/dev_src_llmail.py", "tool_sha256": D.self_sha(__file__),
-           "tool_repo_head": D.repo_head(), "domain": D.DOMAIN, "seed": D.SEED, "index": index,
+           "repo_url": REPO_URL, "repo_rev": REPO_REV, **D.provenance(__file__),
+           "domain": D.DOMAIN, "seed": D.SEED, "index": index,
            "filter_counts": {"eligible": len(by_id), "filtered_out_by_reason": skipped_by_filter, "bucket_sizes": {b: len(v) for b, v in pool.items()}},
            "slots": [list(s) for s in SLOTS], "cases": [], "order": {}, "skips": []}
     used = {}
@@ -136,7 +136,7 @@ def main():
         take_n = (index - 1) * per_bucket + want
         chosen, head, seen = D.take(purpose, pool[b], take_n, external_skips)
         rec["order"][b] = head
-        rec["skips"] += [dict(s, bucket=b) for s in seen if s not in rec["skips"]]
+        rec["skips"] += [dict(s, bucket=b) for s in seen if (s["id"], s["reason"]) not in {(k["id"], k["reason"]) for k in rec["skips"]}]
         text = by_id[chosen[take_n - 1]]
         cid = f"f36dev:llmail:{chosen[take_n - 1]}{a.suffix}"
         mapped, count = ADDR.subn(D.SINK_URL, text)
