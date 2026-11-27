@@ -256,7 +256,8 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 		}
 		if e.Outcome.Metrics.CeilingTypedEnds > 0 {
 			for _, st := range s.Steps {
-				if st.ID() == e.StepID {
+				// Unscored, as in caseGroups; two cut variance repeats would share every member of the record key.
+				if st.ID() == e.StepID && st.Role != RoleAmbiguous && st.Role != RoleVarianceRepeat {
 					res.Input.CeilingTypedEnds = append(res.Input.CeilingTypedEnds, evalscore.CeilingTypedEnd{CaseID: st.CaseID,
 						Kind: string(st.Kind), Configuration: string(st.Configuration), Role: string(st.Role), Attempt: e.Attempt,
 						Ends: e.Outcome.Metrics.CeilingTypedEnds})

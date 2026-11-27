@@ -26,7 +26,7 @@ const (
 )
 
 // ErrCeiling marks a failure at an agent-driven bound that has no ledger sentinel: a reply cut at the per-call
-// completion cap off the typed end (D64 item 8), a history that no longer fits the next request, a turn projection over its evidence budget.
+// completion cap that is not a typed end (D64 item 8), a history that no longer fits the next request, a turn projection over its evidence budget.
 var ErrCeiling = errors.New("the run met an agent-driven ceiling")
 
 // The codes of a governed step's UNKNOWN answer that the run-end registry chooses.
