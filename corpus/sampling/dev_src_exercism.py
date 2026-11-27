@@ -9,12 +9,13 @@ Static screen (an exercise is skipped, with the reason recorded, when it fails; 
   S1 JS: `.meta/proof.ci.js` (the example solution), `<slug>.js` (the stub) and `<slug>.spec.js` exist; the example has no
      require, import, process, eval, Function(, fetch, timers or globalThis; the spec has no jest., async, await, hooks,
      .each, .skip, .only, .resolves, .rejects, snapshots or expect.* helper;
-  S2 JS: the spec's only import is `import { names } from './<slug>'`; the stub exports the names with `export const|let|
+  S2 JS: the spec's only imports are `@jest/globals` (describe, expect, test, xtest, it, xit) and `import { names } from './<slug>'`; the stub exports the names with `export const|let|
      function|class`; the names the spec imports are all exported by the stub and by the example; no `export default`;
   S3 bash: `.meta/example.sh`, `.bats` and a `.sh` stub exist; the example has none of: curl wget nc ncat ssh scp rm mv cp dd
      chmod chown sudo eval source exec kill mkfs touch mkdir tee python perl, an output redirect other than `>&2` or `>&1`,
      an input redirect other than `<<<`, or /dev/ or `..`.
-JEST RULE (mechanical conversion of `<slug>.spec.js`): remove the import statement; `xtest(` and `xit(` become `test(`
+JEST RULE (mechanical conversion of `<slug>.spec.js`): remove the import statement and the `@jest/globals` import (amended
+  before any JS selection: the first run found every spec has it; the shim defines those names); `xtest(` and `xit(` become `test(`
   and `it(` (the exercise skips them by default, the conversion runs all); prepend the fixed shim (SHIM below, which maps
   describe, test, it, expect and these matchers to node:assert: toBe toEqual toStrictEqual toBeTruthy toBeFalsy toBeNull
   toBeUndefined toBeDefined toBeNaN toBeCloseTo toBeGreaterThan(OrEqual) toBeLessThan(OrEqual) toContain toHaveLength
@@ -199,6 +200,12 @@ def js_prepare(clone, rev, slug):
         return None, "S1: the example uses a banned construct"
     if JS_SPEC_BAN.search(spec):
         return None, "S1: the spec uses a construct outside the shim"
+    jg = re.compile(r"import\s*\{([^}]*)\}\s*from\s*'@jest/globals';?\s*")
+    g = jg.search(spec)
+    if g:
+        if not {w.strip() for w in g.group(1).split(",") if w.strip()} <= {"describe", "expect", "test", "xtest", "it", "xit"}:
+            return None, "S2: an @jest/globals name outside describe, expect, test, xtest, it, xit"
+        spec = jg.sub("", spec, count=1)
     imp = re.compile(r"import\s*\{([^}]*)\}\s*from\s*'\./" + re.escape(slug) + r"(?:\.js)?';?\s*")
     m = imp.search(spec)
     if not m:
