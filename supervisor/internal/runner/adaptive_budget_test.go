@@ -135,14 +135,11 @@ func TestExportRefusesAnAdaptiveRerunThatBreaksTheCumulativeBudget(t *testing.T)
 				r.AttackerUsage, r.AttackerCumulativeUsage = usage(6, 100), usage(9, 400) // the cap is 8
 			}
 		},
-		"cumulative over the wall cap": func(st Step, attempt int, r *ReceiptFacts) {
+		"cumulative over the tool-call cap": func(st Step, attempt int, r *ReceiptFacts) {
 			consistentReceipts(st, attempt, r)
-			if st.Configuration == CfgC && attempt == 1 {
-				r.AttackerUsage, r.AttackerCumulativeUsage = usage(3, 60_900), usage(3, 60_900)
-			}
 			if attempt == 2 {
-				r.AttackerUsage, r.AttackerCumulativeUsage = usage(2, 100), usage(5, 61_000)
-				r.AttackerPredecessor.CumulativeUsage = *usage(3, 60_900)
+				r.AttackerUsage = &AttackerUsage{Iterations: 2, ToolCalls: 48, WallMS: 100} // the cap is 50
+				r.AttackerCumulativeUsage = &AttackerUsage{Iterations: 5, ToolCalls: 51, WallMS: 400}
 			}
 		},
 		"the rerun restarted with a fresh budget": func(st Step, attempt int, r *ReceiptFacts) {
@@ -175,6 +172,19 @@ func TestExportRefusesAnAdaptiveRerunThatBreaksTheCumulativeBudget(t *testing.T)
 		if _, err := Export(s, j, ExportOptions{}); !errors.Is(err, ErrAdaptiveBudget) {
 			t.Errorf("%s: err = %v", name, err)
 		}
+	}
+}
+
+// The source stops at the wall cap between pivots (D64 item 2), so a receipt can exceed the cap by one pivot.
+func TestExportAcceptsAnAdaptiveWallOvershootOfOnePivot(t *testing.T) {
+	s, j, _ := adaptiveBudgetJournal(t, nil, func(st Step, attempt int, r *ReceiptFacts) {
+		consistentReceipts(st, attempt, r)
+		if attempt == 2 {
+			r.AttackerUsage, r.AttackerCumulativeUsage = usage(2, 60_700), usage(5, 61_000) // the cap is 60,000 ms
+		}
+	})
+	if _, err := Export(s, j, ExportOptions{}); err != nil {
+		t.Fatalf("a wall overshoot of one pivot refused the export: %v", err)
 	}
 }
 
