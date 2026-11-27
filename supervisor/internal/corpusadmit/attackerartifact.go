@@ -75,7 +75,7 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS, maxPreEffectRetries uint64
 	// allow a whole second, and every adaptive case's duration must reach the cap: with a shorter duration the
 	// run deadline, not the pinned cap, would bind a single attempt.
 	if caps.WallMS < 1000 {
-		return fmt.Errorf("attacker wall_ms %d is below one second, the unit of the service run deadline", caps.WallMS)
+		return fmt.Errorf("attacker wall_ms %d is below one second, the smallest wall budget the service admits an attempt with", caps.WallMS)
 	}
 	wallSeconds := uint64((caps.WallMS + 999) / 1000)
 	for _, c := range m.Cases {

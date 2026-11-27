@@ -83,8 +83,8 @@ func (f AdaptiveBudgetFlag) String() string {
 // checkAdaptiveBudgets verifies, for every adaptive replay step of the journal, that its attempts share one
 // budget: each receipt's usage adds up, the cumulative iterations and tool calls stay within the pinned caps
 // (the wall time is not compared: the source stops at the wall cap between pivots, so a receipt can exceed it
-// by one pivot, D64 item 2), attempt 1 has no
-// predecessor, and attempt 2 names attempt 1 (its state digest and cumulative usage) as its predecessor. It
+// by one pivot, D64 item 2), attempt 1 has no predecessor, and attempt 2 names attempt 1 (its state digest
+// and cumulative usage) as its predecessor. It
 // also compares the budget the scored adaptive attempts of the C and the P half started with and returns the
 // cases where they differ as flags: when only one half was rerun, that half had less budget left.
 func checkAdaptiveBudgets(s Schedule, j *Journal) ([]AdaptiveBudgetFlag, error) {
