@@ -31,3 +31,8 @@ bad_popen.py           exit=1 expected=1 os.popen
 bad_shell_true.py      exit=1 expected=1 shell= is not the constant False; subprocess argument is not a list literal
 bad_string_arg.py      exit=1 expected=1 subprocess argument is not a list literal
 good_read.py           exit=0 expected=0 no violation
+
+# 2026-11-27, after the host-execution ruling (commit ef42ac6a): EXEC_ALLOW is empty, run_node refuses
+# guard on the tree: exit 0, violations [] (dev_src_exercism.py no longer imports subprocess)
+# new negative control: a scratch file whose run_node calls subprocess.run(["node", script])
+bad_node_call.py       exit=1 expected=1 subprocess starts a program other than git (or not the allowlisted node call)

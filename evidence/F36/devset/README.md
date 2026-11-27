@@ -70,8 +70,10 @@ negative controls.
   WSL (WSL automounts the host drives).
 - The carriers are built. A case that needs re-validation gets it in the round's acceptance-cell check; a case that fails there
   is a case-building finding.
-- The rule is in the dev-loop runbook and in every builder brief. An independent re-check lists every past host execution
-  (files, interpreter, directory, timeout) and checks that it stayed in its temp directory.
+- The rule is in the dev-loop runbook and in every builder brief, and in code since commit `ef42ac6a`: `run_node` in
+  `dev_src_exercism.py` refuses, and `dev_shell_guard.py` allows no program but the git reads (a node-call control fails it,
+  `shell-guard.txt`). The independent re-check's list of every past host execution and its findings are in
+  `host-executions.md`.
 
 ## c. Low diversity of devset-02
 
