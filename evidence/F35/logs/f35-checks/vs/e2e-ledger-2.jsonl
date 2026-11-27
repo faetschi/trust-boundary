@@ -1,0 +1,3 @@
+{"seq":0,"prev":"0000000000000000000000000000000000000000000000000000000000000000","kind":"genesis","ledger":"tbound-v-stub-probe","cap":1000000}
+{"seq":1,"prev":"eea7b7bdb4658a3c5658284d4d9b9e45f4fe815ba220c4aa06fb3614db5947f6","kind":"reserve","unit":"research-call/24fe1c6b1733f0aebaa2319a86b92c6815980439cae8d221d4cc4e096715396a","micro":44237}
+{"seq":2,"prev":"21b4f5eabc9317c1f31e516c50f96926ec2822f93c4c7bd8794f4ef347accbe9","kind":"overage","unit":"research-call/24fe1c6b1733f0aebaa2319a86b92c6815980439cae8d221d4cc4e096715396a","micro":60000}

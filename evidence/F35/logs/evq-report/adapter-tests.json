@@ -1,0 +1,128 @@
+{
+  "schema": "tbound-guest-evidence/v1",
+  "kind": "adapter-tests",
+  "commit": "9165c43657951f7b3db972cfe228b68249312a7e",
+  "binary_sha256": "sha256:5c2ba09b708eb668c37ad26bd3fe7443f17118f420fe59bd0d49bbde5497c26b",
+  "data": {
+    "commit_tree": "3979713e7326e3120ad60acd4121ced9b9bc8caa",
+    "adapter_tree": "c5ed7b207ee762c2023157e76de002ebf663b63b",
+    "adapter_tree_digest": "sha256:bc873d1c85a636ccb481d6dbfde33ea1279fecee94d22bac56a05fdbdc89103c",
+    "adapter_files": 19,
+    "package_json_sha256": "sha256:8ca77ced4bb2770965eaa3219167ed5bcf1df5ed219ff229e6d7118557dd7def",
+    "package_lock_sha256": "sha256:6591d02f6d7c4cbe777949afaab81e433125357e9501e9d1db0748016aee4ac2",
+    "node": {
+      "version": "v24.21.0",
+      "sha256": "sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",
+      "platform": "linux",
+      "arch": "x64",
+      "exec_path": "/home/tbound/toolchains/node-v24.21.0/bin/node"
+    },
+    "npm": {
+      "version": "11.19.0",
+      "cli_sha256": "sha256:8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7",
+      "install_argv": [
+        "npm",
+        "ci",
+        "--offline",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund"
+      ],
+      "install_exit": 0,
+      "node_modules_digest": "sha256:908e12b489dc8bda77dcdd47e3da2f8bc96be1d94841c342cb68481754b03abf",
+      "node_modules_files": 14178
+    },
+    "argv": [
+      "npm",
+      "run",
+      "check"
+    ],
+    "test_reporter": "spec",
+    "env": {
+      "HOME": "/home/tbound/toolchains/tmp/tbound-adapter-capture-2761211795/home",
+      "LANG": "C",
+      "LC_ALL": "C",
+      "NO_COLOR": "1",
+      "PATH": "/home/tbound/toolchains/node-v24.21.0/bin:/usr/bin:/bin",
+      "TMPDIR": "/home/tbound/toolchains/tmp/tbound-adapter-capture-2761211795/tmp",
+      "npm_config_audit": "false",
+      "npm_config_cache": "/home/tbound/tbh/f35/evq-report/npm-cache",
+      "npm_config_fund": "false",
+      "npm_config_logs_dir": "/home/tbound/toolchains/tmp/tbound-adapter-capture-2761211795/logs",
+      "npm_config_update_notifier": "false"
+    },
+    "exit_code": 0,
+    "output": "\n\u003e tbound-pi-closure-spike@0.1.0 check\n\u003e npm run typecheck \u0026\u0026 npm test\n\n\n\u003e tbound-pi-closure-spike@0.1.0 typecheck\n\u003e tsc --noEmit\n\n\n\u003e tbound-pi-closure-spike@0.1.0 test\n\u003e node scripts/test.mjs\n\n✔ adapter's registered model is the broker-approved model (0.58434ms)\n✔ Go turn projection must match its fixed model and finish/call shape (4.259603ms)\n✔ an empty final turn ends as a stop with no content (1.20144ms)\n✔ provider cancellation sends only the matching bounded cancel frame (1.332287ms)\n✔ Go-compatible frame golden vector encodes and decodes (4.195562ms)\n▶ rejects oversized, truncated, and malformed frames\n  ✔ clean EOF is a normal close (2.65816ms)\n  ✔ oversized announced length (0.963152ms)\n  ✔ truncated prefix (0.706459ms)\n  ✔ truncated payload (1.092455ms)\n  ✔ duplicate and unknown fields (2.288254ms)\n✔ rejects oversized, truncated, and malformed frames (8.560052ms)\n▶ checks token, sequence, replay, and message direction\n  ✔ binding token mismatch (0.773355ms)\n  ✔ sequence must start at one and increase by one (0.785057ms)\n  ✔ replayed sequence is rejected (0.913147ms)\n  ✔ wrong direction is rejected (0.652277ms)\n  ✔ unknown kind is rejected (0.406044ms)\n✔ checks token, sequence, replay, and message direction (4.099281ms)\n✔ proxy tools each round-trip one proposal and return its correlated result (4.092168ms)\n▶ proxy feedback appends exactly the fixed hint, and leaves successful ALLOW unchanged\n  ✔ successful ALLOW (1.151847ms)\n  ✔ failed command (0.958823ms)\n  ✔ unknown reason (0.697151ms)\n  ✔ empty status (0.912426ms)\n  ✔ no-effect refusal (0.890886ms)\n  ✔ object prototype name (0.599778ms)\n  ✔ argument_digest_mismatch (0.772584ms)\n  ✔ correlation_required (0.874345ms)\n  ✔ invalid_arguments (0.739932ms)\n  ✔ invalid_policy (0.726386ms)\n  ✔ policy_default_deny (0.55314ms)\n  ✔ policy_rule_deny (0.571726ms)\n  ✔ scope_path_not_covered (0.661855ms)\n  ✔ scope_protected_path (0.629384ms)\n  ✔ unknown_tool (0.724282ms)\n✔ proxy feedback appends exactly the fixed hint, and leaves successful ALLOW unchanged (12.596315ms)\n▶ IPC rejects command status outside allowed failed bash results\n  ✔ DENY read command_failed (0.531961ms)\n  ✔ DENY read unexpected (1.321205ms)\n  ✔ ALLOW read command_failed (0.373834ms)\n✔ IPC rejects command status outside allowed failed bash results (2.604169ms)\n▶ IPC delivers a no-effect refusal for each allowed registered call with the fixed output\n  ✔ ALLOW read is delivered (0.346031ms)\n  ✔ ALLOW write is delivered (0.290727ms)\n  ✔ ALLOW edit is delivered (0.274587ms)\n  ✔ ALLOW bash is delivered (0.269737ms)\n✔ IPC delivers a no-effect refusal for each allowed registered call with the fixed output (1.504009ms)\n▶ IPC rejects a no-effect refusal that is not the fixed output of an allowed registered call\n  ✔ denial (0.408748ms)\n  ✔ changed message (0.346893ms)\n  ✔ extra member (0.469804ms)\n  ✔ missing output (0.40954ms)\n  ✔ unregistered tool (0.314462ms)\n✔ IPC rejects a no-effect refusal that is not the fixed output of an allowed registered call (2.384696ms)\n✔ binding token must be exactly IPC_BINDING_TOKEN_HEX_BYTES lowercase hex chars (0.352614ms)\n✔ the registered tool schemas hash to the digests adapter/profile.json pins (1.595882ms)\n✔ the tool schemas advertise only what the durable executor does (0.985364ms)\n﹣ official Pi CLI 0.87.1 loads the mediated extension and settles simulated host-fixture denials (0.745473ms) # set TBOUND_REQUIRE_PI_CLI_INTEGRATION=1 in CI or provide the pinned pi executable on PATH\n✔ test runner pins the spec reporter when stdout is piped for evidence (130.864014ms)\nℹ tests 54\nℹ suites 0\nℹ pass 53\nℹ fail 0\nℹ cancelled 0\nℹ skipped 1\nℹ todo 0\nℹ duration_ms 270.2412\n",
+    "output_sha256": "sha256:f4404156cafb948e31462468ae921f6e09e177d314c7b621b42ac6e02f477ccf",
+    "results": [
+      {
+        "test": "adapter's registered model is the broker-approved model",
+        "action": "pass"
+      },
+      {
+        "test": "Go turn projection must match its fixed model and finish/call shape",
+        "action": "pass"
+      },
+      {
+        "test": "an empty final turn ends as a stop with no content",
+        "action": "pass"
+      },
+      {
+        "test": "provider cancellation sends only the matching bounded cancel frame",
+        "action": "pass"
+      },
+      {
+        "test": "Go-compatible frame golden vector encodes and decodes",
+        "action": "pass"
+      },
+      {
+        "test": "rejects oversized, truncated, and malformed frames",
+        "action": "pass"
+      },
+      {
+        "test": "checks token, sequence, replay, and message direction",
+        "action": "pass"
+      },
+      {
+        "test": "proxy tools each round-trip one proposal and return its correlated result",
+        "action": "pass"
+      },
+      {
+        "test": "proxy feedback appends exactly the fixed hint, and leaves successful ALLOW unchanged",
+        "action": "pass"
+      },
+      {
+        "test": "IPC rejects command status outside allowed failed bash results",
+        "action": "pass"
+      },
+      {
+        "test": "IPC delivers a no-effect refusal for each allowed registered call with the fixed output",
+        "action": "pass"
+      },
+      {
+        "test": "IPC rejects a no-effect refusal that is not the fixed output of an allowed registered call",
+        "action": "pass"
+      },
+      {
+        "test": "binding token must be exactly IPC_BINDING_TOKEN_HEX_BYTES lowercase hex chars",
+        "action": "pass"
+      },
+      {
+        "test": "the registered tool schemas hash to the digests adapter/profile.json pins",
+        "action": "pass"
+      },
+      {
+        "test": "the tool schemas advertise only what the durable executor does",
+        "action": "pass"
+      },
+      {
+        "test": "official Pi CLI 0.87.1 loads the mediated extension and settles simulated host-fixture denials",
+        "action": "skip"
+      },
+      {
+        "test": "test runner pins the spec reporter when stdout is piped for evidence",
+        "action": "pass"
+      }
+    ]
+  }
+}

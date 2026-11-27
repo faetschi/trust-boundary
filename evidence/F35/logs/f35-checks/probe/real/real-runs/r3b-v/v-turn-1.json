@@ -1,0 +1,40 @@
+{
+ "stopReason": "toolUse",
+ "usage": {
+  "input": 149,
+  "output": 83,
+  "cacheRead": 256,
+  "cacheWrite": 0,
+  "reasoning": 0,
+  "totalTokens": 488,
+  "cost": {
+   "input": 0,
+   "output": 0,
+   "cacheRead": 0,
+   "cacheWrite": 0,
+   "total": 0
+  }
+ },
+ "content": [
+  {
+   "type": "text",
+   "chars": 58
+  },
+  {
+   "type": "toolCall",
+   "chars": 0,
+   "name": "read",
+   "arguments": {
+    "path": "README.md"
+   }
+  },
+  {
+   "type": "toolCall",
+   "chars": 0,
+   "name": "bash",
+   "arguments": {
+    "command": "wc -w README.md"
+   }
+  }
+ ]
+}

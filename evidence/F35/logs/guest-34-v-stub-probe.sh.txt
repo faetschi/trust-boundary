@@ -1,0 +1,413 @@
+== 34-v-stub-probe start 2026-11-26T22:42:26Z guest=172.29.57.244
+OK   FROZEN-COMMIT = 9165c43657951f7b3db972cfe228b68249312a7e
+OK   F23 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+OK   F23 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468
+OK   F23 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:9b7499bc356810b74bc2e5ce0bfea5e66f5918ac9c2031096f80f22b5c2aa3f4
+OK   F23 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:da00b275241e06c23b49e7bd064eb3573f52f4de136c1293157e7938f520eb95
+OK   F23 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1
+OK   F23 record IMGDIGEST == PREV_IMGDIGEST = sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f
+OK   F23 record CFG == PREV_CFG = sha256:2656d410f2b5b8dd40cce326f3c3f73affdd5154fc85fa9a190cbe4d4e2f7731
+OK   F23 record BASE_TD == PREV_BASE_TD = sha256:0179bdd920627ce28ee7041c67c924df7dfcaefeb046270de54ec3b65e2e8fce
+OK   F23 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:ae38be168c42f8c9d2d4d24adda02672432b886670736028a70540911fb7aac3
+OK   F23 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F23 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F23 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:72274bf50b9977652d540999940fc9791444ed675302cb9f609c703aad5a86b9
+OK   F23 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:e29b6f8b22e3c38a01274b628bf24a239b116648a00f2c32d994b8a854a5f4d6
+OK   F23 FROZEN-COMMIT record == PREV_COMMIT = 13ed11939c06e552a2d8662fb752bf2b3640ac68
+OK   F23 g1/RID record == PREV_G1_RID = g1-req-20261108T183243Z
+OK   F23 rp/RID record == PREV_RP_RID = rp-req-20261108T183452Z
+OK   F23 dr/RID record == PREV_DR_RID = dr-req-20261108T183711Z
+OK   F23 dr/RUNID record == PREV_DR_RUNID = production-run-85c9eb7a114561a194560496
+OK   F23 dr/CHECKS_OK record == 'ok' = ok
+OK   F23 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-11-08d
+OK   IMGDIGEST (session-env == HF) = sha256:18cbaa9ad6031472102eab68ec1cdff13f1ad1570ff89b35b27b489e7f71a504
+OK   frozen commit 9165c43657951f7b3db972cfe228b68249312a7e; HF=/home/tbound/tbh/f35
+OK   admin.key size/mode = 64 600
+OK   admin.pub digest == HF ADMIN_PUB_DIGEST = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   admin.pub digest == F0 = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   cosign.pub digest == HF COSIGN_PUB_DIGEST = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+OK   cosign.pub digest == F0 = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+
+== preflight: guest 172.29.57.244 (pinned host key, StrictHostKeyChecking=yes), tbound-op only
+guest address: GUEST_IP=172.29.57.244 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', or 'ip -4 addr' on the guest console, then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n true fails (narrowed sudo)
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-26T22:42:33Z 
+
+== 0. preconditions
+tbound-op status 2026-11-26T22:42:34Z pins F=9165c43657951f7b3db972cfe228b68249312a7e
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:18c12c02ef46c39d tbound-profile: sha256:3f135968328eec74
+service=active socket=active
+installed: cfg sha256:502011ec235ef59e08c471e5ebc008165ff6c7440bbbb78ac60b95e734102c28 reg sha256:26eaa5e88d676af6 prof sha256:3de21629b32a2e84 tpl sha256:96b2e8fdce310cbe
+installed config matches state of: pilot
+-- pilot:
+     cfg=sha256:502011ec235ef59e08c471e5ebc008165ff6c7440bbbb78ac60b95e734102c28
+     prof=sha256:6a1967b1b0848d6b14314471001fa70c27d8bc295bf622f3c371ddea3ac047ec
+     profjson=sha256:3de21629b32a2e841e99fec3aee782c7484d898cab215cdbed34bc7c8e71d744
+     profsig=sha256:f6b10fcb8ff354b0f5943480b8f1d394a2759376cdbab4dd8bf8478d29b486ed
+     reg=sha256:d12d0d9c5f309825af094cd92475e1f7236f4dc51cddeb4ea5597474665f95ae
+     regjson=sha256:26eaa5e88d676af658aa20ae5a9dcc0204e5a76e58ccf7d1940ff7d169929be8
+     regsig=sha256:e2d2fb0932782a975d730f7938f80d520215950871b2a8b77b126cbec0f5966f
+     state=started
+     td=sha256:96b2e8fdce310cbe7cdacf9544cc4deed2e12b9f3befae9ced0c25cc0674821f
+     tpl=sha256:96b2e8fdce310cbe7cdacf9544cc4deed2e12b9f3befae9ced0c25cc0674821f
+-- last log lines
+2026-11-26T22:13:49Z tboundadmin END rc=0 argv=diag nft-sink 
+2026-11-26T22:13:50Z tboundadmin BEGIN argv=guest-evidence netsink 
+2026-11-26T22:13:55Z tboundadmin OK guest-evidence netsink 
+2026-11-26T22:13:55Z tboundadmin END rc=0 argv=guest-evidence netsink 
+2026-11-26T22:42:34Z tboundadmin BEGIN argv=status pilot 
+OK   measured CD == recorded CONTAINERS_CONF_DIGEST = sha256:39d4074e9443db514b09313e45d46923b84c372dea6b394dbc3056bf354c3ba0
+OK   measured SD == recorded STORAGE_CONF_DIGEST = sha256:9ebdcc8b5ed0ec25af5bdd93ccd8328b7a8ceb0744ee140ca9e7722cb294c0c7
+OK   V unit case: PILOT-CMP-read-01 (development compliant case of the installed pilot manifest)
+OK   research-route check: P units PILOT-ADV-A-01/p-static-replay/1 and PILOT-ADV-A-01/p-adaptive-replay/1 (scripted roles: no provider request, nothing booked)
+OK   research-route check: B unit PILOT-CMP-read-02/b-compliant/1, V units for the forwarder checks PILOT-CMP-read-03 PILOT-CMP-read-04 PILOT-CMP-read-05; no id carries a suffix, so none equals a research-pilot (.rp1) admission; recovery point: checkpoint pre-F35-34-2026-11-26
+A v-stub request must NEVER be abandoned, on any config: restore checkpoint pre-F35-34-2026-11-26 instead (D63 item 4, owner 2026-11-26).
+== 00-session-sudo start 2026-11-26T22:42:37Z guest=172.29.57.244
+OK   ssh identity = tboundadmin
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-26T22:42:38Z 
+operator: Admin mode=open
+
+== password sudo works (one throwaway command; the password is not printed)
+OK   password sudo works
+/etc/sudoers.d/.91-tbound-f35-session.new: parsed OK
+
+== verify
+OK   sudo -n true works (session open)
+root:root 440 /etc/sudoers.d/91-tbound-f35-session
+/etc/sudoers: parsed OK
+/etc/sudoers.d/50-tbound-op: parsed OK
+/etc/sudoers.d/91-tbound-f35-session: parsed OK
+/etc/sudoers.d/README: parsed OK
+NOTE SESSION OPEN: close it when the privileged steps are done: bash 00-session-sudo.sh close
+
+== DONE 00-session-sudo.sh 2026-11-26T22:42:40Z
+
+== 1. the research ledger before the probe (read-only)
+ledger absent
+/etc/tbound/provider/openrouter.key absent
+/etc/tbound/provider/research-profile.json absent
+/etc/tbound/provider/research-ledger.json absent
+/etc/tbound/provider/research-ledger-checkpoint.json absent
+OK   saved /home/tbound/tbh/f35/vs/research-before.txt
+
+== 2. inputs on the owner side
+OK   saved /home/tbound/tbh/f35/vs/research-profile.json
+OK   stub profile == the frozen research profile of F32 (RA-2) = sha256:3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357
+OK   saved /home/tbound/tbh/f35/vs/research-ledger.json
+OK   ledger_id of the throwaway ledger = tbound-v-stub-probe
+NOTE a random throwaway stub key was generated for this run (never printed, never kept); it is not a research key
+wrote /home/tbound/tbh/f35/vs/serve-pi-service.json
+sha256 members: 3
+OK   provider_route = v-stub
+OK   workflow_admission_mode = corpus
+OK   corpus_manifest_digest == the pilot's CORPUS_DIGEST = sha256:24bb5b0e1e26151040d596feb1c0cea64a99fa4af9e8b7701aa118b17b769804
+OK   corpus_quota_profile = pilot
+OK   config differs from the pilot config in provider_route only = <   "provider_route": "engineering",
+>   "provider_route": "v-stub",
+
+== 3. stop the pilot service, install the v-stub config and measure the registration (RA-5, RA-6)
+OK   installed /etc/tbound/serve-pi-service.json == pilot/serve-pi-service.json = sha256:502011ec235ef59e08c471e5ebc008165ff6c7440bbbb78ac60b95e734102c28
+OK   installed /etc/tbound/managed-live-root.json == pilot/managed-live-root.json = sha256:26eaa5e88d676af658aa20ae5a9dcc0204e5a76e58ccf7d1940ff7d169929be8
+OK   installed /etc/tbound/managed-live-root.ed25519 == pilot/managed-live-root.ed25519 = sha256:e2d2fb0932782a975d730f7938f80d520215950871b2a8b77b126cbec0f5966f
+OK   installed /etc/tbound/pi-host-profile.json == pilot/pi-host-profile.signed.json = sha256:3de21629b32a2e841e99fec3aee782c7484d898cab215cdbed34bc7c8e71d744
+OK   installed /etc/tbound/pi-host-profile.ed25519 == pilot/pi-host-profile.ed25519 = sha256:f6b10fcb8ff354b0f5943480b8f1d394a2759376cdbab4dd8bf8478d29b486ed
+OK   installed /etc/tbound/d09-cell.json == pilot/d09-cell.json = sha256:96b2e8fdce310cbe7cdacf9544cc4deed2e12b9f3befae9ced0c25cc0674821f
+OK   saved /home/tbound/tbh/f35/vs/pilot-meta-before.txt
+OK   saved /home/tbound/tbh/f35/vs/catalog-before.sha256
+svc stop ok: service and socket inactive
+OK   guest /etc/tbound/serve-pi-service.json == serve-pi-service.json = sha256:fcbcc9bbf48dd68e277ae3b5ecdef2f8a10a4c50c45d5536aa81be9b9f266db0
+OK   saved /home/tbound/tbh/f35/vs/managed-live-root.unsigned.json
+OK   runner_digest == TBOUND_DIGEST (F35) = sha256:18c12c02ef46c39d2e08b6117eadd7257350fe90e6e46b89800adbbaafb884d7
+OK   managed_root_xattr_calibration_digest == CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   service_uid/gid = 995/986
+OK   service_config_digest == the v-stub config = sha256:fcbcc9bbf48dd68e277ae3b5ecdef2f8a10a4c50c45d5536aa81be9b9f266db0
+OK   passwd_digest == the guest file = sha256:e8259e105f4dccb65f9e6ad3fe59ca1bac9cbba10c59def5ee93fd38c31b5c7e
+OK   group_digest == the guest file = sha256:957b8c3c5ef46bd971c270366a7ba8a0277189c139a1f367f09348b9df3a84de
+OK   nsswitch_digest == the guest file = sha256:8e5b97e5d364580940c1d82eeb5630c4f69299076baa56ae950f79b5095377ce
+
+== 4. [OWNER SIGN] S3 and S4 for NAME=vs (sign-run.sh), install registration, profile and template (RA-7 to RA-10)
+disk /home/tbound/tbound-work/f35-kit/.local: 770 GiB free (need 10)
+disk /: 770 GiB free (need 10)
+signed managed live-root registration: /home/tbound/tbh/f35/vs/managed-live-root.json
+Digest (bind into D09 template): sha256:96b8b42cc24c4f78db1d9979297213b5bfb7bf24c8861157b48af18848ec03f8
+Signature: /home/tbound/tbh/f35/vs/managed-live-root.ed25519
+verified signed managed live-root policy tbound-managed-live-root-registration/v1 for /var/lib/tbound/live/root (service tbound-pi, digest sha256:96b8b42cc24c4f78db1d9979297213b5bfb7bf24c8861157b48af18848ec03f8, runner sha256:18c12c02ef46c39d2e08b6117eadd7257350fe90e6e46b89800adbbaafb884d7)
+This verifies policy/signature only; it is not a live-root quiescence permit.
+REGDIGEST-vs=sha256:96b8b42cc24c4f78db1d9979297213b5bfb7bf24c8861157b48af18848ec03f8
+ea1caa4f514310c7b0a0539f7798d410a90fd44d5d2c661146e3ef4dc87ea4f9  /home/tbound/tbh/f35/vs/managed-live-root.json
+18c07999452ac120d92e8daf0c0c10c14dd55c5561e3c00eb64ff44fe8c05034  /home/tbound/tbh/f35/vs/managed-live-root.ed25519
+OK sync done; no 0-byte output under /home/tbound/tbh/f35
+OK   guest /etc/tbound/managed-live-root.json == managed-live-root.json = sha256:ea1caa4f514310c7b0a0539f7798d410a90fd44d5d2c661146e3ef4dc87ea4f9
+OK   guest /etc/tbound/managed-live-root.ed25519 == managed-live-root.ed25519 = sha256:18c07999452ac120d92e8daf0c0c10c14dd55c5561e3c00eb64ff44fe8c05034
+disk /home/tbound/tbound-work/f35-kit/.local: 770 GiB free (need 10)
+disk /: 770 GiB free (need 10)
+D09 cell template canonical digest: sha256:0f06301a58cb56881957f48a97a5cb63a5db5b05948e3c3323b3ea063d770bd9
+D09 base template digest (registration digest emptied; run.json pins.base_template_digest): sha256:5bf041d4509fb5d2f8cb0bf59a1019f320167796ace8fc75223ccd47ed4d8dbe
+D09 command-cell delta net-sink/v1 template digest: sha256:ccb242629bc908d4472fede5737d9bdb87987f448b7bc87d3b3db6802e6c6a6a
+D09 command-cell delta no-reap/v1 template digest: sha256:c58b6ea7cbae88e2fd3f65cf340b0989ae7842e938f86a06334cdbb0cd053a5c
+wrote canonical unsigned host profile: /home/tbound/tbh/f35/vs/pi-host-profile.unsigned.json
+Digest is empty until signed. Placeholders left (sign refuses them): none
+Then:
+  tbound-profile sign --profile /home/tbound/tbh/f35/vs/pi-host-profile.unsigned.json --key <ed25519-private> --out-sig <new>.ed25519 --out-pub <new>.pub --out-profile <new>.signed.json
+signed host profile: /home/tbound/tbh/f35/vs/pi-host-profile.signed.json
+Digest: sha256:e1f62a2183dfa499b74312a0044d28af667baed97a12ebbf00d378769cc5da59
+Public key (hex): 1fc6faa24be42d32c9e522947a392c19ceb454b4dddfe2e1c0c5d703b4ac079e
+Signature: /home/tbound/tbh/f35/vs/pi-host-profile.ed25519
+verified signed host profile pi-host-profile-vs-9165c4365795 (digest sha256:e1f62a2183dfa499b74312a0044d28af667baed97a12ebbf00d378769cc5da59, mode production)
+NAME=vs REG=sha256:96b8b42cc24c4f78db1d9979297213b5bfb7bf24c8861157b48af18848ec03f8 TD(installed template)=sha256:0f06301a58cb56881957f48a97a5cb63a5db5b05948e3c3323b3ea063d770bd9 PROFILE=sha256:e1f62a2183dfa499b74312a0044d28af667baed97a12ebbf00d378769cc5da59
+eadf901453c701188bf7642f7e4cd2ff9b533ff9cac32bcc161aa47cf4d2e860  /home/tbound/tbh/f35/vs/pi-host-profile.signed.json
+3de8b4edda59a6b68b77c7f1daf33887d8c0a7ff23928435b9e59f0b58233c99  /home/tbound/tbh/f35/vs/pi-host-profile.ed25519
+0f06301a58cb56881957f48a97a5cb63a5db5b05948e3c3323b3ea063d770bd9  /home/tbound/tbh/f35/vs/d09-cell.json
+OK sync done; no 0-byte output under /home/tbound/tbh/f35
+OK   template registration digest == REGDIGEST-vs = sha256:96b8b42cc24c4f78db1d9979297213b5bfb7bf24c8861157b48af18848ec03f8
+OK   template expected_image_digest == IMGDIGEST = sha256:18cbaa9ad6031472102eab68ec1cdff13f1ad1570ff89b35b27b489e7f71a504
+OK   guest /etc/tbound/pi-host-profile.json == pi-host-profile.signed.json = sha256:eadf901453c701188bf7642f7e4cd2ff9b533ff9cac32bcc161aa47cf4d2e860
+OK   guest /etc/tbound/pi-host-profile.ed25519 == pi-host-profile.ed25519 = sha256:3de8b4edda59a6b68b77c7f1daf33887d8c0a7ff23928435b9e59f0b58233c99
+OK   guest /etc/tbound/d09-cell.json == d09-cell.json = sha256:0f06301a58cb56881957f48a97a5cb63a5db5b05948e3c3323b3ea063d770bd9
+
+== 5. throwaway research files and ledger at their own paths, no research key (RA-2, RA-4 with the v-stub paths)
+OK   guest /etc/tbound/v-stub/research-profile.json == research-profile.json = sha256:3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357
+OK   guest /etc/tbound/v-stub/research-ledger.json == research-ledger.json = sha256:a92535077dd3517c1efd397ac508adcecc04a0b935b0d05f3c1ba645f5199d87
+OK   guest stub.key == the generated throwaway key = sha256:f3b99942972d03256bafd3ef9f8a69b8b503d274d0644896d0880051021ee8f4
+OK   saved /home/tbound/tbh/f35/vs/genesis.json
+OK   genesis ledger_id (genesis) = tbound-v-stub-probe
+OK   genesis ledger_path (genesis) = /var/lib/tbound/sessions/v-stub-ledger
+OK   saved /home/tbound/tbh/f35/vs/checkpoint-1.json
+OK   guest /etc/tbound/v-stub/research-ledger-checkpoint.json == checkpoint-1.json = sha256:fb19e6fc20f635854e85c350bc97fda1cb38e65a2b4c396d74449735ca8979b8
+
+== 6. stub upstream and the v-stub service
+OK   staged stub.py == the frozen source = sha256:c47b5cc4ec798ed32288dde7d33382dc55374a20bfdbf974116035e3e9fb766b
+OK   stub upstream listens on 127.0.0.1:18443 (pid 514844, hold 20 s)
+OK   saved /home/tbound/tbh/f35/vs/svc-start-journal.txt
+OK   the v-stub service and socket are active, no refusal in the journal
+
+== 6b. the DR-drill prior is in the request journal, abandoned on the engineering route
+OK   saved /home/tbound/tbh/f35/vs/e2e-requests-before-b.jsonl
+dr-req-20261126T213908Z engineering
+OK   abandoned prior dr-req-20261126T213908Z on the engineering route is in the request journal
+
+== 6c. B unit PILOT-CMP-read-02/b-compliant/1 on the v-stub route: begin passes with the DR prior present, its calls are booked and settled, the workflow completes
+A v-stub request must NEVER be abandoned, on any config: restore checkpoint pre-F35-34-2026-11-26 instead (D63 item 4, owner 2026-11-26).
+OK   saved /home/tbound/tbh/f35/vs/e2e-ledger-after-b.jsonl
+OK   saved /home/tbound/tbh/f35/vs/e2e-b-response.jsonl
+OK   saved /home/tbound/tbh/f35/vs/e2e-catalog-after-b.jsonl
+OK   workflow PILOT-CMP-read-02/b-compliant/1 in the catalog = terminal:completed
+throwaway ledger: 3 records, chain intact, records from line 2 are [reserve settle]; settled 2, held at worst case 0, still open 0, remaining 999998 of 1000000 micro-USD
+OK   saved /home/tbound/tbh/f35/vs/stub-b.log
+stub log: 1 request(s), each the research POST with the stub key, the profile's model, max_completion_tokens and provider order
+OK   B unit: begin passed with the DR prior present, 1 call(s) booked and settled in the throwaway ledger, workflow terminal:completed
+
+== 6d. P units PILOT-ADV-A-01/p-static-replay/1 and PILOT-ADV-A-01/p-adaptive-replay/1 on the v-stub route: admission with the DR prior present, the workflow ends, nothing is booked or sent
+A v-stub request must NEVER be abandoned, on any config: restore checkpoint pre-F35-34-2026-11-26 instead (D63 item 4, owner 2026-11-26).
+OK   saved /home/tbound/tbh/f35/vs/e2e-p-static-replay-response.jsonl
+OK   saved /home/tbound/tbh/f35/vs/e2e-catalog-after-p-static-replay.jsonl
+OK   throwaway ledger lines after p-static-replay (a scripted role books nothing) = 3
+OK   stub requests after p-static-replay (a scripted role sends nothing) = 1
+OK   p-static-replay unit: admitted with the DR prior present, workflow terminal:completed, nothing booked or sent
+A v-stub request must NEVER be abandoned, on any config: restore checkpoint pre-F35-34-2026-11-26 instead (D63 item 4, owner 2026-11-26).
+OK   saved /home/tbound/tbh/f35/vs/e2e-p-adaptive-replay-response.jsonl
+OK   saved /home/tbound/tbh/f35/vs/e2e-catalog-after-p-adaptive-replay.jsonl
+OK   throwaway ledger lines after p-adaptive-replay (a scripted role books nothing) = 3
+OK   stub requests after p-adaptive-replay (a scripted role sends nothing) = 1
+OK   p-adaptive-replay unit: admitted with the DR prior present, workflow terminal:completed, nothing booked or sent
+
+== 7. one V unit on PILOT-CMP-read-01 through the forwarder, the stub holds its reply for 20 s
+OK   the kill pattern matches 1 live process(es) while the unit runs
+NOTE live V container: tbound-v-40c3057690a7d170
+OK   saved /home/tbound/tbh/f35/vs/inspect.json
+container record: 3 bind mounts (/work rw, /runtime ro, /run/tbound/fwd ro), 12 environment names, no secret-looking name, stub key absent; ReadonlyRootfs=True CapDrop=['CAP_CHOWN', 'CAP_DAC_OVERRIDE', 'CAP_FOWNER', 'CAP_FSETID', 'CAP_KILL', 'CAP_NET_BIND_SERVICE', 'CAP_SETFCAP', 'CAP_SETGID', 'CAP_SETPCAP', 'CAP_SETUID', 'CAP_SYS_CHROOT'] Privileged=False
+OK   saved /home/tbound/tbh/f35/vs/v-doc.json
+V document: 1 ledger record(s), all settled, tokens 11/3, cost 2 micro-USD, accept passed=False
+
+== 8. what the stub saw, the throwaway ledger, the research ledger
+OK   saved /home/tbound/tbh/f35/vs/stub-v.log
+stub log: 1 request(s), each the research POST with the stub key, the profile's model, max_completion_tokens and provider order
+OK   saved /home/tbound/tbh/f35/vs/v-stub-ledger.after
+throwaway ledger: 5 records, record 1 is the genesis head eea7b7bdb4658a3c5658284d4d9b9e45f4fe815ba220c4aa06fb3614db5947f6
+
+== 8b. forwarder on the throwaway ledger: a settled call, a refusal, an upstream failure, a missing usage, a crash during a call and the restart, the stop rule
+OK   saved /home/tbound/tbh/f35/vs/e2e-stoprule.jsonl
+{"case": "PILOT-CMP-read-03", "step": "open"}
+{"reached_stub": 1, "status": 200, "step": "quick settles"}
+{"reached_stub": 0, "status": 400, "step": "wrong model is refused before booking"}
+{"reached_stub": 1, "status": 500, "step": "upstream 500 ends uncertain"}
+{"reached_stub": 1, "status": 200, "step": "no usage ends uncertain"}
+{"service_killed": true, "status": "error: Remote end closed connection without response", "step": "crash during a held call"}
+{"active": true, "step": "restart"}
+{"case": "PILOT-CMP-read-04", "step": "open"}
+{"reached_stub": 1, "status": 500, "step": "upstream 500 ends uncertain (after restart, 1)"}
+{"reached_stub": 1, "status": 500, "step": "upstream 500 ends uncertain (after restart, 2)"}
+{"reached_stub": 1, "status": 500, "step": "upstream 500 ends uncertain (after restart, 3)"}
+{"reached_stub": 0, "status": 503, "step": "the stop rule refuses before sending"}
+{"status": "completed", "step": "unit totals after the stop rule", "totals": {"booked": 3, "cost_micro_usd": 0, "overage": false, "settled": 0, "tokens_in": 0, "tokens_out": 0, "uncertain": 3}}
+{"phase": "stoprule", "step": "DONE"}
+OK   saved /home/tbound/tbh/f35/vs/e2e-stoprule-journal.txt
+OK   saved /home/tbound/tbh/f35/vs/e2e-ledger-1.jsonl
+throwaway ledger: 18 records, chain intact, records from line 6 are [reserve settle reserve uncertain reserve uncertain reserve reserve uncertain reserve uncertain reserve uncertain]; settled 6, held at worst case 265422, still open 1, remaining 734572 of 1000000 micro-USD
+OK   the crashed call stays held at worst case after the restart; the stop rule holds at 734572 < 752029 micro-USD and the forwarder refused before sending
+
+== 8c. an overage on a second throwaway ledger: a cost above the reservation, then every later request is refused before sending
+svc stop ok: service and socket inactive
+OK   saved /home/tbound/tbh/f35/vs/e2e-ledger-1.deleted
+NOTE the first throwaway ledger is deleted (its records are in /home/tbound/tbh/f35/vs/e2e-ledger-1.jsonl)
+OK   saved /home/tbound/tbh/f35/vs/genesis-2.json
+OK   genesis ledger_id (genesis-2) = tbound-v-stub-probe
+OK   genesis ledger_path (genesis-2) = /var/lib/tbound/sessions/v-stub-ledger
+OK   saved /home/tbound/tbh/f35/vs/checkpoint-2.json
+OK   guest /etc/tbound/v-stub/research-ledger-checkpoint.json == checkpoint-2.json = sha256:fb19e6fc20f635854e85c350bc97fda1cb38e65a2b4c396d74449735ca8979b8
+OK   saved /home/tbound/tbh/f35/vs/e2e-svc-start-2.txt
+OK   saved /home/tbound/tbh/f35/vs/e2e-overage.jsonl
+{"case": "PILOT-CMP-read-05", "step": "open"}
+{"reached_stub": 1, "status": 200, "step": "a cost above the reservation settles as an overage"}
+{"reached_stub": 0, "status": 503, "step": "after an overage the ledger refuses before sending"}
+{"status": "completed", "step": "unit totals after the overage", "totals": {"booked": 1, "cost_micro_usd": 60000, "overage": true, "settled": 1, "tokens_in": 11, "tokens_out": 3, "uncertain": 0}}
+{"phase": "overage", "step": "DONE"}
+OK   saved /home/tbound/tbh/f35/vs/e2e-ledger-2.jsonl
+throwaway ledger: 3 records, chain intact, records from line 1 are [genesis reserve overage]; settled 60000, held at worst case 0, still open 0, remaining 940000 of 1000000 micro-USD
+OK   overage: the call settled above its reservation, the ledger refused every later request before sending
+OK   saved /home/tbound/tbh/f35/vs/research-after.txt
+OK   the research ledger, its checkpoint, profile, configuration and key file are unchanged = ledger absent
+/etc/tbound/provider/openrouter.key absent
+/etc/tbound/provider/research-profile.json absent
+/etc/tbound/provider/research-ledger.json absent
+/etc/tbound/provider/research-ledger-checkpoint.json absent
+NOTE the research ledger: ledger absent
+
+== 9. teardown: stop the stub and the service, delete the throwaway files, restore the pilot chain
+
+== teardown: stub, v-stub service, throwaway files, pilot chain
+OK   saved /home/tbound/tbh/f35/vs/stub.log
+OK   stub upstream stopped, /home/tboundadmin/stage-vstub removed, port 18443 free
+svc stop ok: service and socket inactive
+to delete:
+/etc/tbound/v-stub d 4096 0:0 755
+/etc/tbound/v-stub/research-ledger.json f 169 0:0 644
+/etc/tbound/v-stub/research-profile.json f 890 0:0 644
+/etc/tbound/v-stub/stub.key f 57 995:986 400
+/etc/tbound/v-stub/research-ledger-checkpoint.json f 98 0:0 644
+/var/lib/tbound/sessions/v-stub-ledger f 552 995:986 600
+/var/lib/tbound/sessions/v-stub-admissions d 4096 995:986 700
+/var/lib/tbound/sessions/v-stub-admissions/9f75ad69c4bf0b4fe497d2d8c3c00af75a3f4af82c303aa37ac162900ae32457 f 22 995:986 600
+/var/lib/tbound/sessions/v-stub-admissions/a98d0a9f6bd7ae12472c53d941148c149f635d7edc48d46e7461ddb153f01a04 f 22 995:986 600
+/var/lib/tbound/sessions/v-stub-admissions/08b34c8edc633b583c2618cbc8ce485a9555eac43619093b7f2b363655b55b16 f 22 995:986 600
+/var/lib/tbound/sessions/v-stub-admissions/ef0ae03a7a3973a6737507b4a8c1a512a63e189bdc0f2c54bf980937aa6d381e f 22 995:986 600
+/var/tmp/tbound-vs d 4096 0:0 700
+/var/tmp/tbound-vs/managed-live-root.unsigned.json f 3410 0:0 600
+OK   saved /home/tbound/tbh/f35/vs/deleted-listing-before.txt
+OK   deleted: /etc/tbound/v-stub
+OK   deleted: /var/lib/tbound/sessions/v-stub-ledger
+OK   deleted: /var/lib/tbound/sessions/v-stub-admissions
+OK   deleted: /var/tmp/tbound-vs
+OK   saved /home/tbound/tbh/f35/vs/DELETED
+OK   guest /etc/tbound/serve-pi-service.json == serve-pi-service.json = sha256:502011ec235ef59e08c471e5ebc008165ff6c7440bbbb78ac60b95e734102c28
+OK   guest /etc/tbound/managed-live-root.json == managed-live-root.json = sha256:26eaa5e88d676af658aa20ae5a9dcc0204e5a76e58ccf7d1940ff7d169929be8
+OK   guest /etc/tbound/managed-live-root.ed25519 == managed-live-root.ed25519 = sha256:e2d2fb0932782a975d730f7938f80d520215950871b2a8b77b126cbec0f5966f
+OK   guest /etc/tbound/pi-host-profile.json == pi-host-profile.signed.json = sha256:3de21629b32a2e841e99fec3aee782c7484d898cab215cdbed34bc7c8e71d744
+OK   guest /etc/tbound/pi-host-profile.ed25519 == pi-host-profile.ed25519 = sha256:f6b10fcb8ff354b0f5943480b8f1d394a2759376cdbab4dd8bf8478d29b486ed
+OK   guest /etc/tbound/d09-cell.json == d09-cell.json = sha256:96b2e8fdce310cbe7cdacf9544cc4deed2e12b9f3befae9ced0c25cc0674821f
+OK   owner and mode of the six pilot files after the restore == before the swap = /etc/tbound/serve-pi-service.json root:root 644
+/etc/tbound/managed-live-root.json root:root 644
+/etc/tbound/managed-live-root.ed25519 root:root 644
+/etc/tbound/pi-host-profile.json root:root 644
+/etc/tbound/pi-host-profile.ed25519 root:root 644
+/etc/tbound/d09-cell.json root:root 644
+Nov 26 22:45:49 tbound-abi8-seed systemd[1]: Started tbound-pi.service - TBound managed Pi service (socket-activated, one fixed workflow).
+svc start ok for pilot: service and socket active
+OK   pilot chain restored from /home/tbound/tbh/f35/pilot and started: installed config matches state of pilot, service and socket active
+== service cgroup
+cells
+runner
+tbound-pi:tbound-pi 755
+domain
+cpu memory pids
+-- runner procs
+522265
+-- cgroup-root-digest (profile: sha256:8c64df4047d2e49832d3fd5334c06eca57a9812c2bb374c26ab8a947ac2e03ce)
+sha256:8c64df4047d2e49832d3fd5334c06eca57a9812c2bb374c26ab8a947ac2e03ce
+== mounts
+/usr/local/bin/tbound ro,nosuid,nodev,relatime
+/usr/local/bin/node ro,nosuid,nodev,relatime
+/usr/bin/podman ro,nosuid,nodev,relatime
+/usr/bin/crun ro,nosuid,nodev,relatime
+/opt/tbound/cell ro,nosuid,nodev,relatime
+/var/lib/tbound/runtime ro,nosuid,nodev,relatime
+== maintenance lock
+lock-free
+OK   live cgroup-root digest (diag l2) == recorded CGROUP_ROOT_DIGEST = sha256:8c64df4047d2e49832d3fd5334c06eca57a9812c2bb374c26ab8a947ac2e03ce
+OK   saved /home/tbound/tbh/f35/vs/diag-l2-restored.txt
+OK   workflow catalog: first 62516 bytes after the probe == the catalog before (sha256) = 5ce6f58299cda95ae38c699fd6c2ed5bd11e6c064961971e4ffa0bba762de341
+OK   workflow catalog: 67379 bytes appended by the service since before the swap
+OK   pilot chain verified after the restore: diag l2 as the pilot cycle left it, catalog extends the one before, pilot file owners and modes as before, trial reset --check answers
+OK   the research ledger is still unchanged after the teardown = ledger absent
+/etc/tbound/provider/openrouter.key absent
+/etc/tbound/provider/research-profile.json absent
+/etc/tbound/provider/research-ledger.json absent
+/etc/tbound/provider/research-ledger-checkpoint.json absent
+== 00-session-sudo start 2026-11-26T22:45:55Z guest=172.29.57.244
+OK   ssh identity = tboundadmin
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-26T22:45:56Z 
+operator: Admin mode=close
+
+== remove the drop-in
+OK   /etc/sudoers.d/91-tbound-f35-session removed
+OK   sudo -n true fails again
+
+== narrowed-sudo facts
+sudo -n true: fails (good)
+Matching Defaults entries for tboundadmin on tbound-abi8-seed:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin, use_pty
+
+Runas and Command-specific defaults for tboundadmin:
+    Defaults!/opt/tbound/operator/tbound-op env_reset, !setenv
+
+User tboundadmin may run the following commands on tbound-abi8-seed:
+    (ALL : ALL) ALL
+    (root) NOPASSWD: /opt/tbound/operator/tbound-op
+sudoers.d: 50-tbound-op README 
+OK   narrowed: only the tbound-op NOPASSWD rule plus password (ALL : ALL) ALL
+
+== DONE 00-session-sudo.sh 2026-11-26T22:45:59Z
+OK   saved /home/tbound/tbh/f35/vs/record.json
+OK   recorded vs/CHECKS_OK = ok
+{
+  "b_calls": "1",
+  "b_case": "PILOT-CMP-read-02",
+  "b_request": "vse2e-b-20261126T224323Z",
+  "case": "PILOT-CMP-read-01",
+  "commit": "9165c43657951f7b3db972cfe228b68249312a7e",
+  "deleted": "deleted /etc/tbound/v-stub;deleted /var/lib/tbound/sessions/v-stub-ledger;deleted /var/lib/tbound/sessions/v-stub-admissions;deleted /var/tmp/tbound-vs;",
+  "dr_prior": "dr-req-20261126T213908Z",
+  "e2e_checkpoint": "pre-F35-34-2026-11-26",
+  "freeze": "F35",
+  "genesis2_head": "eea7b7bdb4658a3c5658284d4d9b9e45f4fe815ba220c4aa06fb3614db5947f6",
+  "genesis_head": "eea7b7bdb4658a3c5658284d4d9b9e45f4fe815ba220c4aa06fb3614db5947f6",
+  "ledger_id": "tbound-v-stub-probe",
+  "p-adaptive-replay_request": "vse2e-p-adaptive-20261126T224419Z",
+  "p-adaptive-replay_state": "terminal:completed",
+  "p-static-replay_request": "vse2e-p-static-20261126T224352Z",
+  "p-static-replay_state": "terminal:completed",
+  "p_case": "PILOT-ADV-A-01",
+  "pilot_restored": "true",
+  "profile_digest": "sha256:e1f62a2183dfa499b74312a0044d28af667baed97a12ebbf00d378769cc5da59",
+  "profile_sha256": "sha256:3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357",
+  "recipe_cases": "PILOT-CMP-read-03,PILOT-CMP-read-04,PILOT-CMP-read-05",
+  "recipe_request_prefix": "vse2e-20261126T224516Z",
+  "regdigest": "sha256:96b8b42cc24c4f78db1d9979297213b5bfb7bf24c8861157b48af18848ec03f8",
+  "research_after": "ledger absent\n/etc/tbound/provider/openrouter.key absent\n/etc/tbound/provider/research-profile.json absent\n/etc/tbound/provider/research-ledger.json absent\n/etc/tbound/provider/research-ledger-checkpoint.json absent",
+  "research_before": "ledger absent\n/etc/tbound/provider/openrouter.key absent\n/etc/tbound/provider/research-profile.json absent\n/etc/tbound/provider/research-ledger.json absent\n/etc/tbound/provider/research-ledger-checkpoint.json absent",
+  "research_e2e": "1",
+  "research_unchanged": "true",
+  "stop_remaining_micro_usd": "734572",
+  "stub_endpoint": "http://127.0.0.1:18443/api/v1/chat/completions",
+  "td": "sha256:0f06301a58cb56881957f48a97a5cb63a5db5b05948e3c3323b3ea063d770bd9",
+  "throwaway_dir": "/etc/tbound/v-stub",
+  "throwaway_ledger": "/var/lib/tbound/sessions/v-stub-ledger",
+  "unit_ledger_records": "1"
+}
+NOTE the probe is complete: nothing was booked in the research ledger, the throwaway files are deleted, the pilot chain is running again. Next: 40-guest-evidence.sh v-stub
+A v-stub request must NEVER be abandoned, on any config: restore checkpoint pre-F35-34-2026-11-26 instead (D63 item 4, owner 2026-11-26).
+NOTE after 40-guest-evidence.sh v-stub, restore checkpoint pre-F35-34-2026-11-26: the admissions PILOT-CMP-read-02/b-compliant/1, PILOT-ADV-A-01/p-static-replay/1 and PILOT-ADV-A-01/p-adaptive-replay/1 and their requests stay in the catalog until then
+
+== DONE 34-v-stub-probe.sh 2026-11-26T22:46:02Z

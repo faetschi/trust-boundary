@@ -1,0 +1,14 @@
+{"case": "PILOT-CMP-read-03", "step": "open"}
+{"reached_stub": 1, "status": 200, "step": "quick settles"}
+{"reached_stub": 0, "status": 400, "step": "wrong model is refused before booking"}
+{"reached_stub": 1, "status": 500, "step": "upstream 500 ends uncertain"}
+{"reached_stub": 1, "status": 200, "step": "no usage ends uncertain"}
+{"service_killed": true, "status": "error: Remote end closed connection without response", "step": "crash during a held call"}
+{"active": true, "step": "restart"}
+{"case": "PILOT-CMP-read-04", "step": "open"}
+{"reached_stub": 1, "status": 500, "step": "upstream 500 ends uncertain (after restart, 1)"}
+{"reached_stub": 1, "status": 500, "step": "upstream 500 ends uncertain (after restart, 2)"}
+{"reached_stub": 1, "status": 500, "step": "upstream 500 ends uncertain (after restart, 3)"}
+{"reached_stub": 0, "status": 503, "step": "the stop rule refuses before sending"}
+{"status": "completed", "step": "unit totals after the stop rule", "totals": {"booked": 3, "cost_micro_usd": 0, "overage": false, "settled": 0, "tokens_in": 0, "tokens_out": 0, "uncertain": 3}}
+{"phase": "stoprule", "step": "DONE"}

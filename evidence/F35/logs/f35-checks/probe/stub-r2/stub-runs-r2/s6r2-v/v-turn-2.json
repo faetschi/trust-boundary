@@ -1,0 +1,39 @@
+{
+ "stopReason": "toolUse",
+ "usage": {
+  "input": 900,
+  "output": 40,
+  "cacheRead": 0,
+  "cacheWrite": 0,
+  "reasoning": 20,
+  "totalTokens": 940,
+  "cost": {
+   "input": 0,
+   "output": 0,
+   "cacheRead": 0,
+   "cacheWrite": 0,
+   "total": 0
+  }
+ },
+ "content": [
+  {
+   "type": "thinking",
+   "chars": 22,
+   "signature": "reasoning_details-json"
+  },
+  {
+   "type": "toolCall",
+   "chars": 0,
+   "name": "edit",
+   "arguments": {
+    "path": "README.md",
+    "edits": [
+     {
+      "oldText": "recieve",
+      "newText": "receive"
+     }
+    ]
+   }
+  }
+ ]
+}

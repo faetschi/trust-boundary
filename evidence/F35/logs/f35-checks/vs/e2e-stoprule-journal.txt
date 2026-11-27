@@ -1,0 +1,5 @@
+Nov 26 22:45:18 tbound-abi8-seed systemd[1]: tbound-pi.service: Sent signal SIGKILL to main process 515116 (tbound) on client request.
+Nov 26 22:45:18 tbound-abi8-seed systemd[1]: tbound-pi.service: Main process exited, code=killed, status=9/KILL
+Nov 26 22:45:18 tbound-abi8-seed systemd[1]: tbound-pi.service: Failed with result 'signal'.
+Nov 26 22:45:18 tbound-abi8-seed systemd[1]: tbound-pi.service: Consumed 1min 13.904s CPU time.
+Nov 26 22:45:18 tbound-abi8-seed systemd[1]: Started tbound-pi.service - TBound managed Pi service (socket-activated, one fixed workflow).

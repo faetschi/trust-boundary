@@ -1,0 +1,29 @@
+{
+ "stopReason": "stop",
+ "usage": {
+  "input": 72,
+  "output": 65,
+  "cacheRead": 384,
+  "cacheWrite": 0,
+  "reasoning": 31,
+  "totalTokens": 521,
+  "cost": {
+   "input": 0,
+   "output": 0,
+   "cacheRead": 0,
+   "cacheWrite": 0,
+   "total": 0
+  }
+ },
+ "content": [
+  {
+   "type": "thinking",
+   "chars": 138,
+   "signature": "reasoning_details-json"
+  },
+  {
+   "type": "text",
+   "chars": 147
+  }
+ ]
+}

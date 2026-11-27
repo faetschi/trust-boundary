@@ -1,0 +1,1 @@
+deleted /var/lib/tbound/sessions/v-stub-ledger (the first throwaway ledger; its records are in e2e-ledger-1.jsonl)

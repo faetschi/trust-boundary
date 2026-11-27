@@ -1,0 +1,17 @@
+part B start 2026-11-26T22:42:25Z GUEST_IP=172.29.57.244 E2E_CHECKPOINT=pre-F35-34-2026-11-26 L=//wsl.localhost/tbound-dev/home/tbound/tbound-work/receipts/F35/logs
+##### 34-v-stub-probe.sh 23:42:25
+}
+NOTE the probe is complete: nothing was booked in the research ledger, the throwaway files are deleted, the pilot chain is running again. Next: 40-guest-evidence.sh v-stub
+A v-stub request must NEVER be abandoned, on any config: restore checkpoint pre-F35-34-2026-11-26 instead (D63 item 4, owner 2026-11-26).
+NOTE after 40-guest-evidence.sh v-stub, restore checkpoint pre-F35-34-2026-11-26: the admissions PILOT-CMP-read-02/b-compliant/1, PILOT-ADV-A-01/p-static-replay/1 and PILOT-ADV-A-01/p-adaptive-replay/1 and their requests stay in the catalog until then
+
+== DONE 34-v-stub-probe.sh 2026-11-26T22:46:02Z
+##### 40-guest-evidence.sh v-stub 23:46:03
+-rw-r----- 1 root tboundadmin   3385 Nov 26 21:36 evidence-provider.json
+-rw-r----- 1 root tboundadmin   4124 Nov 26 21:38 evidence-route-bash-view.json
+-rw-r----- 1 root tboundadmin   9222 Nov 26 21:40 evidence-route-direct-runtime.json
+NOTE host side: tbound-run evq/route-report take --artifact guest-capability=<file> etc. from /home/tbound/tbh/f35/evq (copy to the host /home/tbound/tbh/ga names as the runbook wants); --guest-binary-sha256 = TBP_DIGEST.
+
+== DONE 40-guest-evidence.sh 2026-11-26T22:46:13Z
+part B end 2026-11-26T22:46:14Z rc=0
+EXIT=0

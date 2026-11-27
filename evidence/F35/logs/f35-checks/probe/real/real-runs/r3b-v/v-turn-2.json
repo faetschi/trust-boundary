@@ -1,0 +1,37 @@
+{
+ "stopReason": "toolUse",
+ "usage": {
+  "input": 139,
+  "output": 124,
+  "cacheRead": 384,
+  "cacheWrite": 0,
+  "reasoning": 56,
+  "totalTokens": 647,
+  "cost": {
+   "input": 0,
+   "output": 0,
+   "cacheRead": 0,
+   "cacheWrite": 0,
+   "total": 0
+  }
+ },
+ "content": [
+  {
+   "type": "thinking",
+   "chars": 201,
+   "signature": "reasoning_details-json"
+  },
+  {
+   "type": "text",
+   "chars": 58
+  },
+  {
+   "type": "toolCall",
+   "chars": 0,
+   "name": "bash",
+   "arguments": {
+    "command": "wc -w README.md; echo \"---\"; cat -A README.md"
+   }
+  }
+ ]
+}

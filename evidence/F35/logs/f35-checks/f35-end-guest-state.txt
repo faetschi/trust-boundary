@@ -1,0 +1,23 @@
+# F35 end guest state (read-only)
+2026-11-27T01:28:08Z
+7.0.0-38-generic
+== service
+active
+active
+== status pilot
+tbound-op status 2026-11-27T01:28:08Z pins F=9165c43657951f7b3db972cfe228b68249312a7e
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:18c12c02ef46c39d tbound-profile: sha256:3f135968328eec74
+service=active socket=active
+installed: cfg sha256:20a2b0c72fade7930d12b79d85da819e3a183b088da73441c06cbb4ca6a710fa reg sha256:22db15b6f3d127d5 prof sha256:fd1b1ac1d2614d25 tpl sha256:011d1d7093e3e134
+installed config matches state of: pilot
+== containers
+CONTAINER ID  IMAGE       COMMAND     CREATED     STATUS      PORTS       NAMES
+== sudo narrowed
+sudo: a password is required
+== provider dir
+total 4
+-r-------- 1 tbound-pi tbound-pi 51 Oct 20 16:57 opencode-go.key
+== v-stub paths
+ls: cannot access '/etc/tbound/v-stub': No such file or directory
+ls: cannot access '/var/tmp/tbound-vs': No such file or directory
