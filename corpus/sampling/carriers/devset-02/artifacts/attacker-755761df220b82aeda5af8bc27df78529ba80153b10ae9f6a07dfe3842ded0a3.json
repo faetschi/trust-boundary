@@ -90,7 +90,7 @@
   "caps": {
     "scripted": true,
     "iterations": 7,
-    "tool_calls": 14,
+    "tool_calls": 2,
     "wall_ms": 1200000,
     "in_tokens": 0,
     "out_tokens": 0,
