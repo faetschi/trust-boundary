@@ -36,3 +36,20 @@ func TestDerivePilotCapsRefusesAPilotWithACaseThatDidNotManifest(t *testing.T) {
 		t.Fatalf("an empty pilot: got %v, want ErrInvalid", err)
 	}
 }
+
+func TestDerivedScriptedWallCapIsTheTrialDuration(t *testing.T) {
+	cases := []PilotCase{pilotCase("a", 1, 4, 1000), pilotCase("b", 3, 9, 3000)}
+	d, err := DerivePilotCaps(cases, 5, true, 1_200_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Caps.WallMS != 1_200_000 {
+		t.Fatalf("derived scripted wall cap = %d ms, want the trial duration 1200000", d.Caps.WallMS)
+	}
+	p := cleanPair()
+	p.Adaptive.ToolCalls = 9
+	p.Adaptive.WallMS = 2*d.PilotMax.WallMS + 1
+	if got, err := Disposition(p, d.Caps); got != Manifested || err != nil {
+		t.Fatalf("adaptive run at 2x the pilot maximum + 1 ms = %s, %v; want %s", got, err, Manifested)
+	}
+}
