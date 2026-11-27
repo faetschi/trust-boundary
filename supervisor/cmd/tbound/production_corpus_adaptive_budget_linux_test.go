@@ -150,10 +150,10 @@ func TestAdaptiveRetryWithoutARecordedPredecessorIsRefused(t *testing.T) {
 	}
 }
 
-// The adaptive run deadline is min(the trial's duration, the wall cap that is left): the envelope of attempt 2
-// shrinks by the wall time attempt 1 spent, and an exhausted wall budget admits no attempt.
-func TestAdaptiveEnvelopeDurationIsTheTrialDurationOrTheRemainingWallCap(t *testing.T) {
-	corpus, manifest, config := pivotedCorpus(t, nil) // trial 600 s, wall cap 60000 ms
+// The adaptive run deadline is the trial's duration: the attacker enforces its own wall cap, so a cap of a few
+// seconds never becomes the run's deadline. An attempt with no pivot or whole second of wall budget left is not admitted.
+func TestAdaptiveEnvelopeDurationIsTheTrialDurationWhileWallBudgetIsLeft(t *testing.T) {
+	corpus, manifest, config := pivotedCorpus(t, nil)
 	caseID := corpusCaseWithDelta(t, manifest, evalcorpus.PDeltaAdmitAll)
 	role := corpusRoleAdaptiveReplay
 	first := budgetEntry(corpus, caseID, role, 1, "1")
@@ -164,24 +164,25 @@ func TestAdaptiveEnvelopeDurationIsTheTrialDurationOrTheRemainingWallCap(t *test
 		envelope, ok := catalog.envelopeFor(config, corpusRequest("req", caseID, role, attempt))
 		return envelope.DurationSeconds, ok
 	}
-	if d, ok := duration(role, 1); !ok || d != 60 {
-		t.Errorf("attempt 1 deadline = %d, %v; want the 60 s wall cap, not the trial's 600 s", d, ok)
+	for _, tc := range []struct {
+		role    string
+		attempt int
+	}{{role, 1}, {role, 2}, {corpusRolePAdaptiveReplay, 1}, {corpusRoleStaticReplay, 1}} {
+		if d, ok := duration(tc.role, tc.attempt); !ok || d != 600 {
+			t.Errorf("%s attempt %d deadline = %d, %v; want the trial's 600 s", tc.role, tc.attempt, d, ok)
+		}
 	}
-	if d, ok := duration(role, 2); !ok || d != 14 { // 60000 - 45300 = 14700 ms, whole seconds
-		t.Errorf("attempt 2 deadline = %d, %v; want the 14 s that are left", d, ok)
+	corpus.attacker.Caps.WallMS = 4000
+	if d, ok := catalog.attemptDurationSeconds(evalcorpus.Trial{DurationSeconds: 1200}, corpusRequest("req", caseID, role, 1)); !ok || d != 1200 {
+		t.Errorf("deadline under a 4000 ms wall cap = %d, %v; want the trial's 1200 s", d, ok)
 	}
-	if d, ok := duration(corpusRolePAdaptiveReplay, 1); !ok || d != 60 { // the P half has spent nothing
-		t.Errorf("P attempt 1 deadline = %d, %v", d, ok)
-	}
-	if d, ok := duration(corpusRoleStaticReplay, 1); !ok || d != 600 {
-		t.Errorf("a static replay keeps the trial duration: %d, %v", d, ok)
-	}
-	first.AttackerUsage = budgetUsage(1, 59_500) // under a second left
+	corpus.attacker.Caps.WallMS = 60_000
+	first.AttackerUsage = budgetUsage(1, 59_500)
 	catalog.entries[first.AdmissionRecordHash] = first
 	if _, ok := duration(role, 2); ok {
 		t.Error("an attempt with less than a second of wall budget left was admitted")
 	}
-	first.AttackerUsage = budgetUsage(3, 100) // no pivot left
+	first.AttackerUsage = budgetUsage(3, 100)
 	catalog.entries[first.AdmissionRecordHash] = first
 	if _, ok := duration(role, 2); ok {
 		t.Error("an attempt with no pivot left was admitted")
