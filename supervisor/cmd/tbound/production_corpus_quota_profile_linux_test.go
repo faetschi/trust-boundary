@@ -301,3 +301,53 @@ func TestCorpusResearchRoutePilotNeedsThePilotDraw(t *testing.T) {
 		t.Fatalf("the research pilot was refused on the research route: %v", err)
 	}
 }
+
+func TestCorpusRehearsalProfileIsAdmittedOnTheResearchRouteWithoutADraw(t *testing.T) {
+	research := piruntime.D09ManagedPiProviderRouteResearch
+	manifest := corpusTestManifest(t)
+	config := installCorpusManifestWithRealQuotas(t, manifest, "rehearsal")
+	config.ProviderRoute = research
+	if err := validateProductionPiServiceConfig(config); err != nil {
+		t.Fatalf("rehearsal on the research route refused: %v", err)
+	}
+	corpus, err := loadProductionCorpus(config)
+	if err != nil || corpus.quotaProfile != "rehearsal" || len(corpus.trials) != len(manifest.Cases) {
+		t.Fatalf("rehearsal corpus on the research route: %+v %v", corpus, err)
+	}
+	pilot, err := loadProductionCorpus(installCorpusManifestWithRealQuotas(t, manifest, "pilot"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roles := []string{corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRolePStaticReplay,
+		corpusRolePAdaptiveReplay, corpusRoleVariance1, corpusRoleVariance2, corpusRoleCompliant, corpusRoleAmbiguous,
+		corpusRoleBCompliant, corpusRoleBAmbiguous, corpusRoleV}
+	for _, c := range manifest.Cases {
+		for _, role := range roles {
+			if got, want := corpus.roleAllowed(c.CaseID, role), pilot.roleAllowed(c.CaseID, role); got != want {
+				t.Errorf("%s %s: rehearsal allows %t, pilot %t", c.CaseID, role, got, want)
+			}
+		}
+	}
+	withAllowance := config
+	withAllowance.AllowPilotOnResearch = true
+	if err := validateProductionPiServiceConfig(withAllowance); !errors.Is(err, ErrPiServiceUnavailable) {
+		t.Fatalf("rehearsal with the pilot allowance accepted: %v", err)
+	}
+	engineering := installCorpusManifestWithRealQuotas(t, manifest, "rehearsal")
+	if err := validateProductionPiServiceConfig(engineering); !errors.Is(err, ErrPiServiceUnavailable) {
+		t.Fatalf("rehearsal on the engineering route accepted: %v", err)
+	}
+	if _, err := loadProductionCorpus(engineering); !errors.Is(err, ErrPiServiceCorpus) || !strings.Contains(err.Error(), "research route") {
+		t.Fatalf("rehearsal corpus on the engineering route loaded: %v", err)
+	}
+}
+
+func TestCorpusRehearsalProfileRefusesAPinnedDraw(t *testing.T) {
+	m, raw := researchPilotManifest(t)
+	serveDraw(t, raw)
+	config := installCorpusManifestWithRealQuotas(t, m, "rehearsal")
+	config.ProviderRoute = piruntime.D09ManagedPiProviderRouteResearch
+	if _, err := loadProductionCorpus(config); !errors.Is(err, ErrPiServiceCorpus) || !strings.Contains(err.Error(), "pins.draw_digest") {
+		t.Fatalf("a rehearsal corpus that pins the pilot draw was loaded: %v", err)
+	}
+}

@@ -214,6 +214,13 @@ type Stratum struct {
 	Dispositions   evalscore.DispositionCounts `json:"dispositions"`
 }
 
+type CeilingTypedEndRow struct {
+	Stratum       string `json:"stratum"`
+	Configuration string `json:"configuration"`
+	Runs          int    `json:"runs"`
+	Ends          int    `json:"ceiling_typed_ends"`
+}
+
 // Calibration sums the P/C calibration manifestations over all channels.
 type Calibration struct {
 	Pairs              int `json:"pairs"`
@@ -271,9 +278,10 @@ type Report struct {
 	// ProviderRetries are the adversarial C trajectories whose provider attempts were retried, each with its count of
 	// tools-disabled calls (D56; D30 as amended, Accepted risk). Left out when empty, and the Markdown report prints
 	// them only when there are any.
-	ProviderRetries []evalscore.ProviderRetryTrajectory `json:"provider_retries,omitempty"`
-	Spend           Spend                               `json:"spend"`
-	PlanV           bool                                `json:"plan_v,omitempty"`
-	Flags           []string                            `json:"flags"`
-	Digest          string                              `json:"digest"`
+	ProviderRetries  []evalscore.ProviderRetryTrajectory `json:"provider_retries,omitempty"`
+	CeilingTypedEnds []CeilingTypedEndRow                `json:"ceiling_typed_ends,omitempty"`
+	Spend            Spend                               `json:"spend"`
+	PlanV            bool                                `json:"plan_v,omitempty"`
+	Flags            []string                            `json:"flags"`
+	Digest           string                              `json:"digest"`
 }

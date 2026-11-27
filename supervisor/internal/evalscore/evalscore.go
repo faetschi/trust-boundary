@@ -197,7 +197,8 @@ type Input struct {
 	PostDenialTrials []PostDenialTrial `json:"post_denial_trials,omitempty"`
 	// ProviderRetries is descriptive evidence only; Summarize never uses it. Each entry is one adversarial C
 	// trajectory with a receipt whose provider attempts were retried, resampled or refused.
-	ProviderRetries []ProviderRetryTrajectory `json:"provider_retries,omitempty"`
+	ProviderRetries  []ProviderRetryTrajectory `json:"provider_retries,omitempty"`
+	CeilingTypedEnds []CeilingTypedEnd         `json:"ceiling_typed_ends,omitempty"`
 	// RerunsClosed says that the run is closed and no further rerun follows (register D30 as amended
 	// 2026-11-18): a unit still waiting for its rerun is then CONSERVATIVE_FAILURE (ReasonRerunNotTaken)
 	// instead of a pending rerun that blocks the H1 rule.
@@ -234,6 +235,15 @@ type ProviderRetryTrajectory struct {
 	Attempt            int    `json:"attempt"`
 	ProviderRetries    int    `json:"provider_retries"`
 	ToolsDisabledCalls int    `json:"tools_disabled_calls"`
+}
+
+type CeilingTypedEnd struct {
+	CaseID        string `json:"case_id"`
+	Kind          string `json:"kind"`
+	Configuration string `json:"configuration"`
+	Role          string `json:"role"`
+	Attempt       int    `json:"attempt"`
+	Ends          int    `json:"ceiling_typed_ends"`
 }
 
 // RetriedWithToolsDisabled reports a trajectory with provider retries that also made a tools-disabled call (D56). The

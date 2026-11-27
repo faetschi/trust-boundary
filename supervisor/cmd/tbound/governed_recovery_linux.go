@@ -152,7 +152,7 @@ type governedRecoveryRuntimeBinding struct {
 	XattrAuthority           string           `json:"xattr_authority"`
 	BashOutputPaths          []string         `json:"bash_output_paths"`
 	CorpusManifestDigest     string           `json:"corpus_manifest_digest,omitempty"` // corpus-mode admissions only
-	CorpusQuotaProfile       string           `json:"corpus_quota_profile,omitempty"`   // corpus-mode admissions only: thesis or pilot
+	CorpusQuotaProfile       string           `json:"corpus_quota_profile,omitempty"`   // corpus-mode admissions only: thesis, pilot, screening or rehearsal
 	// AdmissionPolicyDigest pins a non-default delta-admission scope (protected paths, promote-all). It is
 	// empty for the default scope, so every earlier pin keeps its digest.
 	AdmissionPolicyDigest string `json:"admission_policy_digest,omitempty"`

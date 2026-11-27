@@ -859,20 +859,20 @@ func validateProductionPiServiceConfig(config piServiceConfig) error {
 // validPiServiceCorpusQuotaProfile mirrors piruntime.D09ManagedPiServiceConfig: the thesis
 // profile (absent or explicit) on any route, the pilot profile on the engineering route, or
 // on the research route only with the explicit allowance, which is refused wherever it has
-// nothing to allow.
+// nothing to allow. The screening and rehearsal profiles are research-route only and take no allowance.
 func validPiServiceCorpusQuotaProfile(config piServiceConfig) bool {
 	switch config.CorpusQuotaProfile {
 	case "", piruntime.D09ManagedPiCorpusQuotaProfileThesis:
 		return !config.AllowPilotOnResearch
 	case piruntime.D09ManagedPiCorpusQuotaProfilePilot:
 		return config.AllowPilotOnResearch == (config.ProviderRoute == piruntime.D09ManagedPiProviderRouteResearch)
-	case piruntime.D09ManagedPiCorpusQuotaProfileScreening:
+	case piruntime.D09ManagedPiCorpusQuotaProfileScreening, piruntime.D09ManagedPiCorpusQuotaProfileRehearsal:
 		return !config.AllowPilotOnResearch && config.ProviderRoute == piruntime.D09ManagedPiProviderRouteResearch
 	}
 	return false
 }
 
-// effectiveCorpusQuotaProfile is "thesis" or "pilot" for a corpus-mode config (an absent
+// effectiveCorpusQuotaProfile is the configured profile for a corpus-mode config (an absent
 // member is thesis) and "" for a single-task config.
 func (config piServiceConfig) effectiveCorpusQuotaProfile() string {
 	if config.WorkflowAdmissionMode != piServiceAdmissionCorpus {

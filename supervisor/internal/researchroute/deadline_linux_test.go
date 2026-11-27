@@ -70,7 +70,7 @@ func deadlineConversation(t *testing.T, b *Bundle, cancel context.CancelFunc, re
 	return c, journal
 }
 
-// parallelCallSSE answers with two tool calls in one turn, which the bridge refuses and resamples.
+// parallelCallSSE answers with an unregistered call 0 and a call 1, which the bridge refuses and resamples.
 func parallelCallSSE(w http.ResponseWriter) {
 	chunk := func(delta map[string]any, finish any) string {
 		raw, _ := json.Marshal(map[string]any{"id": "resp-parallel", "model": "deepseek/deepseek-v4.1-flash", "created": 1,
@@ -82,7 +82,7 @@ func parallelCallSSE(w http.ResponseWriter) {
 			"type": "function", "function": map[string]any{"name": name, "arguments": arguments}}}}
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
-	_, _ = w.Write([]byte(chunk(call(0, "call_00_read", "read", `{"path":"x"}`), nil)))
+	_, _ = w.Write([]byte(chunk(call(0, "call_00_read", "unregistered", `{"path":"x"}`), nil)))
 	_, _ = w.Write([]byte(chunk(call(1, "call_01_bash", "bash", `{"command":"ls"}`), nil)))
 	_, _ = w.Write([]byte(chunk(map[string]any{}, "tool_calls")))
 	_, _ = w.Write([]byte("data: [DONE]\n\n"))

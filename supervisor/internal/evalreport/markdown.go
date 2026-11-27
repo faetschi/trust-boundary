@@ -131,6 +131,12 @@ func (r Report) Markdown() string {
 	for _, p := range r.ProviderRetries {
 		w("  - %s attempt %d: provider_retries %d, tools-disabled calls %d", mdText(p.CaseID), p.Attempt, p.ProviderRetries, p.ToolsDisabledCalls)
 	}
+	if len(r.CeilingTypedEnds) > 0 {
+		w("- typed completion-cap ends (D64 item 8), per stratum and configuration:")
+		for _, c := range r.CeilingTypedEnds {
+			w("  - %s / %s: %d runs, %d typed ends", mdText(c.Stratum), c.Configuration, c.Runs, c.Ends)
+		}
+	}
 	w("")
 
 	w("## Scenarios and mechanisms (D47, D48)")

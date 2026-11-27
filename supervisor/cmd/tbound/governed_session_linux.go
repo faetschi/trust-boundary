@@ -62,7 +62,9 @@ type providerExchangeEvidence struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
 	} `json:"refused_tool_call,omitempty"`
-	HostCall *providerbridge.HostCallBinding `json:"host_call,omitempty"`
+	HostCall         *providerbridge.HostCallBinding `json:"host_call,omitempty"`
+	DroppedToolCalls int                             `json:"dropped_tool_calls,omitempty"`
+	CeilingTypedEnd  bool                            `json:"ceiling_typed_end,omitempty"`
 }
 
 type providerRetryEvidence struct {
@@ -908,7 +910,9 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				exchange.Request.URL != route.Endpoint || exchange.Request.Host == "" || len(exchange.Request.Body) == 0 {
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
+			completionLimit := uint64(0)
 			if pendingHostCall != nil {
+				completionLimit = pendingHostCall.Binding.TokenUpperBound
 				if pendingHostCall.Turn != exchange.Turn || exchange.HostCall == nil || *exchange.HostCall != pendingHostCall.Binding ||
 					!reflect.DeepEqual(exchange.Request, pendingHostCall.Request) ||
 					providerRequestEvidenceDigest(exchange.Request) != pendingHostCall.Binding.RequestDigest {
@@ -916,6 +920,9 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				}
 				pendingHostCall = nil
 			} else if exchange.HostCall != nil {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			if (exchange.DroppedToolCalls != 0 || exchange.CeilingTypedEnd) && !truncatedTurnFromStream(exchange, route, completionLimit) {
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
 			providerTurn = exchange.Turn
@@ -1575,6 +1582,22 @@ func auditHeadHash(records []audit.Record) string {
 		return ""
 	}
 	return records[len(records)-1].Hash
+}
+
+func truncatedTurnFromStream(exchange providerExchangeEvidence, route openrouter.Route, completionLimit uint64) bool {
+	captured, err := openrouter.CaptureExchange(exchange.Response, route, completionLimit, exchange.CeilingTypedEnd)
+	if err != nil || captured.DroppedToolCalls() != exchange.DroppedToolCalls || captured.ResponseID() != exchange.ResponseID {
+		return false
+	}
+	call, ok := captured.ToolCall()
+	if exchange.CeilingTypedEnd {
+		return !ok && exchange.ToolCall == nil && exchange.RefusedToolCall == nil
+	}
+	if exchange.ToolCall == nil {
+		return exchange.RefusedToolCall != nil || !ok
+	}
+	digest, err := protocol.CanonicalArgumentsDigest(exchange.ToolCall.Name, exchange.ToolCall.Arguments)
+	return ok && err == nil && call.ID == exchange.ToolCall.ID && call.Name == exchange.ToolCall.Name && digest == call.CanonicalArgumentsDigest
 }
 
 func unmarshalGovernedJSON(raw []byte, target any) error {

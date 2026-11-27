@@ -30,6 +30,7 @@ const (
 	quotaThesis          = "thesis"
 	quotaPilot           = "pilot"
 	quotaScreening       = "screening"
+	quotaRehearsal       = "rehearsal"
 )
 
 // runConfig is the one run.json. It is decoded strictly: an unknown member, a duplicate
@@ -40,7 +41,7 @@ type runConfig struct {
 	CDHBaseline pinnedFile        `json:"cdh_baseline,omitempty"`
 	// Attributions pins the attribution file of the friction candidates. Absent: every candidate stays unresolved.
 	Attributions pinnedFile `json:"attributions,omitempty"`
-	// Manifest is the corpus manifest. QuotaProfile is thesis, pilot or screening.
+	// Manifest is the corpus manifest. QuotaProfile is thesis, pilot, screening or rehearsal.
 	Manifest     string `json:"manifest"`
 	QuotaProfile string `json:"quota_profile"`
 	// FreezeCommit, EVQObligations, AdaptiveCaps, OnlyCases, Purpose and PlanV are runner.Config.
@@ -184,9 +185,9 @@ func (c runConfig) validate() error {
 		return errors.New("attributions needs an absolute path and a sha256:<64 hex> digest")
 	}
 	switch c.QuotaProfile {
-	case quotaThesis, quotaPilot, quotaScreening:
+	case quotaThesis, quotaPilot, quotaScreening, quotaRehearsal:
 	default:
-		return fmt.Errorf("quota_profile %q: use %q, %q or %q", c.QuotaProfile, quotaThesis, quotaPilot, quotaScreening)
+		return fmt.Errorf("quota_profile %q: use %q, %q, %q or %q", c.QuotaProfile, quotaThesis, quotaPilot, quotaScreening, quotaRehearsal)
 	}
 	if (c.Purpose == runner.PurposeScreening) != (c.QuotaProfile == quotaScreening) {
 		return fmt.Errorf("purpose %q and quota_profile %q go together: the screening purpose needs the screening profile and no other run may use it", c.Purpose, c.QuotaProfile)
@@ -263,8 +264,12 @@ func (c runConfig) validate() error {
 
 // runnerConfig is the protocol Config bound into the plan digest.
 func (c runConfig) runnerConfig() runner.Config {
-	return runner.Config{CDH: c.CDH, FreezeCommit: c.FreezeCommit, AdaptiveCaps: c.AdaptiveCaps,
+	rc := runner.Config{CDH: c.CDH, FreezeCommit: c.FreezeCommit, AdaptiveCaps: c.AdaptiveCaps,
 		EVQObligations: slices.Clone(c.EVQObligations), OnlyCases: slices.Clone(c.OnlyCases), Purpose: c.Purpose, PlanV: c.PlanV}
+	if c.QuotaProfile == quotaRehearsal {
+		rc.QuotaProfile = runner.QuotaProfileRehearsal
+	}
+	return rc
 }
 
 func (c runConfig) journalPath() string { return filepath.Join(c.RunDir, "journal.jsonl") }

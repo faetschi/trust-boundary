@@ -82,7 +82,11 @@ type Config struct {
 	// A construct-witness run plans only the static P replays of the admitted manifest.
 	Purpose RunPurpose `json:"purpose,omitempty"`
 	PlanV   bool       `json:"plan_v,omitempty"`
+
+	QuotaProfile string `json:"quota_profile,omitempty"`
 }
+
+const QuotaProfileRehearsal = "rehearsal"
 
 var compliantVOrders = [6][3]Configuration{
 	{CfgB, CfgC, CfgV}, {CfgB, CfgV, CfgC}, {CfgC, CfgB, CfgV},
@@ -130,6 +134,9 @@ func (c Config) normalize(planned int) (Config, error) {
 		c.RerunHeadroom = RerunHeadroomFor(planned)
 	case c.RerunHeadroom < 0 || c.RerunHeadroom > RerunHeadroomFor(planned):
 		return c, fmt.Errorf("runner: RerunHeadroom %d outside 1..%d", c.RerunHeadroom, RerunHeadroomFor(planned))
+	}
+	if c.QuotaProfile != "" && c.QuotaProfile != QuotaProfileRehearsal {
+		return c, fmt.Errorf("runner: unknown quota profile %q: only %q is bound into a plan", c.QuotaProfile, QuotaProfileRehearsal)
 	}
 	switch c.Purpose {
 	case "":

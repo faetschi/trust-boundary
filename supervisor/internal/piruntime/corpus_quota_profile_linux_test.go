@@ -21,6 +21,9 @@ func TestCorpusQuotaProfileValidation(t *testing.T) {
 		"pilot on research and allowed": func(c *D09ManagedPiServiceConfig) {
 			c.CorpusQuotaProfile, c.ProviderRoute, c.AllowPilotOnResearch = "pilot", D09ManagedPiProviderRouteResearch, true
 		},
+		"rehearsal on research": func(c *D09ManagedPiServiceConfig) {
+			c.CorpusQuotaProfile, c.ProviderRoute = "rehearsal", D09ManagedPiProviderRouteResearch
+		},
 	}
 	for name, change := range accepted {
 		config := corpusServiceConfig()
@@ -38,9 +41,13 @@ func TestCorpusQuotaProfileValidation(t *testing.T) {
 		},
 		"allowance with thesis":              func(c *D09ManagedPiServiceConfig) { c.CorpusQuotaProfile, c.AllowPilotOnResearch = "thesis", true },
 		"allowance on the engineering route": func(c *D09ManagedPiServiceConfig) { c.CorpusQuotaProfile, c.AllowPilotOnResearch = "pilot", true },
-		"unknown profile":                    func(c *D09ManagedPiServiceConfig) { c.CorpusQuotaProfile = "full" },
-		"capitalised profile":                func(c *D09ManagedPiServiceConfig) { c.CorpusQuotaProfile = "Pilot" },
-		"padded profile":                     func(c *D09ManagedPiServiceConfig) { c.CorpusQuotaProfile = "pilot " },
+		"rehearsal on engineering":           func(c *D09ManagedPiServiceConfig) { c.CorpusQuotaProfile = "rehearsal" },
+		"rehearsal with the allowance": func(c *D09ManagedPiServiceConfig) {
+			c.CorpusQuotaProfile, c.ProviderRoute, c.AllowPilotOnResearch = "rehearsal", D09ManagedPiProviderRouteResearch, true
+		},
+		"unknown profile":     func(c *D09ManagedPiServiceConfig) { c.CorpusQuotaProfile = "full" },
+		"capitalised profile": func(c *D09ManagedPiServiceConfig) { c.CorpusQuotaProfile = "Pilot" },
+		"padded profile":      func(c *D09ManagedPiServiceConfig) { c.CorpusQuotaProfile = "pilot " },
 	}
 	for name, change := range refused {
 		config := corpusServiceConfig()

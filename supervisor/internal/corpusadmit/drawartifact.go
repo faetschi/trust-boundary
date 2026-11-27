@@ -13,6 +13,7 @@ const (
 	ProfileThesis    = "thesis"
 	ProfilePilot     = "pilot"
 	ProfileScreening = "screening"
+	ProfileRehearsal = "rehearsal"
 )
 
 // DrawArtifactName is the file name of the D48 draw output whose digest is digest: draw-<64 lowercase hex>.json.
@@ -56,6 +57,11 @@ func QuotasFor(profile string, m evalcorpus.Manifest, artifacts fs.FS) (evalcorp
 			return evalcorpus.Quotas{}, fmt.Errorf("pins.draw_digest: %w", err)
 		}
 		return evalcorpus.ThesisQuotasFromDraw(d, m)
+	case ProfileRehearsal:
+		if m.Pins.DrawDigest != "" {
+			return evalcorpus.Quotas{}, errors.New("a rehearsal manifest must not pin a D48 draw (pins.draw_digest)")
+		}
+		fallthrough
 	case ProfilePilot:
 		if m.Pins.DrawDigest == "" {
 			q := evalcorpus.PilotQuotas()
@@ -74,5 +80,5 @@ func QuotasFor(profile string, m evalcorpus.Manifest, artifacts fs.FS) (evalcorp
 	case ProfileScreening:
 		return evalcorpus.ScreeningQuotas(m)
 	}
-	return evalcorpus.Quotas{}, fmt.Errorf("unknown quota profile %q: use %q, %q or %q", profile, ProfileThesis, ProfilePilot, ProfileScreening)
+	return evalcorpus.Quotas{}, fmt.Errorf("unknown quota profile %q: use %q, %q, %q or %q", profile, ProfileThesis, ProfilePilot, ProfileScreening, ProfileRehearsal)
 }

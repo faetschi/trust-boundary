@@ -87,6 +87,9 @@ func (a *app) runCmd(args []string) error {
 			return fmt.Errorf("%w: --max-steps must not be negative", errUsage)
 		}
 		if registration != "" {
+			if err := refuseRehearsal(p, "run --registration"); err != nil {
+				return err
+			}
 			if _, err := checkRegistration(registration, p); err != nil {
 				return err
 			}
@@ -173,6 +176,9 @@ func (a *app) exportCmd(args []string) error {
 		if out == "" {
 			return fmt.Errorf("%w: export needs --out", errUsage)
 		}
+		if err := refuseRehearsal(p, "export"); err != nil {
+			return err
+		}
 		res, err := a.exportJournal(p, closeReruns)
 		if err != nil {
 			return err
@@ -190,6 +196,13 @@ func (a *app) exportCmd(args []string) error {
 
 // closeRerunsUsage explains --close-reruns (register D30 as amended 2026-11-18).
 const closeRerunsUsage = "close the run: a unit still waiting for its registered rerun is CONSERVATIVE_FAILURE (rerun_not_taken)"
+
+func refuseRehearsal(p plan, command string) error {
+	if p.cfg.QuotaProfile == quotaRehearsal {
+		return fmt.Errorf("%s: a rehearsal run is development evidence, not a result for the research pilot, screening or H1", command)
+	}
+	return nil
+}
 
 func (a *app) exportJournal(p plan, closeReruns bool) (runner.ExportResult, error) {
 	j, err := existingJournal(p)
@@ -279,6 +292,13 @@ func (a *app) reportCmd(args []string) error {
 		if dir == "" {
 			return fmt.Errorf("%w: report needs --out", errUsage)
 		}
+		for flag, value := range map[string]string{"--registration": registration, "--ledger-v3": ledgerV3, "--certification": certification} {
+			if value != "" {
+				if err := refuseRehearsal(p, "report "+flag); err != nil {
+					return err
+				}
+			}
+		}
 		d48, err := d48Inputs(p, ledgerV3, certification)
 		if err != nil {
 			return err
@@ -306,6 +326,9 @@ func (a *app) reportCmd(args []string) error {
 		}
 		reasons := claimReasons(p, p.cfg.Ledger.file != nil, rep, len(res.Incomplete), reg)
 		note := reportNote(reasons, reg)
+		if p.cfg.QuotaProfile == quotaRehearsal {
+			note += " REHEARSAL RUN (quota_profile rehearsal): development evidence, not the research pilot, screening or H1."
+		}
 		escapeNote := observedEscapeNote(reasons, rep)
 		registrationDigest := ""
 		if reg != nil {
@@ -325,6 +348,7 @@ func (a *app) reportCmd(args []string) error {
 		meta, err := json.Marshal(struct {
 			ClaimBearing    bool     `json:"claim_bearing"`
 			NotClaimBearing []string `json:"not_claim_bearing"`
+			QuotaProfile    string   `json:"quota_profile"`
 			Registration    string   `json:"registration_record_digest"`
 			Ledger          string   `json:"ledger"`
 			ReportDigest    string   `json:"report_digest"`
@@ -334,7 +358,7 @@ func (a *app) reportCmd(args []string) error {
 			FlagsDigest     string   `json:"adaptive_budget_flags_sha256,omitempty"`
 			Note            string   `json:"note"`
 			ObservedEscape  string   `json:"observed_escape,omitempty"`
-		}{len(reasons) == 0, append([]string{}, reasons...), registrationDigest, ledger.LedgerID, rep.Digest, p.sched.Digest,
+		}{len(reasons) == 0, append([]string{}, reasons...), p.cfg.QuotaProfile, registrationDigest, ledger.LedgerID, rep.Digest, p.sched.Digest,
 			len(res.Incomplete), flagLines(res.AdaptiveBudgetFlags), flagsDigest, note, escapeNote})
 		if err != nil {
 			return err

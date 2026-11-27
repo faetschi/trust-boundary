@@ -404,6 +404,7 @@ func TestResearchRouteSpendFailureEndsTheTurnWithTheRefusedStreamJournaled(t *te
 func researchResampleConversation(t *testing.T, spend SpendAccountant) (*Conversation, *queuedSpendDoer, *memoryJournal) {
 	t.Helper()
 	parallel := strings.ReplaceAll(parallelCallStream(t), `"model":"deepseek-v4.1-flash"`, `"model":"`+spendTestModel+`"`)
+	parallel = strings.Replace(parallel, `"name":"read"`, `"name":"unregistered"`, 1)
 	doer := &queuedSpendDoer{raw: [][]byte{[]byte(parallel)}}
 	journal := &memoryJournal{}
 	cfg := Config{

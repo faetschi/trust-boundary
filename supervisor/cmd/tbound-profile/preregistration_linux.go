@@ -51,7 +51,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	panelReceipt := flags.String("panel-receipt", "", "optional supplementary panel receipt.json")
 	panelAudit := flags.String("panel-audit", "", "optional supplementary panel audit.json; supply all three panel files together")
 	panelStats := flags.String("panel-stats", "", "optional supplementary panel diagnostics stats.json")
-	profile := flags.String("quota-profile", "", "quota profile: thesis, pilot or screening")
+	profile := flags.String("quota-profile", "", "quota profile: thesis or pilot (a screening or rehearsal corpus is not pre-registered)")
 	runnerConfigPath := flags.String("runner-config", "", "runner Config JSON (its freeze_commit must equal --freeze-commit)")
 	researchProfilePath := flags.String("research-profile", "", "optional frozen research profile JSON")
 	ledgerConfigPath := flags.String("research-ledger-config", "", "optional research ledger configuration JSON")
@@ -83,6 +83,9 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	}
 	if *schema != evalscore.SchemaVersion {
 		return fmt.Errorf("--evalscore-schema %q is not the registered %q", *schema, evalscore.SchemaVersion)
+	}
+	if *profile == corpusadmit.ProfileRehearsal {
+		return errors.New("a rehearsal corpus is development evidence and cannot be pre-registered")
 	}
 	names, err := parseReviewers(*reviewers)
 	if err != nil {

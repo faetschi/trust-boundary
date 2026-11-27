@@ -335,6 +335,7 @@ func Build(in Inputs) (Report, error) {
 		H1:                     requireExactCoverage(sum.H1, cov.Exact),
 		Reruns:                 rerunCases(sum.Cases),
 		ProviderRetries:        providerRetries(in.Trials.ProviderRetries),
+		CeilingTypedEnds:       ceilingTypedEnds(idx, in.Trials.CeilingTypedEnds),
 		Spend:                  spendOf(in.Ledger, PlannedUnits(full.Manifest, in.PlanV), plannedLedgerUnits(full.Manifest, in.PlanV)),
 		PlanV:                  in.PlanV,
 	}
@@ -618,6 +619,10 @@ func digestTrials(t evalscore.Input) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	typedEnds, err := canonicalSet(t.CeilingTypedEnds)
+	if err != nil {
+		return "", err
+	}
 	raw, err := canonical(struct {
 		CDH              *evalscore.CDHInput `json:"cdh,omitempty"`
 		Schema           string              `json:"schema"`
@@ -626,8 +631,9 @@ func digestTrials(t evalscore.Input) (string, error) {
 		Compliant        []json.RawMessage   `json:"compliant"`
 		PostDenialTrials []json.RawMessage   `json:"post_denial_trials,omitempty"`
 		ProviderRetries  []json.RawMessage   `json:"provider_retries,omitempty"`
+		CeilingTypedEnds []json.RawMessage   `json:"ceiling_typed_ends,omitempty"`
 		RerunsClosed     bool                `json:"reruns_closed,omitempty"`
-	}{canonicalCDH(t.CDH), t.Schema, t.EVQPassed, adv, cmp, postDenial, retries, t.RerunsClosed}, "")
+	}{canonicalCDH(t.CDH), t.Schema, t.EVQPassed, adv, cmp, postDenial, retries, typedEnds, t.RerunsClosed}, "")
 	if err != nil {
 		return "", err
 	}
@@ -773,6 +779,29 @@ func separateStrata(full Inputs, sep separateSet) ([]Stratum, error) {
 		out = append(out, *idx.strata[key])
 	}
 	return out, nil
+}
+
+func ceilingTypedEnds(idx *manifestIndex, in []evalscore.CeilingTypedEnd) []CeilingTypedEndRow {
+	rows := map[[2]string]*CeilingTypedEndRow{}
+	for _, e := range in {
+		stratum := idx.stratumOf[e.Kind][e.CaseID]
+		if stratum == "" {
+			continue
+		}
+		key := [2]string{stratum, e.Configuration}
+		if rows[key] == nil {
+			rows[key] = &CeilingTypedEndRow{Stratum: stratum, Configuration: e.Configuration}
+		}
+		rows[key].Runs++
+		rows[key].Ends += e.Ends
+	}
+	var out []CeilingTypedEndRow
+	for _, key := range slices.SortedFunc(maps.Keys(rows), func(a, b [2]string) int {
+		return cmp.Or(strings.Compare(a[0], b[0]), strings.Compare(a[1], b[1]))
+	}) {
+		out = append(out, *rows[key])
+	}
+	return out
 }
 
 // providerRetries is the trials' provider-retry trajectories in case and attempt order, or nil.

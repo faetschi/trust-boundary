@@ -11,6 +11,7 @@ import (
 	"go/build"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -751,5 +752,110 @@ func TestPlanVNeedsTheImagePinAndRefusesScreening(t *testing.T) {
 	e.write()
 	if _, err := e.cliCfg(nil, "plan"); err == nil || !strings.Contains(err.Error(), "plan_v") {
 		t.Fatalf("a compliant-screening plan with the V switch: %v", err)
+	}
+}
+
+func TestRehearsalProfilePlansLikePilot(t *testing.T) {
+	e := newEnv(t)
+	pilot, err := e.cliCfg(nil, "plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.cfg["quota_profile"] = "rehearsal"
+	e.write()
+	rehearsal, err := e.cliCfg(nil, "plan")
+	if err != nil {
+		t.Fatalf("quota_profile rehearsal refused: %v", err)
+	}
+	units := func(out string) string {
+		var kept []string
+		for _, l := range strings.Split(out, "\n") {
+			if !strings.HasPrefix(l, "plan_digest ") && !strings.HasPrefix(l, "quota_profile ") {
+				kept = append(kept, l)
+			}
+		}
+		return strings.Join(kept, "\n")
+	}
+	if units(rehearsal) != units(pilot) || line(rehearsal, "units") != "103" || line(rehearsal, "plan_digest") == line(pilot, "plan_digest") {
+		t.Fatalf("rehearsal plan, apart from its digest, differs from the pilot plan:\n%s\n%s", rehearsal, pilot)
+	}
+}
+
+func TestRehearsalRunIsRefusedByTheBindingPaths(t *testing.T) {
+	e := newEnv(t)
+	e.cfg["quota_profile"] = "rehearsal"
+	e.write()
+	if _, err := e.cliCfg(nil, "plan"); err != nil {
+		t.Fatalf("quota_profile rehearsal refused: %v", err)
+	}
+	for name, args := range map[string][]string{
+		"report registration": {"report", "--out", e.path("report"), "--registration", e.path("record.json")},
+		"report ledger v3":    {"report", "--out", e.path("report"), "--ledger-v3", e.path("ledger.jsonl")},
+		"report certify":      {"report", "--out", e.path("report"), "--certification", e.path("certify.json")},
+		"export":              {"export", "--out", e.path("trials.json")},
+		"run registration":    {"run", "--registration", e.path("record.json")},
+	} {
+		if _, err := e.cliCfg(nil, args...); err == nil || !strings.Contains(err.Error(), "development evidence") {
+			t.Errorf("%s: got %v, want a refusal naming development evidence", name, err)
+		}
+	}
+	if _, err := e.cliCfg(nil, "caps", "--out", e.path("caps.json")); err == nil || !strings.Contains(err.Error(), "pins no attacker artifact") {
+		t.Fatalf("caps on a rehearsal run: %v", err)
+	}
+}
+
+func TestRehearsalReportNamesTheProfileAndIsNotClaimBearing(t *testing.T) {
+	e := newEnv(t)
+	e.cfg["quota_profile"] = "rehearsal"
+	e.write()
+	if _, err := e.cliCfg(fakeWire(newFake(e)), "run", "--max-steps", "10"); err != nil {
+		t.Fatal(err)
+	}
+	rdir := e.path("report")
+	out, err := e.cliCfg(nil, "report", "--out", rdir)
+	if err != nil || line(out, "claim_bearing") != "false" || line(out, "not_claim_bearing") == "" {
+		t.Fatalf("rehearsal report: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "not_claim_bearing rehearsal_development_evidence") {
+		t.Fatalf("the report does not say rehearsal_development_evidence:\n%s", out)
+	}
+	var meta struct {
+		QuotaProfile    string   `json:"quota_profile"`
+		NotClaimBearing []string `json:"not_claim_bearing"`
+	}
+	raw, _ := os.ReadFile(filepath.Join(rdir, "report.meta.json"))
+	if err := json.Unmarshal(raw, &meta); err != nil || meta.QuotaProfile != "rehearsal" || !slices.Contains(meta.NotClaimBearing, "rehearsal_development_evidence") {
+		t.Fatalf("meta %+v %v", meta, err)
+	}
+	md, _ := os.ReadFile(filepath.Join(rdir, "report.md"))
+	if !strings.Contains(string(md), "REHEARSAL RUN") || !strings.Contains(string(md), "development evidence") {
+		t.Fatalf("report.md does not name the rehearsal profile:\n%.300s", md)
+	}
+}
+
+func TestRehearsalJournalRelabelledAsPilotIsRefused(t *testing.T) {
+	e := newEnv(t)
+	e.cfg["quota_profile"] = "rehearsal"
+	e.write()
+	if _, err := e.cliCfg(fakeWire(newFake(e)), "run", "--max-steps", "10"); err != nil {
+		t.Fatal(err)
+	}
+	e.cfg["quota_profile"] = "pilot"
+	e.write()
+	for _, args := range [][]string{{"export", "--out", e.path("trials.json")}, {"report", "--out", e.path("report")}, {"run"}} {
+		if _, err := e.cliCfg(fakeWire(newFake(e)), args...); !errors.Is(err, runner.ErrPlanMismatch) {
+			t.Errorf("%s on a relabelled journal: %v", args[0], err)
+		}
+	}
+	cfg, err := loadConfig(e.cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := loadPlan(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := existingJournal(p); !errors.Is(err, runner.ErrPlanMismatch) {
+		t.Fatalf("existingJournal on a relabelled journal: %v", err)
 	}
 }

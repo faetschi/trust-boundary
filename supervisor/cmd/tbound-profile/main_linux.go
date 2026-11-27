@@ -63,9 +63,9 @@ usage:
   tbound-profile managed-root-verify --registration <json> --sig <signature> --pub <public-key> [--runner-digest <sha256:..>]
   tbound-profile research-ledger-genesis [--profile <abs>] [--ledger-config <abs>] [--ledger <abs>]
   tbound-profile corpus-digest --manifest <path> [--panel-receipt <receipt.json> --panel-audit <audit.json> --panel-stats <stats.json>]
-                                [--quota-profile thesis|pilot] [--artifacts <dir>]
+                                [--quota-profile thesis|pilot|screening|rehearsal] [--artifacts <dir>]
                                 [--max-host-calls <n> --max-tokens <n> --duration-seconds <n>]
-  tbound-profile corpus-check  --manifest <path> --out <new-report-directory> [--quota-profile thesis|pilot]
+  tbound-profile corpus-check  --manifest <path> --out <new-report-directory> [--quota-profile thesis|pilot|screening|rehearsal]
                                 [--node <local-node-binary>] [--other-manifest <path>]
                                 [--guest-evidence <dir> --run-config <run.json> --guest-binary-sha256 <sha256:..>]
   tbound-profile corpus-pins    --template <d09-cell.json> --runtime-bundle-digest <sha256> --node-digest <sha256>

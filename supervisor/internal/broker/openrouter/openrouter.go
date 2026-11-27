@@ -482,6 +482,7 @@ type CapturedResponse struct {
 	created                                                            int64
 	usage, raw                                                         []byte
 	call                                                               *ToolCall
+	dropped                                                            int
 }
 
 func (r CapturedResponse) ResponseID() string    { return r.id }
@@ -496,6 +497,7 @@ func (r CapturedResponse) Reasoning() string      { return r.reasoning }
 func (r CapturedResponse) FinishReason() string   { return r.finish }
 func (r CapturedResponse) Usage() json.RawMessage { return append(json.RawMessage(nil), r.usage...) }
 func (r CapturedResponse) RawResponse() []byte    { return append([]byte(nil), r.raw...) }
+func (r CapturedResponse) DroppedToolCalls() int  { return r.dropped }
 func (r CapturedResponse) ToolCall() (ToolCall, bool) {
 	if r.call == nil {
 		return ToolCall{}, false
@@ -523,8 +525,8 @@ func (r CapturedResponse) TrustedCapture(callIssuer, responseIssuer, generation 
 }
 
 // ErrParallelToolCall is the capture refusal of a stream that starts a second tool call (a tool-call
-// index above zero), whether or not the request sends parallel_tool_calls=false. The capture still refuses it;
-// the sentinel only lets the bridge apply decision 13's bounded resample to exactly this class. Its text
+// index above zero) off the research route; a research capture keeps call 0 and drops the rest (D64).
+// The sentinel lets the bridge apply decision 13's bounded resample to exactly this class. Its text
 // is the refusal text journaled before the sentinel existed.
 var ErrParallelToolCall = errors.New("tool-call index must be zero")
 
@@ -537,6 +539,8 @@ type stream struct {
 	out                  CapturedResponse
 	init, finished, done bool
 	tool                 *assembly
+	dropped              map[int64]bool
+	dropParallel         bool
 	events               int
 	legacyNulls          bool
 	reasoning            bool
@@ -573,6 +577,26 @@ func TruncatedUsage(raw []byte, route Route) (json.RawMessage, bool) {
 	return captured.Usage(), true
 }
 
+func CaptureExchange(raw []byte, route Route, completionLimit uint64, cut bool) (CapturedResponse, error) {
+	if !cut {
+		return CaptureSSEForRoute(bytes.NewReader(raw), route)
+	}
+	if !route.IsResearch() || !route.Reasoning || completionLimit == 0 {
+		return CapturedResponse{}, errors.New("a reply cut at the completion cap is typed only on the research route with a known cap")
+	}
+	captured, err := captureSSE(bytes.NewReader(raw), false, route, true)
+	if err != nil {
+		return CapturedResponse{}, err
+	}
+	var usage struct {
+		Completion *uint64 `json:"completion_tokens"`
+	}
+	if captured.finish != "length" || json.Unmarshal(captured.usage, &usage) != nil || usage.Completion == nil || *usage.Completion != completionLimit {
+		return CapturedResponse{}, errors.New("the reply is not cut at the completion cap")
+	}
+	return captured, nil
+}
+
 // CaptureSSELegacyNulls parses with the strictness before f53fd29f: JSON null in a
 // delta role or tool_calls, or a tool delta id or type, is an error. Only replay of
 // capture-refusal records journaled before that fix may use it.
@@ -591,14 +615,22 @@ func captureSSE(reader io.Reader, legacyNulls bool, route Route, allowLength boo
 	if len(raw) == 0 || len(raw) > MaxResponseBytes {
 		return CapturedResponse{}, errors.New("response byte length out of bounds")
 	}
-	return decodeSSE(raw, legacyNulls, route.Reasoning, allowLength)
+	return decodeSSE(raw, legacyNulls, route.Reasoning, allowLength, route.IsResearch())
 }
 
-func decodeSSE(raw []byte, legacyNulls, reasoning, allowLength bool) (CapturedResponse, error) {
+func IsParallelToolCallRefusal(raw []byte, route Route) bool {
+	if len(raw) == 0 || len(raw) > MaxResponseBytes {
+		return false
+	}
+	_, err := decodeSSE(raw, false, route.Reasoning, false, false)
+	return errors.Is(err, ErrParallelToolCall)
+}
+
+func decodeSSE(raw []byte, legacyNulls, reasoning, allowLength, dropParallel bool) (CapturedResponse, error) {
 	if !utf8.Valid(raw) {
 		return CapturedResponse{}, errors.New("SSE is invalid UTF-8")
 	}
-	s := stream{legacyNulls: legacyNulls, reasoning: reasoning, allowLength: allowLength, maxEvents: MaxSSEEvents}
+	s := stream{legacyNulls: legacyNulls, reasoning: reasoning, allowLength: allowLength, dropParallel: dropParallel, maxEvents: MaxSSEEvents}
 	if reasoning {
 		s.maxEvents = MaxReasoningSSEEvents
 	}
@@ -893,11 +925,13 @@ func (s *stream) delta(raw []byte) error {
 	}
 	if v, ok := d["tool_calls"]; ok && !s.null(v) {
 		calls, e := array(v)
-		if e != nil || len(calls) > 1 {
+		if e != nil || (len(calls) > 1 && !s.dropParallel) {
 			return errors.New("multiple or malformed tool calls")
 		}
-		if len(calls) == 1 {
-			return s.toolDelta(calls[0])
+		for _, call := range calls {
+			if e := s.toolDelta(call); e != nil {
+				return e
+			}
 		}
 	}
 	return nil
@@ -912,7 +946,14 @@ func (s *stream) toolDelta(raw []byte) error {
 	}
 	index, e := integer(t["index"])
 	if e == nil && index > 0 {
-		return ErrParallelToolCall
+		if !s.dropParallel {
+			return ErrParallelToolCall
+		}
+		if s.dropped == nil {
+			s.dropped = map[int64]bool{}
+		}
+		s.dropped[index] = true
+		return nil
 	}
 	if e != nil || index != 0 {
 		return errors.New("tool-call index must be zero")
@@ -961,11 +1002,12 @@ func (s *stream) toolDelta(raw []byte) error {
 	return nil
 }
 func (s *stream) finalize() error {
+	s.out.dropped = len(s.dropped)
 	switch s.out.finish {
 	case "length":
 		return nil
 	case "stop":
-		if s.tool != nil {
+		if s.tool != nil || s.out.dropped != 0 {
 			return errors.New("stop finish reason conflicts with a tool call")
 		}
 		return nil

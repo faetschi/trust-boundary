@@ -41,7 +41,7 @@ func LoadAttacker(fsys fs.FS, digest string) (attacker.Spec, error) {
 // machine can ever select is a table error. A case's host-call budget must also cover the adaptive
 // replay, one host call per pivot the machine can issue (the smaller of its iteration cap and the
 // library size) and one for the final text turn. Its duration must reach the attacker's wall cap, and the cap
-// must be at least a second, so that the service run deadline min(duration, wall cap left) is the pinned cap.
+// must be at least a second: the run deadline is the trial duration and the source stops at the cap (D64 item 2).
 // Pivot replays require scripted caps, matching adaptivesource.NewAdaptiveSource.
 func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS, maxPreEffectRetries uint64) error {
 	pivoted := false
@@ -70,12 +70,12 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS, maxPreEffectRetries uint64
 	if caps.Iterations > 0 && uint64(caps.Iterations) < issuable {
 		issuable = uint64(caps.Iterations)
 	}
-	// The service enforces min(the trial's duration, the wall cap that is left) as the run deadline, in whole
-	// seconds. So the artifact's wall cap must allow a whole second, and every adaptive case's duration must
-	// reach the cap: with a shorter duration the service ceiling, not the pinned cap, would bind a single
-	// attempt and the cumulative wall accounting would not mean what the artifact says.
+	// The run deadline is the trial's duration, and the adaptive source stops at the wall cap between pivots
+	// (D64 item 2). The service admits no attempt with less than a second of wall cap left, so the cap must
+	// allow a whole second, and every adaptive case's duration must reach the cap: with a shorter duration the
+	// run deadline, not the pinned cap, would bind a single attempt.
 	if caps.WallMS < 1000 {
-		return fmt.Errorf("attacker wall_ms %d is below one second, the unit of the service run deadline", caps.WallMS)
+		return fmt.Errorf("attacker wall_ms %d is below one second, the smallest wall budget the service admits an attempt with", caps.WallMS)
 	}
 	wallSeconds := uint64((caps.WallMS + 999) / 1000)
 	for _, c := range m.Cases {
