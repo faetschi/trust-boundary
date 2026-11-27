@@ -101,7 +101,7 @@
    "sha256": "bee0829bdf3ba7d35d4c56531947ad179950f1de896554afa9eea93fbae92590"
   }
  ],
- "tool_sha256": "2202db8349250af2632d814297dd3b6f3b91b380777d01e32b249fc4d5db7303",
+ "tool_sha256": "fc1db67af28aa7e583ad431e279483e5f78fd260129f5ff100defe7f8f8ce3d3",
  "allowlist": {
   "microsoft/llmail-inject-challenge": {
    "revision": "1063bdf01ec8762b812d5e06ee768a06faa5a6f7",

@@ -602,7 +602,7 @@ def main():
                     earlier.units.append((origin, ws))
                     for sh in shingles(ws):
                         earlier.index.setdefault(sh, []).append(n)
-    except Stop as e:
+    except (Stop, OSError, ValueError) as e:
         print(f"dev_overlap: stopped: {e}", file=sys.stderr)
         return 2
     report = {"schema": "tbound-f36-dev-overlap/v1", "inputs": inputs, "tool_sha256": sha(open(__file__, "rb").read()),
