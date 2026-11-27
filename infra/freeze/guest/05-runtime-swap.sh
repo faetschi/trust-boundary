@@ -103,6 +103,8 @@ if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
    [ "$F" = 8627adeb4ab3fb01728136d8b4995bf8d7c07b41 ]; then ALLOW_PREV_MEASURER=1; fi
 if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
    [ "$F" = 9165c43657951f7b3db972cfe228b68249312a7e ]; then ALLOW_PREV_MEASURER=1; fi
+if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
+   [ "$F" = 4dd455bd1c48f2544852a094df31390deefb2afc ]; then ALLOW_PREV_MEASURER=1; fi
 UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
 OLD=/var/lib/tbound/runtime-src.old-${PREV_BUNDLE_DIGEST:7:8}-$(date -u +%Y%m%dT%H%M%S%NZ)
 
