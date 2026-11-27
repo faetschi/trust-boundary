@@ -264,8 +264,12 @@ func (c runConfig) validate() error {
 
 // runnerConfig is the protocol Config bound into the plan digest.
 func (c runConfig) runnerConfig() runner.Config {
-	return runner.Config{CDH: c.CDH, FreezeCommit: c.FreezeCommit, AdaptiveCaps: c.AdaptiveCaps,
+	rc := runner.Config{CDH: c.CDH, FreezeCommit: c.FreezeCommit, AdaptiveCaps: c.AdaptiveCaps,
 		EVQObligations: slices.Clone(c.EVQObligations), OnlyCases: slices.Clone(c.OnlyCases), Purpose: c.Purpose, PlanV: c.PlanV}
+	if c.QuotaProfile == quotaRehearsal {
+		rc.QuotaProfile = runner.QuotaProfileRehearsal
+	}
+	return rc
 }
 
 func (c runConfig) journalPath() string { return filepath.Join(c.RunDir, "journal.jsonl") }

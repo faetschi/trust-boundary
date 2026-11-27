@@ -292,8 +292,12 @@ func (a *app) reportCmd(args []string) error {
 		if dir == "" {
 			return fmt.Errorf("%w: report needs --out", errUsage)
 		}
-		if err := refuseRehearsal(p, "report"); err != nil {
-			return err
+		for flag, value := range map[string]string{"--registration": registration, "--ledger-v3": ledgerV3, "--certification": certification} {
+			if value != "" {
+				if err := refuseRehearsal(p, "report "+flag); err != nil {
+					return err
+				}
+			}
 		}
 		d48, err := d48Inputs(p, ledgerV3, certification)
 		if err != nil {
@@ -322,6 +326,9 @@ func (a *app) reportCmd(args []string) error {
 		}
 		reasons := claimReasons(p, p.cfg.Ledger.file != nil, rep, len(res.Incomplete), reg)
 		note := reportNote(reasons, reg)
+		if p.cfg.QuotaProfile == quotaRehearsal {
+			note += " REHEARSAL RUN (quota_profile rehearsal): development evidence, not the research pilot, screening or H1."
+		}
 		escapeNote := observedEscapeNote(reasons, rep)
 		registrationDigest := ""
 		if reg != nil {
@@ -341,6 +348,7 @@ func (a *app) reportCmd(args []string) error {
 		meta, err := json.Marshal(struct {
 			ClaimBearing    bool     `json:"claim_bearing"`
 			NotClaimBearing []string `json:"not_claim_bearing"`
+			QuotaProfile    string   `json:"quota_profile"`
 			Registration    string   `json:"registration_record_digest"`
 			Ledger          string   `json:"ledger"`
 			ReportDigest    string   `json:"report_digest"`
@@ -350,7 +358,7 @@ func (a *app) reportCmd(args []string) error {
 			FlagsDigest     string   `json:"adaptive_budget_flags_sha256,omitempty"`
 			Note            string   `json:"note"`
 			ObservedEscape  string   `json:"observed_escape,omitempty"`
-		}{len(reasons) == 0, append([]string{}, reasons...), registrationDigest, ledger.LedgerID, rep.Digest, p.sched.Digest,
+		}{len(reasons) == 0, append([]string{}, reasons...), p.cfg.QuotaProfile, registrationDigest, ledger.LedgerID, rep.Digest, p.sched.Digest,
 			len(res.Incomplete), flagLines(res.AdaptiveBudgetFlags), flagsDigest, note, escapeNote})
 		if err != nil {
 			return err

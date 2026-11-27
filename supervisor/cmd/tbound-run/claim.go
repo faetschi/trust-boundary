@@ -28,6 +28,7 @@ const (
 	reasonNotCertified    = "bound_not_certified"           // D48: the case bound stands only after the zero-event certification
 	reasonNotRegistered   = "not_registered"                // D31/D36: no pre-registration record to check the run against
 	reasonMismatchPrefix  = "registration_mismatch:"        // the run is not the registered one; the suffix names the field
+	reasonRehearsal       = "rehearsal_development_evidence"
 )
 
 // claimReasons lists why a report is not claim-bearing. A report is claim-bearing exactly when the list is empty:
@@ -42,6 +43,7 @@ func claimReasons(p plan, realLedger bool, rep evalreport.Report, incomplete int
 	}
 	add(!realLedger, reasonLedgerSynthetic)
 	add(p.cfg.QuotaProfile != quotaThesis, reasonNotThesis)
+	add(p.cfg.QuotaProfile == quotaRehearsal, reasonRehearsal)
 	add(!rep.Coverage.Exact || incomplete > 0 || rep.Observed.PendingExternalReruns > 0 || separateUnfinished(rep.Separate), reasonRunIncomplete)
 	add(rep.Groups == nil, reasonNoGroups)
 	add(rep.Groups != nil && !rep.Groups.Certification.Certified, reasonNotCertified)

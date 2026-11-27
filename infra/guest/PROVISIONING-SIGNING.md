@@ -1398,9 +1398,9 @@ Not covered here: the route and config of the confirmatory witnesses (D39). This
 
 ### RA-5 (RR-4) [PRIVILEGED WRITE, needs owner approval] research service config
 
-Start from the round's installed engineering config. Change exactly `provider_route` and, for the pilot profile, add `allow_pilot_on_research: true` (`supervisor/cmd/tbound/pi_service_handoff_linux.go:867-868`). A thesis-profile config must not have it. `workflow_max_host_calls` must not exceed the profile's `max_requests_per_unit` 17 (`supervisor/cmd/tbound/research_route_linux.go:45-50`).
+Start from the round's installed engineering config. Change exactly `provider_route` and, for the pilot profile, add `allow_pilot_on_research: true` (`supervisor/cmd/tbound/pi_service_handoff_linux.go:867-868`). A thesis, screening or rehearsal config must not have it. `workflow_max_host_calls` must not exceed the profile's `max_requests_per_unit` 17 (`supervisor/cmd/tbound/research_route_linux.go:45-50`).
 
-Run exactly one of the three `sed` blocks, then the common block.
+Run exactly one of the four `sed` blocks, then the common block.
 
 Pilot profile (a proving round or the research pilot):
 
@@ -1428,7 +1428,16 @@ sed -e 's|^  "provider_route": "engineering",$|  "provider_route": "research",|'
 diff $HF/pilot/serve-pi-service.json $RR/serve-pi-service.json      # [READ-ONLY] exactly these three lines changed
 ```
 
-Common to all three:
+Rehearsal profile (the D60 rehearsal and the F36 dev loop: a development corpus on the research route, scored by `tbound-run report` but never claim-bearing). It changes exactly three lines: `provider_route`, `corpus_quota_profile` to `rehearsal`, and `corpus_manifest_digest` to the dev corpus's `CORPUS_DIGEST` (its `corpus-digest` output under `--quota-profile rehearsal`). It adds no `allow_pilot_on_research`: the service refuses it with `rehearsal`, and refuses `rehearsal` on any route but research (`supervisor/cmd/tbound/pi_service_handoff_linux.go:869-870`). The manifest must pin no D48 draw (`pins.draw_digest`): the service refuses a rehearsal corpus that does. `workflow_max_host_calls` stays 17. The run.json of such a run sets `quota_profile` to `rehearsal`.
+
+```
+# WSL
+CD=$(grep -Eo 'sha256:[0-9a-f]{64}' $CC/CORPUS_DIGEST.out | sort -u)
+sed -e 's|^  "provider_route": "engineering",$|  "provider_route": "research",|' -e 's|^  "corpus_quota_profile": "pilot",$|  "corpus_quota_profile": "rehearsal",|' -e "s|^  \"corpus_manifest_digest\": \"sha256:[0-9a-f]\{64\}\",\$|  \"corpus_manifest_digest\": \"$CD\",|" $HF/pilot/serve-pi-service.json > $RR/serve-pi-service.json
+diff $HF/pilot/serve-pi-service.json $RR/serve-pi-service.json      # [READ-ONLY] exactly these three lines changed
+```
+
+Common to all four:
 
 ```
 # WSL
