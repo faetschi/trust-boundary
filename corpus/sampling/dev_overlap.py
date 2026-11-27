@@ -35,6 +35,10 @@ import sys
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+import dev_shell_guard  # noqa: E402
 REPO = os.path.dirname(os.path.dirname(HERE))
 CORPUS_TAGS = ["f32-corpus-1", "f33-corpus-1", "f34-corpus-1", "f35-corpus-1"]
 THIRD = "corpus/third"
@@ -565,6 +569,10 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--prior-selection", action="append", default=[], help="selection record of an earlier carrier whose carrier dir sits beside --carrier")
     a = ap.parse_args()
+    guard = dev_shell_guard.check()  # a required step: no script and no shell call among the dev tools
+    if not guard["passed"]:
+        print("dev_overlap: stopped: shell guard failed: " + "; ".join(guard["violations"]), file=sys.stderr)
+        return 2
     try:
         selection = json.load(open(a.selection, encoding="utf-8"))
         mat, inputs, deny = build_material({os.path.basename(a.carrier.rstrip("/\\"))})
@@ -605,7 +613,7 @@ def main():
     except (Stop, OSError, ValueError) as e:
         print(f"dev_overlap: stopped: {e}", file=sys.stderr)
         return 2
-    report = {"schema": "tbound-f36-dev-overlap/v1", "inputs": inputs, "tool_sha256": sha(open(__file__, "rb").read()),
+    report = {"schema": "tbound-f36-dev-overlap/v1", "shell_guard": guard, "inputs": inputs, "tool_sha256": sha(open(__file__, "rb").read()),
               "allowlist": {k: {"revision": v[0], "config": v[1]} for k, v in ALLOWLIST.items()},
               "denylist": sorted(set(deny.values())), "controls": controls, "cases": rows, "ignored_files": ignored,
               "rules": {"min_file_bytes_normalized": MIN_FILE, "shingle_words": SHINGLE, "containment_threshold": CONTAIN,

@@ -1,0 +1,32 @@
+# dev_shell_guard.py on the tree (exit 0)
+{
+ "schema": "tbound-f36-dev-shell-guard/v1",
+ "tools": [
+  "corpus/sampling/dev_carrier.py",
+  "corpus/sampling/dev_overlap.py",
+  "corpus/sampling/dev_shell_guard.py",
+  "corpus/sampling/dev_src.py",
+  "corpus/sampling/dev_src_cruxeval.py",
+  "corpus/sampling/dev_src_llmail.py",
+  "corpus/sampling/dev_src_oas.py"
+ ],
+ "git_read_subcommands": [
+  "cat-file",
+  "ls-tree",
+  "rev-parse",
+  "tag"
+ ],
+ "violations": [],
+ "passed": true
+}
+
+# negative controls: the guard run with --also on one scratch file each (expected: exit 1, except good_read.py exit 0)
+bad_fstring_call.py    exit=1 expected=1 subprocess list holds something other than constants, names, attributes, *names or f-strings of names
+bad_git_push.py        exit=1 expected=1 git subcommand 'push' is not one of ['cat-file', 'ls-tree', 'rev-parse', 'tag']
+bad_helper.py          exit=1 expected=1 git helper with subcommand 'commit', not one of ['cat-file', 'ls-tree', 'rev-parse', 'tag']
+bad_os_system.py       exit=1 expected=1 os.system
+bad_other_program.py   exit=1 expected=1 subprocess starts a program other than git
+bad_popen.py           exit=1 expected=1 os.popen
+bad_shell_true.py      exit=1 expected=1 shell= is not the constant False; subprocess argument is not a list literal
+bad_string_arg.py      exit=1 expected=1 subprocess argument is not a list literal
+good_read.py           exit=0 expected=0 no violation

@@ -71,7 +71,8 @@ def git(clone, *args):
 
 
 def repo_head():
-    return subprocess.run(["git", "-C", os.path.dirname(HERE), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    top = os.path.dirname(HERE)
+    return subprocess.run(["git", "-C", top, "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
 
 
 def self_sha(path):
