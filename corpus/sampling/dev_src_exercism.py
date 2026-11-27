@@ -13,7 +13,7 @@ Static screen (an exercise is skipped, with the reason recorded, when it fails; 
      function|class`; the names the spec imports are all exported by the stub and by the example; no `export default`;
   S3 bash: `.meta/example.sh`, `.bats` and a `.sh` stub exist; the example has none of: curl wget nc ncat ssh scp rm mv cp dd
      chmod chown sudo eval source exec kill mkfs touch mkdir tee python perl, an output redirect other than `>&2` or `>&1`,
-     an input redirect other than `<<<` (the bodies of `(( ))` and `[[ ]]` are not read for redirects; amended after the
+     any input redirect, `<<<` included (the code bans it; the bodies of `(( ))` and `[[ ]]` are not read for redirects; amended after the
      first run found 75 of 100 exercises screened out by `<` and `>` in comparisons), or /dev/ or `..`.
 JEST RULE (mechanical conversion of `<slug>.spec.js`): remove the import statement and the `@jest/globals` import (amended
   before any JS selection: the first run found every spec has it; the shim defines those names); `xtest(` and `xit(` become `test(`
@@ -52,7 +52,6 @@ import json
 import os
 import re
 import shlex
-import subprocess
 import sys
 import tempfile
 
@@ -126,12 +125,11 @@ class Skip(Exception):
 
 
 def run_node(script, cwd):
-    """The only program started: node, on a file in a temp directory (no benchmark text is in the argument list)."""
-    try:
-        r = subprocess.run(["node", script], cwd=cwd, capture_output=True, text=True, timeout=NODE_TIMEOUT)
-    except subprocess.TimeoutExpired:
-        return None, "", "timeout"
-    return r.returncode, r.stdout, r.stderr
+    """Barred. Until 2026-11-27 this ran `node <script>` on the host to validate downloaded examples and converted tests.
+    The host-execution ruling of that day bars it: downloaded or benchmark code runs only in the guest's cell during a dev
+    round (acceptance-cell), never on the host and never in WSL. The carriers devset-01 and devset-02 were built before it."""
+    raise SystemExit("dev_src_exercism: host execution of downloaded code is barred (ruling 2026-11-27); "
+                     "re-validation runs in the guest cell (acceptance-cell)")
 
 
 def read_exercise(clone, rev, rel):
@@ -270,6 +268,8 @@ def bats_to_node(slug, bats, example):
                 continue
             m = re.fullmatch(r"run bash (\S+\.sh)(?:\s+(.*))?", line)
             if m:
+                if not re.fullmatch(r"[A-Za-z0-9_]+\.sh", m.group(1)):
+                    raise Skip("BATS RULE: the script name is not [A-Za-z0-9_]+.sh")
                 if script not in (None, m.group(1)):
                     raise Skip("BATS RULE: more than one script")
                 script = m.group(1)

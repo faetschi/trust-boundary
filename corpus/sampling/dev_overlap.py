@@ -733,7 +733,7 @@ def main():
         for bad in (REPO, REPO.replace("\\", "/"), json.dumps(REPO)[1:-1]):
             if bad in text:
                 raise Stop("the report holds a local absolute path")
-    except (Stop, OSError, ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
+    except Exception as e:  # any crash (also SyntaxError from the guard's ast.parse, StopIteration, AssertionError) is 2, never 1
         print(f"dev_overlap: stopped: {type(e).__name__}: {e}", file=sys.stderr)
         return 2  # 1 is reserved for "a case was dropped"
     with open(a.out, "w", encoding="utf-8", newline="\n") as f:
