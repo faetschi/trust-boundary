@@ -107,7 +107,7 @@ const expect = (actual) => {
 """
 JS_SPEC_BAN = re.compile(r"\bjest\.|\basync\b|\bawait\b|\b(beforeEach|afterEach|beforeAll|afterAll)\b|\.(resolves|rejects|each|skip|only)\b|\btoMatch(Inline)?Snapshot\b|\bexpect\.|\brequire\s*\(")
 JS_EX_BAN = re.compile(r"\b(require|process|child_process|globalThis|eval|fetch|setTimeout|setInterval|XMLHttpRequest|WebSocket)\b|\bFunction\s*\(|\bimport\b")
-BASH_WORD_BAN = re.compile(r"(curl|wget|nc|ncat|ssh|scp|rm|mv|cp|dd|chmod|chown|sudo|eval|source|exec|kill|mkfs|touch|mkdir|tee|python|perl)|/dev/|\.\.")
+BASH_WORD_BAN = re.compile(r"\b(curl|wget|nc|ncat|ssh|scp|rm|mv|cp|dd|chmod|chown|sudo|eval|source|exec|kill|mkfs|touch|mkdir|tee|python|perl)\b|/dev/|\.\.")
 BASH_REDIR_BAN = re.compile(r">(?!&[12])|<(?!<<)")  # applied with (( )) and [[ ]] bodies removed: `<` and `>` there are comparisons
 OPERATORS = [("ROR_LT", r"(?<![<=!>-])<(?![<=])", "<="), ("ROR_LE", r"(?<![<=!>])<=(?!=)", "<"), ("ROR_GT", r"(?<![=>-])>(?![>=])", ">="),
              ("ROR_GE", r"(?<![>=])>=(?!=)", ">"), ("AOR_ADD", r"(?<=\s)\+(?=\s)", "-"), ("AOR_SUB", r"(?<=\s)-(?=\s)", "+"),
