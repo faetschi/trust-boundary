@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"sort"
 	"strings"
 
 	"tbound/supervisor/internal/broker/protocol"
@@ -162,7 +163,7 @@ func parseForwardedMessage(raw []byte) (forwardedMessage, error) {
 	if err != nil {
 		return forwardedMessage{}, err
 	}
-	if err := keys(o, []string{"role"}, []string{"content", "tool_calls", "tool_call_id", "name", "reasoning"}); err != nil {
+	if err := keys(o, []string{"role"}, []string{"content", "tool_calls", "tool_call_id", "name", "reasoning", "reasoning_details"}); err != nil {
 		return forwardedMessage{}, err
 	}
 	role, err := str(o, "role")
@@ -192,10 +193,75 @@ func parseForwardedMessage(raw []byte) (forwardedMessage, error) {
 	if _, ok := o["name"]; ok && !validText(out.Name, maxText) {
 		return forwardedMessage{}, errors.New("invalid message name")
 	}
+	if details, ok := o["reasoning_details"]; ok {
+		if _, both := o["reasoning"]; both || out.Role != Assistant {
+			return forwardedMessage{}, errors.New("reasoning_details is forwarded only on an assistant message without reasoning")
+		}
+		if out.Reasoning, err = joinReasoningDetails(details); err != nil {
+			return forwardedMessage{}, err
+		}
+	}
 	if err := validateMessageCalls(Message{Role: out.Role, Content: text, ToolCallID: out.ToolCallID, ToolCalls: prior, Reasoning: out.Reasoning}, maxMessages); err != nil {
 		return forwardedMessage{}, err
 	}
 	return out, nil
+}
+
+func joinReasoningDetails(raw []byte) (string, error) {
+	items, err := array(raw)
+	if err != nil {
+		return "", err
+	}
+	type detail struct {
+		index int64
+		text  string
+	}
+	details := make([]detail, len(items))
+	indexed := 0
+	for i, item := range items {
+		o, err := object(item)
+		if err != nil {
+			return "", err
+		}
+		if err := keys(o, []string{"type", "text"}, []string{"format", "index", "id", "signature"}); err != nil {
+			return "", err
+		}
+		if kind, err := str(o, "type"); err != nil || kind != "reasoning.text" {
+			return "", errors.New("only reasoning.text details are forwarded")
+		}
+		for _, signed := range []string{"id", "signature"} {
+			if value, ok := o[signed]; ok && !isNull(value) {
+				return "", errors.New("signed reasoning details are not forwarded")
+			}
+		}
+		if value, ok := o["format"]; ok && !isNull(value) {
+			if _, err := strRaw(value); err != nil {
+				return "", errors.New("reasoning detail format must be a string")
+			}
+		}
+		text, err := str(o, "text")
+		if err != nil {
+			return "", err
+		}
+		details[i] = detail{index: int64(i), text: text}
+		if value, ok := o["index"]; ok {
+			var n int64
+			if err := json.Unmarshal(value, &n); err != nil || n < 0 {
+				return "", errors.New("invalid reasoning detail index")
+			}
+			details[i].index = n
+			indexed++
+		}
+	}
+	if indexed != 0 && indexed != len(details) {
+		return "", errors.New("reasoning detail indexes must be on every detail or on none")
+	}
+	sort.SliceStable(details, func(a, b int) bool { return details[a].index < details[b].index })
+	var joined strings.Builder
+	for _, d := range details {
+		joined.WriteString(d.text)
+	}
+	return joined.String(), nil
 }
 
 func parseForwardedContent(raw []byte) (any, *string, error) {

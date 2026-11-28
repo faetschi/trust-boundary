@@ -1,0 +1,20 @@
+{
+  "case": "PILOT-CMP-read-01",
+  "commit": "8627adeb4ab3fb01728136d8b4995bf8d7c07b41",
+  "deleted": "deleted /etc/tbound/v-stub;deleted /var/lib/tbound/sessions/v-stub-ledger;deleted /var/lib/tbound/sessions/v-stub-admissions;deleted /var/tmp/tbound-vs;",
+  "freeze": "F34",
+  "genesis_head": "eea7b7bdb4658a3c5658284d4d9b9e45f4fe815ba220c4aa06fb3614db5947f6",
+  "ledger_id": "tbound-v-stub-probe",
+  "pilot_restored": "true",
+  "profile_digest": "sha256:a7dcaf7fa00645f3b035dd186dd6ffcb3ee7f751654200b9f5b98c5a26382a05",
+  "profile_sha256": "sha256:3d0eaf6411975434daffb265c7911dfc8c11745f512b63959db64d8059a2c357",
+  "regdigest": "sha256:1e5f3853a2004703a5d00edcfb0729662043288aff882093702cd9affd54aea7",
+  "research_after": "ledger absent\n/etc/tbound/provider/openrouter.key absent\n/etc/tbound/provider/research-profile.json absent\n/etc/tbound/provider/research-ledger.json absent\n/etc/tbound/provider/research-ledger-checkpoint.json absent",
+  "research_before": "ledger absent\n/etc/tbound/provider/openrouter.key absent\n/etc/tbound/provider/research-profile.json absent\n/etc/tbound/provider/research-ledger.json absent\n/etc/tbound/provider/research-ledger-checkpoint.json absent",
+  "research_unchanged": "true",
+  "stub_endpoint": "http://127.0.0.1:18443/api/v1/chat/completions",
+  "td": "sha256:6e9ae6b069f132d4ae19923b080fa7a1ba0e5d735f8007e9f66c6957c8e25e2b",
+  "throwaway_dir": "/etc/tbound/v-stub",
+  "throwaway_ledger": "/var/lib/tbound/sessions/v-stub-ledger",
+  "unit_ledger_records": "1"
+}

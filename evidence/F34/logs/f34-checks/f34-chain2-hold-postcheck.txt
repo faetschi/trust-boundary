@@ -1,0 +1,10 @@
+# F34 chain-2 hold post-check after the pre-F31 restore (read-only), host time 2026-11-24T22:25:36Z
+2026-11-24T22:25:37Z
+7.0.0-38-generic
+4
+disabled disabled disabled 
+0
+sudo: a password is required
+key-absent
+ledger-absent
+ls: cannot open directory '/var/lib/tbound/sessions/': Permission denied 

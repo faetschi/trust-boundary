@@ -336,8 +336,6 @@ func (c *piServiceWorkflowCatalog) screenRequest(config piServiceConfig, peer pi
 		return "invalid-attempt"
 	case request.Role == corpusRoleV && config.ProviderRoute == piruntime.D09ManagedPiProviderRouteEngineering:
 		return "role-unavailable"
-	case request.Role != corpusRoleV && config.ProviderRoute == piruntime.D09ManagedPiProviderRouteVStub:
-		return "role-unavailable"
 	}
 	if c == nil || c.corpus == nil {
 		return "corpus-unavailable"

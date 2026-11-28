@@ -1,0 +1,3 @@
+no CARRIER record (the chain's T5 pilot)
+/home/tbound/tbh/f34/pilot.chain-20261124T232047Z
+aside /home/tbound/tbh/f34/pilot.chain-20261124T232047Z files=38

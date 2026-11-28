@@ -1,0 +1,10 @@
+cfe2b381118467e480df4e084e472d515817636f4e8b479c1311db89d4ea9f24  /home/tbound/tbound-work/g34c.tar
+BLOBS checked=4625 mismatched=0 extra_files=0
+GATE_TOOL kf19 == freeze tree
+meta load=0.17 0.15 0.94 start=2026-11-24T19:45:18Z
+GATE_RC=0 end=2026-11-24T20:08:06Z
+BOUNDARY_OK
+TEST_RC=0
+boot 3f4883e2-0222-48fc-b1a4-a15c0aa0d84f 2026-11-24T20:08:06Z
+tests {'pass': 7884, 'skip': 52} packages {'skip': 4, 'pass': 59}
+EXIT=0

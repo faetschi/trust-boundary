@@ -1,0 +1,10 @@
+cfe2b381118467e480df4e084e472d515817636f4e8b479c1311db89d4ea9f24  /home/tbound/tbound-work/g34.tar
+BLOBS checked=4625 mismatched=0 extra_files=0
+GATE_TOOL kf19 == freeze tree
+meta load=0.23 0.05 0.02 start=2026-11-24T18:05:39Z
+GATE_RC=1 end=2026-11-24T18:46:29Z
+boot 3f4883e2-0222-48fc-b1a4-a15c0aa0d84f 2026-11-24T18:46:29Z
+FAIL tbound/supervisor/cmd/tbound TestProductTurnBashKeepsTheExactPathRuleWithoutAProductScope
+FAIL tbound/supervisor/cmd/tbound TestProductTurnDriverImportedCallDoesNotCorrelate
+tests {'pass': 7140, 'skip': 43, 'fail': 2} packages {'skip': 4, 'pass': 58, 'fail': 1}
+EXIT=0

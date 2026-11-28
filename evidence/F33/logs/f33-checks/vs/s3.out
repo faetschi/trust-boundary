@@ -1,0 +1,3 @@
+signed managed live-root registration: /home/tbound/tbh/f33/vs/managed-live-root.json
+Digest (bind into D09 template): sha256:2f08e4080ec1ebbec0da066370fdee2b1c84f3cd079c7391125804d2ddd790ef
+Signature: /home/tbound/tbh/f33/vs/managed-live-root.ed25519

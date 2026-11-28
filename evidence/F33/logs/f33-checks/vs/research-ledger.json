@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "ledger_id": "tbound-v-stub-probe",
+  "cap_micro_usd": 1000000,
+  "min_per_unit_worst_case_micro_usd": 752029,
+  "reserve_basis": "request"
+}

@@ -1,0 +1,11 @@
+boot 3f4883e2-0222-48fc-b1a4-a15c0aa0d84f 2026-11-24T19:07:18Z
+go version go1.27.1 linux/amd64
+BUILD_OK
+VET_OK
+WINDOWS_OK
+FMT_OK
+BOUNDARY_OK
+TEST_RC=1
+boot 3f4883e2-0222-48fc-b1a4-a15c0aa0d84f 2026-11-24T19:33:46Z
+FAIL tbound/supervisor/internal/netoracle TestCollectorArrivalInTheCanaryWindowIsAnEffect
+tests {'pass': 7883, 'skip': 52, 'fail': 1} packages {'skip': 4, 'pass': 58, 'fail': 1}

@@ -1,0 +1,38 @@
+﻿
+2026-11-24T21:49:31.2806087Z start state=Running mac=00155D0C4002
+2026-11-24T21:49:43.3262673Z checkpoint pre-F34-restore-2026-11-24 created (F33 chain, V probe stop and the F33 re-witness rounds)
+2026-11-24T21:50:22.1163799Z restored pre-F31-2026-11-20 state=Saved
+2026-11-24T21:50:33.3244719Z Start-VM returned state=Running
+2026-11-24T21:50:33.3295357Z waiting up to 300 min for the chain marker (C:\Users\Admin\AppData\Local\Temp\claude\1bdbf0b7223717e2\300b9e68-97e7-4a01-aa27-ad0df38df07f\scratchpad\f31w\f34-restore.out.chainok or C:\Users\Admin\AppData\Local\Temp\claude\1bdbf0b7223717e2\300b9e68-97e7-4a01-aa27-ad0df38df07f\scratchpad\f31w\f34-restore.out.chainfail)
+2026-11-24T22:22:34.9734389Z NO checkpoint post-F34-chain-2026-11-24, chain not confirmed
+
+Name                             CreationTime       
+----                             ------------       
+pre-F15-2026-11-04               04.11.2026 19:08:33
+pre-B9-2026-11-05                05.11.2026 15:48:11
+pre-F16-2026-11-06               06.11.2026 10:12:02
+pre-F17-2026-11-06               06.11.2026 14:29:58
+pre-F18-2026-11-07               07.11.2026 10:33:02
+pre-F19-2026-11-07               07.11.2026 23:19:52
+pre-F21-2026-11-08               08.11.2026 14:55:32
+pre-F24-2026-11-13               13.11.2026 16:40:31
+pre-F25-2026-11-13               13.11.2026 19:28:48
+pre-F26-2026-11-13               13.11.2026 23:57:50
+pre-F27-2026-11-15               15.11.2026 17:15:10
+pre-F28-2026-11-15               15.11.2026 18:46:19
+pre-F29-2026-11-16               17.11.2026 18:20:05
+pre-F30-2026-11-18               18.11.2026 13:17:55
+post-F30-2026-11-20              20.11.2026 20:17:40
+pre-F31-2026-11-20               20.11.2026 20:20:25
+post-F31-qual-barrier-2026-11-20 20.11.2026 23:55:55
+post-F31-chain2-2026-11-20       21.11.2026 00:10:17
+post-F31-rounds-2026-11-21       21.11.2026 04:27:30
+post-F32-chain-2026-11-21        21.11.2026 04:39:52
+post-F32-qual-barrier-2026-11-21 21.11.2026 10:41:12
+post-pilot-walk-2026-11-24       24.11.2026 08:41:22
+pre-F33-restore-2026-11-24       24.11.2026 15:34:34
+pre-F34-restore-2026-11-24       24.11.2026 22:49:42
+
+
+
+2026-11-24T22:22:35.3568043Z DONE

@@ -162,7 +162,7 @@ expect_ok "record prints a JSON object" bash -c 'python3 -I "$1" record commit a
 expect_refuse "record refuses an odd number of arguments" "key value pairs" py "$CHECK" record commit
 
 for f in "$K"/guest/34-v-stub-probe.sh "$K"/guest/sign-run.sh "$K"/guest/40-guest-evidence.sh "$K"/guest/glib.sh "$K"/tools/guest-chain.sh; do expect_ok "bash -n ${f#"$K"/}" bash -n "$f"; done
-expect_ok "the stub is started in a brace group, so the ssh stdout closes at once" grep -qF '{ setsid nohup python3 -I stub.py stub.log stub.pid $STUB_HOLD > stub.out 2>&1 < /dev/null & }' "$K/guest/34-v-stub-probe.sh"
+expect_ok "the stub is started in a brace group, so the ssh stdout closes at once" grep -qF '{ setsid nohup python3 -I stub.py stub.log stub.pid $STUB_HOLD $STUB_PORT $STUB_DIR/mode > stub.out 2>&1 < /dev/null & }' "$K/guest/34-v-stub-probe.sh"
 expect_ok "34-v-stub-probe.sh passes the stub key to vs-check.py on stdin, never in a command line" bash -c '! grep -q "vs-check.py.*VS_KEY" "$1"' _ "$K/guest/34-v-stub-probe.sh"
 sed -n '/^research_state() {/,/^}/p' "$K/guest/34-v-stub-probe.sh" | sed -n "/<<'EOS'/,/^EOS\$/p" | sed '1d;$d' >"$T/rstate.sh"
 printf 'genesis\nsecond\n' >"$T/rs-ledger"

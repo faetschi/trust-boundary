@@ -1,0 +1,19 @@
+# F34 end-of-qualification guest state (read-only), host time 2026-11-25T01:20:40Z
+2026-11-25T01:20:41Z
+7.0.0-38-generic
+== sudo
+sudo: a password is required
+== openrouter.key (existence only, never read)
+absent
+drwxr-xr-x 2 root root 4096 Oct 20 16:57 /etc/tbound/provider
+== research ledger (existence only)
+absent
+== v-stub throwaway paths
+absent /etc/tbound/v-stub
+absent /var/tmp/tbound-vs
+== service
+active active 
+service=active socket=active
+installed config matches state of: pilot
+== containers
+0

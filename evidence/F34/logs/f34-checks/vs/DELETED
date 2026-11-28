@@ -1,0 +1,4 @@
+deleted /etc/tbound/v-stub
+deleted /var/lib/tbound/sessions/v-stub-ledger
+deleted /var/lib/tbound/sessions/v-stub-admissions
+deleted /var/tmp/tbound-vs

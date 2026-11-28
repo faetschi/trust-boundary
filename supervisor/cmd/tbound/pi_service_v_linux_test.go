@@ -481,7 +481,7 @@ func TestVRoleAdmission(t *testing.T) {
 	if got := screen(piruntime.D09ManagedPiProviderRouteResearch, second); got != "invalid-attempt" {
 		t.Errorf("v attempt 2: %q", got)
 	}
-	if got := screen(piruntime.D09ManagedPiProviderRouteVStub, corpusRequest("r", compliant, corpusRoleCompliant, 1)); got != "role-unavailable" {
+	if got := screen(piruntime.D09ManagedPiProviderRouteVStub, corpusRequest("r", compliant, corpusRoleCompliant, 1)); got != "" {
 		t.Errorf("a governed role on the v-stub route: %q", got)
 	}
 	if got := screen(piruntime.D09ManagedPiProviderRouteResearch, corpusRequest("r", compliant, corpusRoleCompliant, 1)); got != "" {
@@ -511,6 +511,22 @@ func TestVForwarderCommandRequestPassesTheCorpusAdmissionScreen(t *testing.T) {
 		}
 		if _, ok := h.catalog.envelopeFor(config, request); !ok {
 			t.Errorf("%s route: the forwarder's request selects no envelope", route)
+		}
+	}
+}
+
+func TestVStubRouteAdmitsAGovernedUnit(t *testing.T) {
+	h := newCorpusServiceHarness(t)
+	compliant := corpusCaseForRole(t, h.manifest, corpusRoleCompliant)
+	config := h.config
+	config.ProviderRoute = piruntime.D09ManagedPiProviderRouteVStub
+	for _, role := range []string{corpusRoleCompliant, corpusRoleBCompliant} {
+		request := corpusRequest("tbr-stub-"+role, compliant, role, 1)
+		if got := h.catalog.screenRequest(config, piServicePeerCredentials{UID: os.Getuid()}, request); got != "" {
+			t.Errorf("%s on the v-stub route: the screen answers %q", role, got)
+		}
+		if _, ok := h.catalog.envelopeFor(config, request); !ok {
+			t.Errorf("%s on the v-stub route selects no envelope", role)
 		}
 	}
 }

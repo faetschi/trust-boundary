@@ -128,6 +128,11 @@ func (r *piServiceUnknownReconciler) markAbandoned(state piServiceRequestState) 
 // Reconcile proves the workflow behind an unknown request quiescent, or returns an error that
 // wraps ErrPiServiceUnreconciled and lists everything that is not.
 func (r *piServiceUnknownReconciler) Reconcile(ctx context.Context, state piServiceRequestState) (piServiceReconciliation, error) {
+	if r != nil && state.abandoned != nil {
+		onRecordedRoute := *r
+		onRecordedRoute.route = state.abandoned.Reconciliation.ProviderRoute
+		r = &onRecordedRoute
+	}
 	if ctx == nil || ctx.Err() != nil || r == nil || r.catalog == nil || state.terminal == nil || state.terminal.Status != "unknown" ||
 		!validBareWorkflowDigest(state.acceptedRecord.Hash) ||
 		r.route != piruntime.D09ManagedPiProviderRouteEngineering && r.route != piruntime.D09ManagedPiProviderRouteResearch {
