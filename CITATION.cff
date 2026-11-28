@@ -1,11 +1,9 @@
+# Citation File Format 1.2.0: https://citation-file-format.github.io/
+# GitHub reads this file for the "Cite this repository" button.
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: "If you use this software, please cite it using the metadata in this file."
+type: software
 title: "Between the Model and the Shell: Deterministic Runtime Governance for Probabilistic Software Engineering Agents"
-abstract: >-
-  TBound is a Linux supervisor that mediates the read, write, edit and bash tool
-  calls of the Pi coding agent. It enforces a fixed policy, runs bash in an
-  isolated rootless Podman cell, publishes changes to the repository only when the
-  policy allows them, and records decisions and effects in durable journals.
 authors:
   - family-names: Jelinek
     given-names: Fabian
@@ -16,8 +14,16 @@ url: "https://github.com/faetschi/trust-boundary"
 license: MIT
 keywords:
   - ai-agent-security
+  - coding-agents
+  - llm-agents
+  - runtime-governance
+  - policy-enforcement
   - sandbox
   - landlock
   - podman
-  - llm-agents
-# version and date-released: set these when the first tagged release exists.
+  - linux
+# abstract: will be added when the paper is written.
+#   the schema requires at least one character.
+# version, date-released, doi, identifiers: add them with the first archived
+#   release (the repository README says a DOI follows then). The GitHub release
+#   v0.1.0 (2026-11-18) is not a citation target.
