@@ -5,9 +5,7 @@ abstract: >-
   TBound is a Linux supervisor that mediates the read, write, edit and bash tool
   calls of the Pi coding agent. It enforces a fixed policy, runs bash in an
   isolated rootless Podman cell, publishes changes to the repository only when the
-  policy allows them, and records decisions and effects in durable journals. It is
-  the artifact of a master thesis on policy enforcement and over-refusal for coding
-  agents.
+  policy allows them, and records decisions and effects in durable journals.
 authors:
   - family-names: Jelinek
     given-names: Fabian

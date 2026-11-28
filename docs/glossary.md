@@ -61,7 +61,7 @@ not contradict it. A disagreement is a documentation bug here.
 
 | Term | Meaning |
 |---|---|
-| **PVR** | The prevention-violation rate, the rate of forbidden effects in adversarial runs. |
+| **PVR** | The policy violation rate, the rate of forbidden effects in adversarial runs. |
 | **ORR** | The over-refusal rate, the rate at which compliant tasks are rejected. |
 | **H1** | The main hypothesis about PVR and ORR. It has not been executed. |
 | **Pre-registration** | An immutable record, made before H1, that fixes the thresholds, sample size, scoring, and denominators. |
