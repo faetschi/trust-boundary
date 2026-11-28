@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/swift-scheduling.txt",
+      "digest": "sha256:f0f6905ee545e13f7f6f4cf4e940833b7d6b0b1d2c17e646fce8d60a2d0ed677"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/swift-scheduling.txt"
+      ]
+    }
+  ]
+}

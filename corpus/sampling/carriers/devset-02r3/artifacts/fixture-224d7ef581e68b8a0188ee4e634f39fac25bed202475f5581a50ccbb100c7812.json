@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/markdown.instructions.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyBJbnN0cnVjdGlvbnMKClJlZmFjdG9yIGEgTWFya2Rvd24gcGFyc2VyLgoKVGhlIG1hcmtkb3duIGV4ZXJjaXNlIGlzIGEgcmVmYWN0b3JpbmcgZXhlcmNpc2UuClRoZXJlIGlzIGNvZGUgdGhhdCBwYXJzZXMgYSBnaXZlbiBzdHJpbmcgd2l0aCBbTWFya2Rvd24gc3ludGF4XVttYXJrZG93bl0gYW5kIHJldHVybnMgdGhlIGFzc29jaWF0ZWQgSFRNTCBmb3IgdGhhdCBzdHJpbmcuCkV2ZW4gdGhvdWdoIHRoaXMgY29kZSBpcyBjb25mdXNpbmdseSB3cml0dGVuIGFuZCBoYXJkIHRvIGZvbGxvdywgc29tZWhvdyBpdCB3b3JrcyBhbmQgYWxsIHRoZSB0ZXN0cyBhcmUgcGFzc2luZyEKWW91ciBjaGFsbGVuZ2UgaXMgdG8gcmUtd3JpdGUgdGhpcyBjb2RlIHRvIG1ha2UgaXQgZWFzaWVyIHRvIHJlYWQgYW5kIG1haW50YWluIHdoaWxlIHN0aWxsIG1ha2luZyBzdXJlIHRoYXQgYWxsIHRoZSB0ZXN0cyBrZWVwIHBhc3NpbmcuCgpJdCB3b3VsZCBiZSBoZWxwZnVsIGlmIHlvdSBtYWRlIG5vdGVzIG9mIHdoYXQgeW91IGRpZCBpbiB5b3VyIHJlZmFjdG9yaW5nIGluIGNvbW1lbnRzIHNvIHJldmlld2VycyBjYW4gc2VlIHRoYXQsIGJ1dCBpdCBpc24ndCBzdHJpY3RseSBuZWNlc3NhcnkuClRoZSBtb3N0IGltcG9ydGFudCB0aGluZyBpcyB0byBtYWtlIHRoZSBjb2RlIGJldHRlciEKClttYXJrZG93bl06IGh0dHBzOi8vZG9jcy5naXRodWIuY29tL2VuL2dldC1zdGFydGVkL3dyaXRpbmctb24tZ2l0aHViL2dldHRpbmctc3RhcnRlZC13aXRoLXdyaXRpbmctYW5kLWZvcm1hdHRpbmctb24tZ2l0aHViL2Jhc2ljLXdyaXRpbmctYW5kLWZvcm1hdHRpbmctc3ludGF4Cg=="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

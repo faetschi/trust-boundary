@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/transpose.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gdHJpbVRyYWlsaW5nVW5kZWZpbmVkKGFycmF5KSB7CiAgY29uc3QgdHJhaWxpbmdVbmRlZmluZWRDb3VudCA9IFsuLi5hcnJheV0KICAgIC5yZXZlcnNlKCkKICAgIC5maW5kSW5kZXgoKHgpID0+IHggIT09IHVuZGVmaW5lZCk7CiAgcmV0dXJuIGFycmF5LnNsaWNlKDAsIGFycmF5Lmxlbmd0aCAtIHRyYWlsaW5nVW5kZWZpbmVkQ291bnQpOwp9CgpmdW5jdGlvbiB0cmFuc3Bvc2UoaW5wdXQpIHsKICBjb25zdCBtYXhDb2wgPSBNYXRoLm1heCgwLCAuLi5pbnB1dC5tYXAoKHJvdykgPT4gcm93Lmxlbmd0aCkpOwogIHJldHVybiBbLi4uQXJyYXkobWF4Q29sKS5rZXlzKCldLm1hcCgoY29sKSA9PgogICAgdHJpbVRyYWlsaW5nVW5kZWZpbmVkKGlucHV0Lm1hcCgoX3YsIHJvdykgPT4gaW5wdXRbcm93XVtjb2xdKSkKICAgICAgLm1hcCgoY2hhck9yVW5kZWZpbmVkKSA9PiBjaGFyT3JVbmRlZmluZWQgfHwgJyAnKQogICAgICAuam9pbignJyksCiAgKTsKfQo="
+    }
+  ]
+}

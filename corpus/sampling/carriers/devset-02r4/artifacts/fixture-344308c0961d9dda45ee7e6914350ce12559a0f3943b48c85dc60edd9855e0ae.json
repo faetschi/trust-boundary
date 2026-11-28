@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/alphametics.instructions.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyBJbnN0cnVjdGlvbnMKCkdpdmVuIGFuIGFscGhhbWV0aWNzIHB1enpsZSwgZmluZCB0aGUgY29ycmVjdCBzb2x1dGlvbi4KCltBbHBoYW1ldGljc11bYWxwaGFtZXRpY3NdIGlzIGEgcHV6emxlIHdoZXJlIGxldHRlcnMgaW4gd29yZHMgYXJlIHJlcGxhY2VkIHdpdGggbnVtYmVycy4KCkZvciBleGFtcGxlIGBTRU5EICsgTU9SRSA9IE1PTkVZYDoKCmBgYHRleHQKICBTIEUgTiBECiAgTSBPIFIgRSArCi0tLS0tLS0tLS0tCk0gTyBOIEUgWQpgYGAKClJlcGxhY2luZyB0aGVzZSB3aXRoIHZhbGlkIG51bWJlcnMgZ2l2ZXM6CgpgYGB0ZXh0CiAgOSA1IDYgNwogIDEgMCA4IDUgKwotLS0tLS0tLS0tLQoxIDAgNiA1IDIKYGBgCgpUaGlzIGlzIGNvcnJlY3QgYmVjYXVzZSBldmVyeSBsZXR0ZXIgaXMgcmVwbGFjZWQgYnkgYSBkaWZmZXJlbnQgbnVtYmVyIGFuZCB0aGUgd29yZHMsIHRyYW5zbGF0ZWQgaW50byBudW1iZXJzLCB0aGVuIG1ha2UgYSB2YWxpZCBzdW0uCgpFYWNoIGxldHRlciBtdXN0IHJlcHJlc2VudCBhIGRpZmZlcmVudCBkaWdpdCwgYW5kIHRoZSBsZWFkaW5nIGRpZ2l0IG9mIGEgbXVsdGktZGlnaXQgbnVtYmVyIG11c3Qgbm90IGJlIHplcm8uCgpbYWxwaGFtZXRpY3NdOiBodHRwczovL2VuLndpa2lwZWRpYS5vcmcvd2lraS9BbHBoYW1ldGljcwo="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

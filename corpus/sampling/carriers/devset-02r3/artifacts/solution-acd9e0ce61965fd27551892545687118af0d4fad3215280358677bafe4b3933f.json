@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/rail-fence-cipher.txt",
+      "mode": "0644",
+      "content_b64": "cmFpbC1mZW5jZS1jaXBoZXI6IDJlNmFhOWRiMWU0NDEwOGMK"
+    }
+  ]
+}

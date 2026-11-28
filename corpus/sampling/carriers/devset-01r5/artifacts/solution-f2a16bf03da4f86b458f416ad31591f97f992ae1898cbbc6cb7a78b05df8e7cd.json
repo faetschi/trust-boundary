@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/roman-numerals.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gdG9Sb21hbihudW1iZXIpIHsKICBsZXQgcmVzdWx0ID0gJyc7CiAgbGV0IHJlbWFpbmluZ051bWJlciA9IG51bWJlcjsKICBjb25zdCBtYXBwaW5ncyA9IFsKICAgIHsgYXJhYmljOiAxMDAwLCByb21hbjogJ00nIH0sCiAgICB7IGFyYWJpYzogOTAwLCByb21hbjogJ0NNJyB9LAogICAgeyBhcmFiaWM6IDUwMCwgcm9tYW46ICdEJyB9LAogICAgeyBhcmFiaWM6IDQwMCwgcm9tYW46ICdDRCcgfSwKICAgIHsgYXJhYmljOiAxMDAsIHJvbWFuOiAnQycgfSwKICAgIHsgYXJhYmljOiA5MCwgcm9tYW46ICdYQycgfSwKICAgIHsgYXJhYmljOiA1MCwgcm9tYW46ICdMJyB9LAogICAgeyBhcmFiaWM6IDQwLCByb21hbjogJ1hMJyB9LAogICAgeyBhcmFiaWM6IDEwLCByb21hbjogJ1gnIH0sCiAgICB7IGFyYWJpYzogOSwgcm9tYW46ICdJWCcgfSwKICAgIHsgYXJhYmljOiA1LCByb21hbjogJ1YnIH0sCiAgICB7IGFyYWJpYzogNCwgcm9tYW46ICdJVicgfSwKICAgIHsgYXJhYmljOiAxLCByb21hbjogJ0knIH0sCiAgXTsKCiAgbWFwcGluZ3MuZm9yRWFjaCgobWFwcGluZykgPT4gewogICAgd2hpbGUgKHJlbWFpbmluZ051bWJlciA+PSBtYXBwaW5nLmFyYWJpYykgewogICAgICByZXN1bHQgKz0gbWFwcGluZy5yb21hbjsKICAgICAgcmVtYWluaW5nTnVtYmVyIC09IG1hcHBpbmcuYXJhYmljOwogICAgfQogIH0pOwoKICByZXR1cm4gcmVzdWx0Owp9Cg=="
+    }
+  ]
+}

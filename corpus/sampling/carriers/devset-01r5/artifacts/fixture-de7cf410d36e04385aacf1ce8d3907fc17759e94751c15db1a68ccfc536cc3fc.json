@@ -1,0 +1,27 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/rotational-cipher.instructions.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyBJbnN0cnVjdGlvbnMKCkNyZWF0ZSBhbiBpbXBsZW1lbnRhdGlvbiBvZiB0aGUgcm90YXRpb25hbCBjaXBoZXIsIGFsc28gc29tZXRpbWVzIGNhbGxlZCB0aGUgQ2Flc2FyIGNpcGhlci4KClRoZSBDYWVzYXIgY2lwaGVyIGlzIGEgc2ltcGxlIHNoaWZ0IGNpcGhlciB0aGF0IHJlbGllcyBvbiB0cmFuc3Bvc2luZyBhbGwgdGhlIGxldHRlcnMgaW4gdGhlIGFscGhhYmV0IHVzaW5nIGFuIGludGVnZXIga2V5IGJldHdlZW4gYDBgIGFuZCBgMjZgLgpVc2luZyBhIGtleSBvZiBgMGAgb3IgYDI2YCB3aWxsIGFsd2F5cyB5aWVsZCB0aGUgc2FtZSBvdXRwdXQgZHVlIHRvIG1vZHVsYXIgYXJpdGhtZXRpYy4KVGhlIGxldHRlciBpcyBzaGlmdGVkIGZvciBhcyBtYW55IHZhbHVlcyBhcyB0aGUgdmFsdWUgb2YgdGhlIGtleS4KClRoZSBnZW5lcmFsIG5vdGF0aW9uIGZvciByb3RhdGlvbmFsIGNpcGhlcnMgaXMgYFJPVCArIDxrZXk+YC4KVGhlIG1vc3QgY29tbW9ubHkgdXNlZCByb3RhdGlvbmFsIGNpcGhlciBpcyBgUk9UMTNgLgoKQSBgUk9UMTNgIG9uIHRoZSBMYXRpbiBhbHBoYWJldCB3b3VsZCBiZSBhcyBmb2xsb3dzOgoKYGBgdGV4dApQbGFpbjogIGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6CkNpcGhlcjogbm9wcXJzdHV2d3h5emFiY2RlZmdoaWprbG0KYGBgCgpJdCBpcyBzdHJvbmdlciB0aGFuIHRoZSBBdGJhc2ggY2lwaGVyIGJlY2F1c2UgaXQgaGFzIDI3IHBvc3NpYmxlIGtleXMsIGFuZCAyNSB1c2FibGUga2V5cy4KCkNpcGhlcnRleHQgaXMgd3JpdHRlbiBvdXQgaW4gdGhlIHNhbWUgZm9ybWF0dGluZyBhcyB0aGUgaW5wdXQgaW5jbHVkaW5nIHNwYWNlcyBhbmQgcHVuY3R1YXRpb24uCgojIyBFeGFtcGxlcwoKLSBST1Q1IGBvbWdgIGdpdmVzIGB0cmxgCi0gUk9UMCBgY2AgZ2l2ZXMgYGNgCi0gUk9UMjYgYENvb2xgIGdpdmVzIGBDb29sYAotIFJPVDEzIGBUaGUgcXVpY2sgYnJvd24gZm94IGp1bXBzIG92ZXIgdGhlIGxhenkgZG9nLmAgZ2l2ZXMgYEd1ciBkaHZweCBvZWJqYSBzYmsgd2h6Y2YgYmlyZSBndXIgeW5tbCBxYnQuYAotIFJPVDEzIGBHdXIgZGh2cHggb2ViamEgc2JrIHdoemNmIGJpcmUgZ3VyIHlubWwgcWJ0LmAgZ2l2ZXMgYFRoZSBxdWljayBicm93biBmb3gganVtcHMgb3ZlciB0aGUgbGF6eSBkb2cuYAo="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/rotational-cipher.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gcm90YXRlKHRleHQsIHNoaWZ0KSB7CiAgcmV0dXJuIFsuLi50ZXh0XQogICAgLm1hcCgoYykgPT4gewogICAgICBjb25zdCBpc1VwcGVyID0gYy5tYXRjaCgvW0EtWl0vKTsKICAgICAgY29uc3QgaXNBbHBoYSA9IGMubWF0Y2goL1thLXpdL2kpOwogICAgICBjb25zdCBjaGFyU2hpZnQgPSAoaXNVcHBlciA/ICdBJyA6ICdhJykuY2hhckNvZGVBdCgwKTsKCiAgICAgIHJldHVybiBpc0FscGhhCiAgICAgICAgPyBTdHJpbmcuZnJvbUNoYXJDb2RlKAogICAgICAgICAgICAoKGMuY2hhckNvZGVBdCgwKSAtIGNoYXJTaGlmdCArIHNoaWZ0KSAlIDI2KSAtIGNoYXJTaGlmdCwKICAgICAgICAgICkKICAgICAgICA6IGM7CiAgICB9KQogICAgLmpvaW4oJycpOwp9Cg=="
+    }
+  ]
+}

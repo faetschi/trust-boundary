@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/transpose.instructions.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyBJbnN0cnVjdGlvbnMKCkdpdmVuIGFuIGlucHV0IHRleHQgb3V0cHV0IGl0IHRyYW5zcG9zZWQuCgpSb3VnaGx5IGV4cGxhaW5lZCwgdGhlIHRyYW5zcG9zZSBvZiBhIG1hdHJpeDoKCmBgYHRleHQKQUJDCkRFRgpgYGAKCmlzIGdpdmVuIGJ5OgoKYGBgdGV4dApBRApCRQpDRgpgYGAKClJvd3MgYmVjb21lIGNvbHVtbnMgYW5kIGNvbHVtbnMgYmVjb21lIHJvd3MuClNlZSBbdHJhbnNwb3NlXVtdLgoKSWYgdGhlIGlucHV0IGhhcyByb3dzIG9mIGRpZmZlcmVudCBsZW5ndGhzLCB0aGlzIGlzIHRvIGJlIHNvbHZlZCBhcyBmb2xsb3dzOgoKLSBQYWQgdG8gdGhlIGxlZnQgd2l0aCBzcGFjZXMuCi0gRG9uJ3QgcGFkIHRvIHRoZSByaWdodC4KClRoZXJlZm9yZSwgdHJhbnNwb3NpbmcgdGhpcyBtYXRyaXg6CgpgYGB0ZXh0CkFCQwpERQpgYGAKCnJlc3VsdHMgaW46CgpgYGB0ZXh0CkFECkJFCkMKYGBgCgpBbmQgdHJhbnNwb3Npbmc6CgpgYGB0ZXh0CkFCCkRFRgpgYGAKCnJlc3VsdHMgaW46CgpgYGB0ZXh0CkFECkJFCiBGCmBgYAoKSW4gZ2VuZXJhbCwgYWxsIGNoYXJhY3RlcnMgZnJvbSB0aGUgaW5wdXQgc2hvdWxkIGFsc28gYmUgcHJlc2VudCBpbiB0aGUgdHJhbnNwb3NlZCBvdXRwdXQuClRoYXQgbWVhbnMgdGhhdCBpZiBhIGNvbHVtbiBpbiB0aGUgaW5wdXQgdGV4dCBjb250YWlucyBvbmx5IHNwYWNlcyBvbiBpdHMgYm90dG9tLW1vc3Qgcm93KHMpLCB0aGUgY29ycmVzcG9uZGluZyBvdXRwdXQgcm93IHNob3VsZCBjb250YWluIHRoZSBzcGFjZXMgaW4gaXRzIHJpZ2h0LW1vc3QgY29sdW1uKHMpLgoKW3RyYW5zcG9zZV06IGh0dHBzOi8vZW4ud2lraXBlZGlhLm9yZy93aWtpL1RyYW5zcG9zZQo="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

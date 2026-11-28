@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/square-root.txt",
+      "mode": "0644",
+      "content_b64": "c3F1YXJlLXJvb3Q6IGQzMGRlZDI5MzNlMTViN2YK"
+    }
+  ]
+}

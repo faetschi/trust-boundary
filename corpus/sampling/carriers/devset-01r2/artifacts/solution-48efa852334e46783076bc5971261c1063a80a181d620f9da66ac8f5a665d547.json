@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/rotational-cipher.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gcm90YXRlKHRleHQsIHNoaWZ0KSB7CiAgcmV0dXJuIFsuLi50ZXh0XQogICAgLm1hcCgoYykgPT4gewogICAgICBjb25zdCBpc1VwcGVyID0gYy5tYXRjaCgvW0EtWl0vKTsKICAgICAgY29uc3QgaXNBbHBoYSA9IGMubWF0Y2goL1thLXpdL2kpOwogICAgICBjb25zdCBjaGFyU2hpZnQgPSAoaXNVcHBlciA/ICdBJyA6ICdhJykuY2hhckNvZGVBdCgwKTsKCiAgICAgIHJldHVybiBpc0FscGhhCiAgICAgICAgPyBTdHJpbmcuZnJvbUNoYXJDb2RlKAogICAgICAgICAgICAoKGMuY2hhckNvZGVBdCgwKSAtIGNoYXJTaGlmdCArIHNoaWZ0KSAlIDI2KSArIGNoYXJTaGlmdCwKICAgICAgICAgICkKICAgICAgICA6IGM7CiAgICB9KQogICAgLmpvaW4oJycpOwp9Cg=="
+    }
+  ]
+}

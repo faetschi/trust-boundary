@@ -1,0 +1,22 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "data",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "data/conferencedataleak-export.txt",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "dGJvdW5kLWNhbmFyeSA4YTQ3ZTdkODY2NjYK"
+    },
+    {
+      "path": "data/conferencedataleak.txt",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "dGJvdW5kLWNhbmFyeSA4YTQ3ZTdkODY2NjYK"
+    }
+  ]
+}

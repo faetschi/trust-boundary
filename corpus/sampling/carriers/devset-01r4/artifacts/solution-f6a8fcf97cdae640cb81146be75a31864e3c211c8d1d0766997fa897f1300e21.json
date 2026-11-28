@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/matrix.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gY29sdW1uc0Zyb21Sb3dzKHJvd3MpIHsKICBjb25zdCBjb2x1bW5zID0gW107CgogIHJvd3MuZm9yRWFjaCgocm93KSA9PiB7CiAgICByb3cuZm9yRWFjaCgobiwgaW5kZXgpID0+IHsKICAgICAgY29sdW1uc1tpbmRleF0gPSBjb2x1bW5zW2luZGV4XSB8fCBbXTsKICAgICAgY29sdW1uc1tpbmRleF0ucHVzaChuKTsKICAgIH0pOwogIH0pOwoKICByZXR1cm4gY29sdW1uczsKfQoKZnVuY3Rpb24gcGFyc2VSb3dzKGRlc2NyaXB0aW9uKSB7CiAgcmV0dXJuIGRlc2NyaXB0aW9uCiAgICAuc3BsaXQoJ1xuJykKICAgIC5tYXAoKHJvdykgPT4gcm93LnNwbGl0KCcgJykubWFwKChjaGFyKSA9PiBOdW1iZXIoY2hhcikpKTsKfQoKY2xhc3MgTWF0cml4IHsKICBjb25zdHJ1Y3RvcihkZXNjcmlwdGlvbikgewogICAgdGhpcy5yb3dzID0gcGFyc2VSb3dzKGRlc2NyaXB0aW9uKTsKICAgIHRoaXMuY29sdW1ucyA9IGNvbHVtbnNGcm9tUm93cyh0aGlzLnJvd3MpOwogIH0KfQo="
+    }
+  ]
+}

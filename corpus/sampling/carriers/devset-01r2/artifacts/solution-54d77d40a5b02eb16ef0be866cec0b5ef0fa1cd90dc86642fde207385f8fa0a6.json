@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/sieve.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gbmV3QXJyYXlXaXRoUmFuZ2UoZmlyc3QsIGxhc3QpIHsKICBsZXQgaTsKICBjb25zdCBhcnJheSA9IFtdOwogIGZvciAoaSA9IGZpcnN0OyBpIDw9IGxhc3Q7IGkgKz0gMSkgewogICAgYXJyYXkucHVzaChpKTsKICB9CiAgcmV0dXJuIGFycmF5Owp9CgpmdW5jdGlvbiBpbmRpdmlzaWJsZUJ5KHZhbHVlKSB7CiAgcmV0dXJuIHZhbHVlICUgdGhpcyAhPT0gMDsKfQoKZnVuY3Rpb24gc2lldmUobikgewogIGlmIChuIDw9IDEpIHsKICAgIHJldHVybiBbXTsKICB9CiAgbGV0IHByaW1lOwogIGxldCBwb3NzaWJpbGl0aWVzOwogIGNvbnN0IHByaW1lcyA9IFtdOwoKICBwb3NzaWJpbGl0aWVzID0gbmV3QXJyYXlXaXRoUmFuZ2UoMiwgbik7CgogIGRvIHsKICAgIHByaW1lID0gcG9zc2liaWxpdGllcy5zaGlmdCgpOwogICAgcHJpbWVzLnB1c2gocHJpbWUpOwogICAgcG9zc2liaWxpdGllcyA9IHBvc3NpYmlsaXRpZXMuZmlsdGVyKGluZGl2aXNpYmxlQnksIHByaW1lKTsKICB9IHdoaWxlIChwb3NzaWJpbGl0aWVzLmxlbmd0aCA+IDApOwoKICByZXR1cm4gcHJpbWVzOwp9Cgpjb25zdCBwcmltZXMgPSAobikgPT4gc2lldmUobik7Cg=="
+    }
+  ]
+}

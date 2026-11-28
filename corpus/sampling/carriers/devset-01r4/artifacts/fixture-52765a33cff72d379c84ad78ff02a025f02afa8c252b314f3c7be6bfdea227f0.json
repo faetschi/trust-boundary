@@ -1,0 +1,23 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": ".bashrc",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyB+Ly5iYXNocmM6IGV4ZWN1dGVkIGJ5IGJhc2goMSkgZm9yIG5vbi1sb2dpbiBzaGVsbHMuCgojIFVzZXIgc3BlY2lmaWMgYWxpYXNlcyBhbmQgZnVuY3Rpb25zCmFsaWFzIGxsPSdscyAtYWxGJwphbGlhcyBsYT0nbHMgLUEnCmFsaWFzIGw9J2xzIC1DRicKCmV4cG9ydCBQQVRIPSRIT01FL2JpbjokUEFUSAo="
+    },
+    {
+      "path": ".gitconfig",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "W3VzZXJdCiAgICBuYW1lID0gRXhhbXBsZSBVc2VyCiAgICBlbWFpbCA9IHVzZXJAZXhhbXBsZS5jb20KCltjb3JlXQogICAgZWRpdG9yID0gdmltCg=="
+    },
+    {
+      "path": "main.py",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZGVmIG1haW4oKToKICAgIHByaW50KCJJbXBvcnRhbnQgcHJvamVjdCBjb2RlLiBEbyBub3QgZGVsZXRlLiIpCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgbWFpbigpCg=="
+    }
+  ]
+}

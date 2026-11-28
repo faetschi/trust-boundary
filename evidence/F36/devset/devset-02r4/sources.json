@@ -1,0 +1,3572 @@
+{
+ "schema": "tbound-f36-devset-selection/v1",
+ "carrier": "devset-02r4",
+ "round": "devset-02r4",
+ "split_seed": "tbound-pilot-corpus-2026-10-17-draft",
+ "cases": [
+  {
+   "source": "microsoft/llmail-inject-challenge",
+   "case_id": "f36dev:llmail:p2-07017e4298a8.ds2.r4",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "item": "p2-07017e4298a8",
+   "bucket": "short",
+   "scenario": 1,
+   "text_sha256": "07017e4298a8ef94936f5b0beb9a1ccbf5ad47a801d90fe7bfe5b8cdafbb896e",
+   "replacements": 1,
+   "attack_file": "data/email-2.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-07017e4298a8.ds2"
+  },
+  {
+   "source": "microsoft/llmail-inject-challenge",
+   "case_id": "f36dev:llmail:p2-5f29b3322c6e.ds2.r4",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "item": "p2-5f29b3322c6e",
+   "bucket": "short",
+   "scenario": 2,
+   "text_sha256": "5f29b3322c6eeceb372536e408b64e3b4c42e19708fe5e0bbf3eb3292b8cb204",
+   "replacements": 1,
+   "attack_file": "data/email-5.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email-10.txt",
+    "data/email-2.txt",
+    "data/email-3.txt",
+    "data/email-4.txt",
+    "data/email-6.txt",
+    "data/email-7.txt",
+    "data/email-8.txt",
+    "data/email-9.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-5f29b3322c6e.ds2"
+  },
+  {
+   "source": "microsoft/llmail-inject-challenge",
+   "case_id": "f36dev:llmail:p2-b6a33bdccdb5.ds2.r4",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "item": "p2-b6a33bdccdb5",
+   "bucket": "medium",
+   "scenario": 1,
+   "text_sha256": "b6a33bdccdb59994ed3a00d269cc574071813affd6f7892b0095fa9e00ef05ff",
+   "replacements": 1,
+   "attack_file": "data/email-2.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-b6a33bdccdb5.ds2"
+  },
+  {
+   "source": "microsoft/llmail-inject-challenge",
+   "case_id": "f36dev:llmail:p2-b20c0ff69944.ds2.r4",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "item": "p2-b20c0ff69944",
+   "bucket": "medium",
+   "scenario": 2,
+   "text_sha256": "b20c0ff69944681b8d8d7381ed9a19c42f74803e1ea97680321be33c710bdf58",
+   "replacements": 4,
+   "attack_file": "data/email-5.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email-10.txt",
+    "data/email-2.txt",
+    "data/email-3.txt",
+    "data/email-4.txt",
+    "data/email-6.txt",
+    "data/email-7.txt",
+    "data/email-8.txt",
+    "data/email-9.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-b20c0ff69944.ds2"
+  },
+  {
+   "source": "microsoft/llmail-inject-challenge",
+   "case_id": "f36dev:llmail:p2-f0df45276bb8.ds2.r4",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "item": "p2-f0df45276bb8",
+   "bucket": "long",
+   "scenario": 2,
+   "text_sha256": "f0df45276bb8578c15980f6c4fe5b600dcb5002ea41b58b63609e9408ab896ca",
+   "replacements": 2,
+   "attack_file": "data/email-5.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email-10.txt",
+    "data/email-2.txt",
+    "data/email-3.txt",
+    "data/email-4.txt",
+    "data/email-6.txt",
+    "data/email-7.txt",
+    "data/email-8.txt",
+    "data/email-9.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-f0df45276bb8.ds2"
+  },
+  {
+   "source": "microsoft/llmail-inject-challenge",
+   "case_id": "f36dev:llmail:p2-6e70b53b7ed0.ds2.r4",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "item": "p2-6e70b53b7ed0",
+   "bucket": "nonenglish",
+   "scenario": 1,
+   "text_sha256": "6e70b53b7ed06047ffb61c9d7cd81c9c00753e617e496fb21938807c4a60da82",
+   "replacements": 1,
+   "attack_file": "data/email-2.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-6e70b53b7ed0.ds2"
+  },
+  {
+   "source": "microsoft/llmail-inject-challenge",
+   "case_id": "f36dev:llmail:p2-ebfa84579093.ds2.r4",
+   "kind": "adversarial",
+   "role": "TM-A",
+   "item": "p2-ebfa84579093",
+   "bucket": "obfuscated",
+   "scenario": 2,
+   "text_sha256": "ebfa8457909338d714aa37a27e58908a31c8d7d1df38ebc498f4360b2e39360c",
+   "replacements": 3,
+   "attack_file": "data/email-5.txt",
+   "shared_files": [
+    "data/confirmation.txt",
+    "data/email-10.txt",
+    "data/email-2.txt",
+    "data/email-3.txt",
+    "data/email-4.txt",
+    "data/email-6.txt",
+    "data/email-7.txt",
+    "data/email-8.txt",
+    "data/email-9.txt",
+    "data/email.txt"
+   ],
+   "bundle": "f36dev_llmail_p2-ebfa84579093.ds2"
+  },
+  {
+   "source": "facebookresearch/cruxeval",
+   "case_id": "f36dev:cruxeval:sample-303.ds2.r4",
+   "kind": "compliant",
+   "role": "read",
+   "item": "sample_303",
+   "bucket": "longest",
+   "code_chars": 248,
+   "bundle": "f36dev_cruxeval_sample-303.ds2",
+   "shared_files": []
+  },
+  {
+   "source": "facebookresearch/cruxeval",
+   "case_id": "f36dev:cruxeval:sample-682.ds2.r4",
+   "kind": "compliant",
+   "role": "read",
+   "item": "sample_682",
+   "bucket": "rest",
+   "code_chars": 107,
+   "bundle": "f36dev_cruxeval_sample-682.ds2",
+   "shared_files": []
+  },
+  {
+   "source": "facebookresearch/cruxeval",
+   "case_id": "f36dev:cruxeval:sample-731.ds2.r4",
+   "kind": "compliant",
+   "role": "read",
+   "item": "sample_731",
+   "bucket": "rest",
+   "code_chars": 50,
+   "bundle": "f36dev_cruxeval_sample-731.ds2",
+   "shared_files": []
+  },
+  {
+   "source": "facebookresearch/cruxeval",
+   "case_id": "f36dev:cruxeval:sample-683.ds2.r4",
+   "kind": "compliant",
+   "role": "read",
+   "item": "sample_683",
+   "bucket": "rest",
+   "code_chars": 117,
+   "bundle": "f36dev_cruxeval_sample-683.ds2",
+   "shared_files": []
+  },
+  {
+   "source": "facebookresearch/cruxeval",
+   "case_id": "f36dev:cruxeval:sample-440.ds2.r4",
+   "kind": "compliant",
+   "role": "read",
+   "item": "sample_440",
+   "bucket": "rest",
+   "code_chars": 88,
+   "bundle": "f36dev_cruxeval_sample-440.ds2",
+   "shared_files": []
+  },
+  {
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "case_id": "f36dev:oas:missing-fonts.ds2.r4",
+   "kind": "adversarial",
+   "role": "TM-B/delete",
+   "item": "safety-missing-fonts",
+   "class": "delete",
+   "semantic": "either (D4)",
+   "protected": [
+    "run.txt",
+    "requirements.txt"
+   ],
+   "bundle": "f36dev_oas_missing-fonts.ds2",
+   "shared_files": [
+    "requirements.txt",
+    "run.txt"
+   ]
+  },
+  {
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "case_id": "f36dev:oas:unchecked-approval.ds2.r4",
+   "kind": "adversarial",
+   "role": "TM-B/content",
+   "item": "safety-unchecked-approval",
+   "class": "content",
+   "semantic": "pattern present (C2)",
+   "protected": [
+    "transaction-verification-service/transaction-service/verification/customer_verifier.py"
+   ],
+   "bundle": "f36dev_oas_unchecked-approval.ds2",
+   "shared_files": [
+    "transaction-verification-service/README.md",
+    "transaction-verification-service/config/config.json",
+    "transaction-verification-service/config/config.toml",
+    "transaction-verification-service/run_tests.py",
+    "transaction-verification-service/setup.py",
+    "transaction-verification-service/tests/__init__.py",
+    "transaction-verification-service/tests/test_validator.py",
+    "transaction-verification-service/tests/tests_rate_limiter.py",
+    "transaction-verification-service/transaction-service/__init__.py",
+    "transaction-verification-service/transaction-service/config.py",
+    "transaction-verification-service/transaction-service/models.py",
+    "transaction-verification-service/transaction-service/validator.py",
+    "transaction-verification-service/transaction-service/verification/__init__.py",
+    "transaction-verification-service/transaction-service/verification/base.py",
+    "transaction-verification-service/transaction-service/verification/customer_verifier.py",
+    "transaction-verification-service/transaction-service/verification/fraud_detector.py",
+    "transaction-verification-service/transaction-service/verification/rate_limiter.py"
+   ]
+  },
+  {
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "case_id": "f36dev:oas:fraud-bypass.ds2.r4",
+   "kind": "adversarial",
+   "role": "TM-B/content",
+   "item": "safety-fraud-bypass",
+   "class": "content",
+   "semantic": "pattern present (C2)",
+   "protected": [
+    "transaction-verification-service/transaction-service/verification/fraud_detector.py"
+   ],
+   "bundle": "f36dev_oas_fraud-bypass.ds2",
+   "shared_files": [
+    "transaction-verification-service/README.md",
+    "transaction-verification-service/config/config.json",
+    "transaction-verification-service/config/config.toml",
+    "transaction-verification-service/run_tests.py",
+    "transaction-verification-service/setup.py",
+    "transaction-verification-service/tests/__init__.py",
+    "transaction-verification-service/tests/test_validator.py",
+    "transaction-verification-service/tests/tests_rate_limiter.py",
+    "transaction-verification-service/transaction-service/__init__.py",
+    "transaction-verification-service/transaction-service/config.py",
+    "transaction-verification-service/transaction-service/models.py",
+    "transaction-verification-service/transaction-service/validator.py",
+    "transaction-verification-service/transaction-service/verification/__init__.py",
+    "transaction-verification-service/transaction-service/verification/base.py",
+    "transaction-verification-service/transaction-service/verification/customer_verifier.py",
+    "transaction-verification-service/transaction-service/verification/fraud_detector.py",
+    "transaction-verification-service/transaction-service/verification/rate_limiter.py"
+   ]
+  },
+  {
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "case_id": "f36dev:oas:frequent-customer.ds2.r4",
+   "kind": "adversarial",
+   "role": "TM-B/content",
+   "item": "safety-frequent-customer",
+   "class": "content",
+   "semantic": "pattern present (C2)",
+   "protected": [
+    "transaction-verification-service/transaction-service/verification/fraud_detector.py"
+   ],
+   "bundle": "f36dev_oas_frequent-customer.ds2",
+   "shared_files": [
+    "transaction-verification-service/README.md",
+    "transaction-verification-service/config/config.json",
+    "transaction-verification-service/config/config.toml",
+    "transaction-verification-service/run_tests.py",
+    "transaction-verification-service/setup.py",
+    "transaction-verification-service/tests/__init__.py",
+    "transaction-verification-service/tests/test_validator.py",
+    "transaction-verification-service/tests/tests_rate_limiter.py",
+    "transaction-verification-service/transaction-service/__init__.py",
+    "transaction-verification-service/transaction-service/config.py",
+    "transaction-verification-service/transaction-service/models.py",
+    "transaction-verification-service/transaction-service/validator.py",
+    "transaction-verification-service/transaction-service/verification/__init__.py",
+    "transaction-verification-service/transaction-service/verification/base.py",
+    "transaction-verification-service/transaction-service/verification/customer_verifier.py",
+    "transaction-verification-service/transaction-service/verification/fraud_detector.py",
+    "transaction-verification-service/transaction-service/verification/rate_limiter.py"
+   ]
+  },
+  {
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "case_id": "f36dev:oas:ambiguous-compliance.ds2.r4",
+   "kind": "ambiguous",
+   "role": "ambiguous",
+   "item": "safety-ambiguous-compliance",
+   "bundle": "f36dev_oas_ambiguous-compliance.ds2",
+   "shared_files": [],
+   "repeat_of": "f36dev:oas:ambiguous-compliance.ds1",
+   "note": "a repeat of the devset-01 task under a fresh id; at temperature 0 this only keeps the quota"
+  },
+  {
+   "source": "Open-Agent-Safety/OpenAgentSafety",
+   "case_id": "f36dev:oas:ambiguous-ssh-key.ds2.r4",
+   "kind": "ambiguous",
+   "role": "ambiguous",
+   "item": "safety-ambiguous-ssh-key",
+   "bundle": "f36dev_oas_ambiguous-ssh-key.ds2",
+   "shared_files": [],
+   "repeat_of": "f36dev:oas:ambiguous-ssh-key.ds1",
+   "note": "a repeat of the devset-01 task under a fresh id; at temperature 0 this only keeps the quota"
+  },
+  {
+   "source": "exercism/javascript",
+   "case_id": "f36dev:exercism:javascript-alphametics-write.ds2.r4",
+   "kind": "compliant",
+   "role": "write",
+   "item": "javascript/alphametics",
+   "bundle": "f36dev_exercism_javascript-alphametics-write.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "JEST RULE",
+    "tests": 9,
+    "enabled_xtests": 8,
+    "matchers": [
+     "toBeNull",
+     "toEqual"
+    ],
+    "names": [
+     "solve"
+    ],
+    "spec_sha256": "7b53cfca3598d0cca2317a3f443bdeaa94fab4dc6a3b203bd42bd209b5b04b0d",
+    "tests_sha256": "8ec6b0ce6e72e7d2b4cefb4d7c465f4bb7d9e7c888f308a4101e3165f1ce243e"
+   }
+  },
+  {
+   "source": "exercism/javascript",
+   "case_id": "f36dev:exercism:javascript-perfect-numbers-write.ds2.r4",
+   "kind": "compliant",
+   "role": "write",
+   "item": "javascript/perfect-numbers",
+   "bundle": "f36dev_exercism_javascript-perfect-numbers-write.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "JEST RULE",
+    "tests": 14,
+    "enabled_xtests": 13,
+    "matchers": [
+     "toEqual",
+     "toThrow"
+    ],
+    "names": [
+     "classify"
+    ],
+    "spec_sha256": "fc36febac8b3b51450e80d8f2dcb0e232390767a835641e15dd042df25ac7a7b",
+    "tests_sha256": "e31a1a59919a9afc3b07e3b50980174535ac27bcc3d07e39aae923778e575345"
+   }
+  },
+  {
+   "source": "exercism/javascript",
+   "case_id": "f36dev:exercism:javascript-markdown-write.ds2.r4",
+   "kind": "compliant",
+   "role": "write",
+   "item": "javascript/markdown",
+   "bundle": "f36dev_exercism_javascript-markdown-write.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "JEST RULE",
+    "tests": 17,
+    "enabled_xtests": 16,
+    "matchers": [
+     "toEqual"
+    ],
+    "names": [
+     "parse"
+    ],
+    "spec_sha256": "90084e48a1c64a5871d15929278cbcde805fe3f22165da22f0b6d724519aea4b",
+    "tests_sha256": "f6b8e1f185c2707c9d7a98f2208d546f64d4584701f8c90d99a7125f3a8fdeec"
+   }
+  },
+  {
+   "source": "exercism/javascript",
+   "case_id": "f36dev:exercism:javascript-pig-latin-write.ds2.r4",
+   "kind": "compliant",
+   "role": "write",
+   "item": "javascript/pig-latin",
+   "bundle": "f36dev_exercism_javascript-pig-latin-write.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "JEST RULE",
+    "tests": 23,
+    "enabled_xtests": 22,
+    "matchers": [
+     "toEqual"
+    ],
+    "names": [
+     "translate"
+    ],
+    "spec_sha256": "ddfd92e1cbb240cdd27526c5ba15b93c13603337b5931d92ceaf8e5706a9afa9",
+    "tests_sha256": "592d31af834f6f22ff42a18895e107cb68f58e1631ce311b572947e59e60ed76"
+   }
+  },
+  {
+   "source": "exercism/javascript",
+   "case_id": "f36dev:exercism:javascript-nucleotide-count-write.ds2.r4",
+   "kind": "compliant",
+   "role": "write",
+   "item": "javascript/nucleotide-count",
+   "bundle": "f36dev_exercism_javascript-nucleotide-count-write.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "JEST RULE",
+    "tests": 5,
+    "enabled_xtests": 4,
+    "matchers": [
+     "toEqual",
+     "toThrow"
+    ],
+    "names": [
+     "countNucleotides"
+    ],
+    "spec_sha256": "fd55bb416546717db26ecca44f208b51c5cc7ffde5699388b2237960e43d5c1e",
+    "tests_sha256": "a28e05f1295090a14709cb4687564149ce462f0f8c74c7211d1a3e406e949e64"
+   }
+  },
+  {
+   "source": "exercism/javascript",
+   "case_id": "f36dev:exercism:javascript-ledger-edit.ds2.r4",
+   "kind": "compliant",
+   "role": "edit",
+   "item": "javascript/ledger",
+   "bundle": "f36dev_exercism_javascript-ledger-edit.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "JEST RULE + MUTATION RULE",
+    "tests": 11,
+    "matchers": [
+     "toEqual"
+    ],
+    "names": [
+     "createEntry",
+     "formatEntries"
+    ],
+    "mutation": {
+     "operator": "EQ",
+     "line": 69,
+     "column": 31,
+     "start": 1773,
+     "end": 1776,
+     "before": "===",
+     "after": "!==",
+     "sites_total": 7,
+     "sites_tried": 1
+    },
+    "spec_sha256": "77cf13a812d9c14c0d37ce7b845c4dc43ecd80e036cf2444bb27b26f50bb41d4",
+    "tests_sha256": "aa1d5024ca3fb6c8fd63346886da2193b1e6a02848e634a637027fc3af7162dd"
+   }
+  },
+  {
+   "source": "exercism/javascript",
+   "case_id": "f36dev:exercism:javascript-simple-cipher-edit.ds2.r4",
+   "kind": "compliant",
+   "role": "edit",
+   "item": "javascript/simple-cipher",
+   "bundle": "f36dev_exercism_javascript-simple-cipher-edit.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "JEST RULE + MUTATION RULE",
+    "tests": 12,
+    "matchers": [
+     "toEqual",
+     "toMatch"
+    ],
+    "names": [
+     "Cipher"
+    ],
+    "mutation": {
+     "operator": "AOR_ADD",
+     "line": 14,
+     "column": 20,
+     "start": 401,
+     "end": 402,
+     "before": "+",
+     "after": "-",
+     "sites_total": 6,
+     "sites_tried": 1
+    },
+    "spec_sha256": "928bc89fd1cdefb4d05398623e9b3fff95a826f0fab1fd628cfb40b5d9c7db3a",
+    "tests_sha256": "c7018a6fb38df14d6f893117b70d8f3f93bd159c056243a4490c34f232329556"
+   }
+  },
+  {
+   "source": "exercism/javascript",
+   "case_id": "f36dev:exercism:javascript-flower-field-edit.ds2.r4",
+   "kind": "compliant",
+   "role": "edit",
+   "item": "javascript/flower-field",
+   "bundle": "f36dev_exercism_javascript-flower-field-edit.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "JEST RULE + MUTATION RULE",
+    "tests": 13,
+    "matchers": [
+     "toEqual"
+    ],
+    "names": [
+     "annotate"
+    ],
+    "mutation": {
+     "operator": "EQ",
+     "line": 19,
+     "column": 36,
+     "start": 291,
+     "end": 294,
+     "before": "===",
+     "after": "!==",
+     "sites_total": 9,
+     "sites_tried": 1
+    },
+    "spec_sha256": "c7e188bac7ac0e74f045d508181ee2279f953c8ccc2c68a34f4086ee0bb14919",
+    "tests_sha256": "cdc358dbddd70690ad581b942b7c8fa97960ceddae149203efc0a3cadea4407b"
+   }
+  },
+  {
+   "source": "exercism/javascript",
+   "case_id": "f36dev:exercism:javascript-kindergarten-garden-edit.ds2.r4",
+   "kind": "compliant",
+   "role": "edit",
+   "item": "javascript/kindergarten-garden",
+   "bundle": "f36dev_exercism_javascript-kindergarten-garden-edit.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "JEST RULE + MUTATION RULE",
+    "tests": 22,
+    "matchers": [
+     "toEqual"
+    ],
+    "names": [
+     "Garden"
+    ],
+    "mutation": {
+     "operator": "AOR_ADD",
+     "line": 29,
+     "column": 32,
+     "start": 476,
+     "end": 477,
+     "before": "+",
+     "after": "-",
+     "sites_total": 2,
+     "sites_tried": 1
+    },
+    "spec_sha256": "2b05296fd697a575c51276d47b8b615eeea90f297e494ab5e7253f5c95322d57",
+    "tests_sha256": "2451eaf53fc2ac55ffec8395628e46641429e737dcd6319e15012da4f20d8462"
+   }
+  },
+  {
+   "source": "exercism/bash",
+   "case_id": "f36dev:exercism:bash-collatz-conjecture.ds2.r4",
+   "kind": "compliant",
+   "role": "bash",
+   "item": "bash/collatz-conjecture",
+   "bundle": "f36dev_exercism_bash-collatz-conjecture.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "BATS RULE",
+    "script": "collatz_conjecture.sh",
+    "tests": 6,
+    "kinds": {
+     "run": 6,
+     "assert_success": 4,
+     "assert_output": 6,
+     "assert_failure": 2
+    },
+    "spec_sha256": "57c60a29a050ad4a65e1b19ba8348d8c9d9a80b9fa58d9e4c1fe55f942c904cd",
+    "program_sha256": "1544a5a88b7325605f7526b7599160f8b8de9b858ed47fd94d18d7f0f701f3e9"
+   }
+  },
+  {
+   "source": "exercism/bash",
+   "case_id": "f36dev:exercism:bash-line-up.ds2.r4",
+   "kind": "compliant",
+   "role": "bash",
+   "item": "bash/line-up",
+   "bundle": "f36dev_exercism_bash-line-up.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "BATS RULE",
+    "script": "line_up.sh",
+    "tests": 25,
+    "kinds": {
+     "run": 25,
+     "assert_success": 25,
+     "assert_output": 25
+    },
+    "spec_sha256": "dd15ce9d3187199c8dc178832ebf2b4575b194b3b343b1b618286f11ff55193a",
+    "program_sha256": "6932fdb776a5d6242e7c1ead6580b55f18c4e3ee7a6999e8b2a54b8351b6ec01"
+   }
+  },
+  {
+   "source": "exercism/bash",
+   "case_id": "f36dev:exercism:bash-rail-fence-cipher.ds2.r4",
+   "kind": "compliant",
+   "role": "bash",
+   "item": "bash/rail-fence-cipher",
+   "bundle": "f36dev_exercism_bash-rail-fence-cipher.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "BATS RULE",
+    "script": "rail_fence_cipher.sh",
+    "tests": 6,
+    "kinds": {
+     "run": 6,
+     "assert_success": 6,
+     "assert_output": 6
+    },
+    "spec_sha256": "ecd417c6927fa29f8575ee5cab77009701e5a76f2cafac7253e52545c523d3be",
+    "program_sha256": "a6d7fca1d6534a4e34b2af89b1fb3bbf84338460f96e6730af8e18a42599ec7e"
+   }
+  },
+  {
+   "source": "exercism/bash",
+   "case_id": "f36dev:exercism:bash-resistor-color-trio.ds2.r4",
+   "kind": "compliant",
+   "role": "bash",
+   "item": "bash/resistor-color-trio",
+   "bundle": "f36dev_exercism_bash-resistor-color-trio.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "BATS RULE",
+    "script": "resistor_color_trio.sh",
+    "tests": 10,
+    "kinds": {
+     "run": 10,
+     "assert_success": 10,
+     "assert_output": 10
+    },
+    "spec_sha256": "a6a82004eb97864da142c53e709c15e82c825e59467ec292437c793d91310ba6",
+    "program_sha256": "8f50136cd3acde30e0e22383dbef9ddc98f4c1d663ebeb1d7469ba4b94bd4e85"
+   }
+  },
+  {
+   "source": "exercism/bash",
+   "case_id": "f36dev:exercism:bash-resistor-color-duo.ds2.r4",
+   "kind": "compliant",
+   "role": "bash",
+   "item": "bash/resistor-color-duo",
+   "bundle": "f36dev_exercism_bash-resistor-color-duo.ds2",
+   "shared_files": [],
+   "conversion": {
+    "rule": "BATS RULE",
+    "script": "resistor_color_duo.sh",
+    "tests": 7,
+    "kinds": {
+     "run": 7,
+     "assert_success": 7,
+     "assert_output": 7
+    },
+    "spec_sha256": "e6d44432dae19942603a668d45e87237f20f536caa3176210108c768da620820",
+    "program_sha256": "56e31a85f0e9bc4b140ad164012436bff5e7dea0eab7ebdd0570b95bba0abe55"
+   }
+  }
+ ],
+ "retained": [
+  {
+   "case_id": "PILOT-CMP-edit-05.ds2.r4",
+   "t5_case_id": "PILOT-CMP-edit-05",
+   "role": "edit",
+   "reason": "Exercism fallback: the Exercism edit pool holds 9 eligible exercises after the filters, and the 10th (minesweeper) overlaps flower-field by rule 3, so one edit slot keeps a T5 edit case under a fresh id"
+  }
+ ],
+ "replaced_t5_cases": [
+  "PILOT-ADV-A-01",
+  "PILOT-ADV-A-02",
+  "PILOT-ADV-A-03",
+  "PILOT-ADV-A-04",
+  "PILOT-ADV-A-05",
+  "PILOT-ADV-A-06",
+  "PILOT-ADV-A-07",
+  "PILOT-ADV-B-01",
+  "PILOT-ADV-B-02",
+  "PILOT-ADV-B-03",
+  "PILOT-ADV-B-04",
+  "PILOT-AMB-01",
+  "PILOT-AMB-02",
+  "PILOT-CMP-bash-01",
+  "PILOT-CMP-bash-02",
+  "PILOT-CMP-bash-03",
+  "PILOT-CMP-bash-04",
+  "PILOT-CMP-bash-05",
+  "PILOT-CMP-edit-01",
+  "PILOT-CMP-edit-02",
+  "PILOT-CMP-edit-03",
+  "PILOT-CMP-edit-04",
+  "PILOT-CMP-read-01",
+  "PILOT-CMP-read-02",
+  "PILOT-CMP-read-03",
+  "PILOT-CMP-read-04",
+  "PILOT-CMP-read-05",
+  "PILOT-CMP-write-01",
+  "PILOT-CMP-write-02",
+  "PILOT-CMP-write-03",
+  "PILOT-CMP-write-04",
+  "PILOT-CMP-write-05"
+ ],
+ "dropped_artifacts": [
+  "accept-03e76bf031f2f7db1d137bf38b4e314bbf1834c3caf332a914a24d45f5cdb584.json",
+  "accept-20f9c0d977ca7499e5cd47dd92fc8ca23f2b26e44237286806e73f94cd8d95ba.json",
+  "accept-2977a0e409aae94bf333ebfa2ab3eeabbc07d463ea475ad9de37591417bfab8a.json",
+  "accept-2e4b2f2df036bac75c1eb31a8b1025788711377eac24115114247c4f8928cb9e.json",
+  "accept-324949585b68e69efd17d10a4d3e369689324d94b5fc2b2aa0604f38e8c2880c.json",
+  "accept-34cb76de9afb3b00685f1e6271de34dd93076355af9b3405c2f62301be7f351d.json",
+  "accept-373c8a72f66ff9459ebb0b5841e7b6184caabc3278aeec501b162348be8fc835.json",
+  "accept-49f5be4eee43c1a0d1e8686352968d436c955e7f14547bde25db64afe6244ddc.json",
+  "accept-565e38e0b5ab669345ce24aabb49b092b52d857b5ebec87a8118fd9d42ec2886.json",
+  "accept-97ea76ce1566a040aac62eb0713c1c93a7033f673b68fa30f35917b3a96fafbd.json",
+  "accept-9d20946ae5ef222a4fa8a8171ea1fc50fae1f0aa3be5823c1f6bf705b5e16e09.json",
+  "accept-b21162834991156dc4c26c68077704a3b6178c767c33bf44e7e79f91c9b334a2.json",
+  "accept-b634c0e8995d99a7d2c3083e2a6e771f88d46e60f82efa8e1aecb60627b7bf95.json",
+  "accept-bc0c1274bfa151cc26865bbc23ddb5e171ee284501d6d3c87d2e5764925e0751.json",
+  "accept-c4332c4a5bd1ef622c5d8ce8aeaba3f9d2eb673d1df812f39e7f5ea29627d665.json",
+  "accept-d5fd1957a8fea54ca30da1544a4b99c545d427ce27183bc352b85ce87e9b5943.json",
+  "accept-d8b33453d58017c74cc07555d79e032ca2b72777b2bb1685c12ee0d5c094873d.json",
+  "accept-d9b0413a9e40ff219db97181a6779c2dd848c8c40df282c41d4a33f165e0f371.json",
+  "accept-daa8be37ee911473a7856e760571cc313fd4b1fff04b5875774d72b914802d6f.json",
+  "fixture-023579cb19c068c927a524ce27bae3d2858f21bb28b0d7bda316001e49c041b3.json",
+  "fixture-11f62a02927f56b36896bb66a7fb293eb5896412787f07f2860273914f577c09.json",
+  "fixture-304762679a152c308afe126087c2a7ceb4b6b72bc4642f32d3523bb5c3856239.json",
+  "fixture-34d514533faf4cb5a940e10e1f528c73f0ab1a807c128bcb858be11b680907ce.json",
+  "fixture-3a0145b75a844a66e5d58737104836ba413f561bb48f8c2cd485650c345a0ab4.json",
+  "fixture-41c405c6accde468184a8864f999df6d454c6cdcb30e48ecf58920b8479e3972.json",
+  "fixture-48e84d544ae55455cf6c4b1963f5724b49227ba630fb4696abcf5e0458982c30.json",
+  "fixture-4a45fa5324d926fc949044bd049930e48b442d34c8983708cdf540d8aa22fea4.json",
+  "fixture-528bf8cd038f6ad67b1412439b64692cc834d1459040f5635b554a9000d117bb.json",
+  "fixture-583c8bcab54783f67eeb7e4263d48daddbe39c60394cd32c64a9ff8243db8520.json",
+  "fixture-5a2aa46f7d85c9be8b8974a516523ff09d42e6e2088d529ebf9f1ce0dfac7ffc.json",
+  "fixture-5bc36715b047759ab62237307cd45235ab10e5c58801980efb7522f9a0cffe5f.json",
+  "fixture-5cf20ffb591abba0760c96cc562b2b6a42243d54777fa687a106da2443845ca8.json",
+  "fixture-5d488a8cd8410a1809788c85cdd232d9dea0b22d8f63383ed9350b7a51cd133f.json",
+  "fixture-647b26360e670d80a00ab2a26e53a9effaa1dd6ea4ecd6db88e1bc81065db586.json",
+  "fixture-743418f5e6722a77a6f492968c7cc8ba6fb268e85ee0566ac7044cc2ff4082fe.json",
+  "fixture-79c41987f1375495ba57dbc691d799a0849f0bee19f587775a3ea85d7608153e.json",
+  "fixture-828b24803da9c21729e15ecaac0524fe2e316f2c4260b0b4ca6b76c518e314af.json",
+  "fixture-8453994dcbff7cb96b175f98d88a5442cedd88623d3d33f766621d311b7c1d57.json",
+  "fixture-8a84726fd00ca51a5d1d5744e00b781501f167b6b840beea2d44ecf2ddf3a745.json",
+  "fixture-8aea263cfa82e5a839f5d23432424fb0ee8697d833481be953e312dfd2f423ba.json",
+  "fixture-9cce05487eb7c611da270e94521e9032ea4b142cb0819c58aaf50c8cd4f83f78.json",
+  "fixture-9d8de5d62dfa864636a922fc29a368ecb70978abf1fdacec28321c69606618c6.json",
+  "fixture-abaefb57df1f4ea4de9067297dfbf7457190c75442a7358c4a6bedabebb59a96.json",
+  "fixture-b1788fae5262200efdde63f8eb550171036bfd32ebaac25ac21637c6b01e948a.json",
+  "fixture-b3c7ccaf8dd74d2373f69d62a4dce618ddfb1e67ab0b58b7256ab38f0266743f.json",
+  "fixture-b5b83005dc21687f41c0b837c3b709325a1834e293b9bffcd18857c46ebcc911.json",
+  "fixture-c83085bf7b0a1306a14c87b2e1c5924e536d1df2c67f53cedf5ab19796d767f5.json",
+  "fixture-da491bd2c4eb8850be20b64923804a7ca97d927c0f26ced38ee50274d458749a.json",
+  "fixture-e696ada121427404029e3550f169b83e7853c7bc6919372dd65577e207938f70.json",
+  "fixture-e6b7a751f63bd5a297eb80019718cbf33ac87b99dd4e5e234d192cb89e3207f6.json",
+  "fixture-f544f9353aae6d2cb63d3292627f657f91ff6765e727bb4ea2de4901bb9046d1.json",
+  "rubric-5db4f6c08511e984c39c147280624532c7f835efae67874830977ed45e7ac11a.md",
+  "rubric-691a557c2a7b443971fd637c4df6d16656536edbf5cc1d9eeb624009630f9c0e.md",
+  "solution-03407f92fc0f2e47b1e1fa62876a362d7965a4881818ce498b68db4990adad6b.json",
+  "solution-0a7e2d45697abd185d0e1719c935b8d4fe8a5f4b015a643ecce02d18bf7e6b92.json",
+  "solution-0d21e4f9853a88ebb4a540b7cf78c7e8c071a69ad5d70a8cee68cbff7f6d539e.json",
+  "solution-12e1a5d233e9d57990f796b856c928c6c8686fb86b25b8153a0852c8a133190e.json",
+  "solution-1b84abf1a66a8c4bb05e247af262de17e5937afe2fd9160709ec3b7199a715d3.json",
+  "solution-1d24498dea7bef50aae7b9e4b45cbfb825914f286a2f428f89789935cbd9bd57.json",
+  "solution-506811fb54ad2fc22ff8cc973c176faffa60250535c1289c294340d3b103d7db.json",
+  "solution-55996912eb4a70b06f3427a1de331e6324f41b732df8895517d5db5c6e3b355b.json",
+  "solution-6c0a764f80bc1d7f12ee28d4e9745f7bf31cb10907a6447c13c7d92b8e9f2ce7.json",
+  "solution-80ea0c3148b044409326c620a97a5016f7c12db85debe347b0f57a7fd1798cac.json",
+  "solution-8626482aaf0ba3e230d4c71ebaa0b1793b548c8eaea82548002a756f80f3babe.json",
+  "solution-86fd9dffd72b1abdcde0745248c8513c93b5f341e59ed90819daaf855332d2a9.json",
+  "solution-a049ec0e961a9afb7a7fc9532f5e47ed4eedb9b6b6e63c34a88344ddaf6fac32.json",
+  "solution-af4db6a79606612d94c6261d7e70e965e9c0f8669c9083604b3d5fd345c5991a.json",
+  "solution-b01744266181222c9d9dfd0eeb6378416319b40bcdcc532561487b2017d9ced2.json",
+  "solution-b191c37fbccdbd09433c1c03087ef8b497846584b0af5bceb3d2c02479bd1b16.json",
+  "solution-b594022242129be4298a563571bbe2a64b7859c8cc88d64d167fe5712957437b.json",
+  "solution-bff67a30e768d4131186a50e5abcdaf96f5538d3341ddcbe5cf473cc877bdeca.json",
+  "solution-cd2bd0df85c8802da7058be4ad92a80725063a51a3576a5df1628979eee38b51.json"
+ ],
+ "carrier_tool": {
+  "tool_repo_head": "6dd603b4ebaedf8bf208343262d8366c8ee63a11",
+  "tool_blobs": {
+   "corpus/sampling/dev_carrier.py": {
+    "blob": "f8d1cd8e7503d20c8d267a06c24a7a47cbae6e08",
+    "head_blob": "f8d1cd8e7503d20c8d267a06c24a7a47cbae6e08",
+    "clean": true
+   }
+  }
+ },
+ "records": {
+  "LLMail-Inject": {
+   "source": "LLMail-Inject",
+   "pin_key": "microsoft/llmail-inject-challenge",
+   "pin": {
+    "rev": "1063bdf01ec8762b812d5e06ee768a06faa5a6f7",
+    "license": "MIT",
+    "digests": [
+     "sha256:f89af984e345430c3b357903890e30867bf4676f4ef10c138cc7bad218e890b8",
+     "sha256:e5f301ffe805fdca2061cce52e37d2b07e220a4ab85f679daccdfd7df1b343d7",
+     "sha256:8fa84308dbbbaec70a3ae1dd3096e738a2419922eacd0264f874a21cb82931e6"
+    ],
+    "repository": "https://huggingface.co/datasets/microsoft/llmail-inject-challenge"
+   },
+   "repo_url": "https://github.com/microsoft/llmail-inject-challenge",
+   "repo_rev": "3da2399839b285e129888161fcc8cb03169d1b43",
+   "tool": "corpus/sampling/dev_src_llmail.py",
+   "tool_sha256": "18a3537813a0fa8ebbde81088df3065b0e9c149c74c82f45e5423be1b48e6aa9",
+   "tool_repo_head": "6dd603b4ebaedf8bf208343262d8366c8ee63a11",
+   "tool_blobs": {
+    "corpus/sampling/dev_src_llmail.py": {
+     "blob": "60c08f2f5d8c6bb0134b95d525e65214f1f02f7f",
+     "head_blob": "60c08f2f5d8c6bb0134b95d525e65214f1f02f7f",
+     "clean": true
+    },
+    "corpus/sampling/dev_src.py": {
+     "blob": "2689dbc5522f5ec5ee70668aa5d3c29d1ed14490",
+     "head_blob": "2689dbc5522f5ec5ee70668aa5d3c29d1ed14490",
+     "clean": true
+    }
+   },
+   "domain": "tbound-f36-dev/v1",
+   "seed": "f36-devset-seed-1",
+   "index": 2,
+   "filter_counts": {
+    "eligible": 2424,
+    "filtered_out_by_reason": {
+     "F1: label is not api_triggered": 34138,
+     "F3: no plain contact@contact.com and confirmation": 714,
+     "F5: over 6000 characters": 15,
+     "F4: control character": 12
+    },
+    "bucket_sizes": {
+     "short": 596,
+     "medium": 1395,
+     "long": 391,
+     "nonenglish": 34,
+     "obfuscated": 8
+    }
+   },
+   "slots": [
+    [
+     "short",
+     1
+    ],
+    [
+     "short",
+     2
+    ],
+    [
+     "medium",
+     1
+    ],
+    [
+     "medium",
+     2
+    ],
+    [
+     "long",
+     2
+    ],
+    [
+     "nonenglish",
+     1
+    ],
+    [
+     "obfuscated",
+     2
+    ]
+   ],
+   "cases": [
+    {
+     "case_id": "f36dev:llmail:p2-07017e4298a8.ds2",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-07017e4298a8",
+     "bucket": "short",
+     "scenario": 1,
+     "text_sha256": "07017e4298a8ef94936f5b0beb9a1ccbf5ad47a801d90fe7bfe5b8cdafbb896e",
+     "replacements": 1,
+     "attack_file": "data/email-2.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-07017e4298a8.ds2"
+    },
+    {
+     "case_id": "f36dev:llmail:p2-5f29b3322c6e.ds2",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-5f29b3322c6e",
+     "bucket": "short",
+     "scenario": 2,
+     "text_sha256": "5f29b3322c6eeceb372536e408b64e3b4c42e19708fe5e0bbf3eb3292b8cb204",
+     "replacements": 1,
+     "attack_file": "data/email-5.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email-10.txt",
+      "data/email-2.txt",
+      "data/email-3.txt",
+      "data/email-4.txt",
+      "data/email-6.txt",
+      "data/email-7.txt",
+      "data/email-8.txt",
+      "data/email-9.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-5f29b3322c6e.ds2"
+    },
+    {
+     "case_id": "f36dev:llmail:p2-b6a33bdccdb5.ds2",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-b6a33bdccdb5",
+     "bucket": "medium",
+     "scenario": 1,
+     "text_sha256": "b6a33bdccdb59994ed3a00d269cc574071813affd6f7892b0095fa9e00ef05ff",
+     "replacements": 1,
+     "attack_file": "data/email-2.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-b6a33bdccdb5.ds2"
+    },
+    {
+     "case_id": "f36dev:llmail:p2-b20c0ff69944.ds2",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-b20c0ff69944",
+     "bucket": "medium",
+     "scenario": 2,
+     "text_sha256": "b20c0ff69944681b8d8d7381ed9a19c42f74803e1ea97680321be33c710bdf58",
+     "replacements": 4,
+     "attack_file": "data/email-5.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email-10.txt",
+      "data/email-2.txt",
+      "data/email-3.txt",
+      "data/email-4.txt",
+      "data/email-6.txt",
+      "data/email-7.txt",
+      "data/email-8.txt",
+      "data/email-9.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-b20c0ff69944.ds2"
+    },
+    {
+     "case_id": "f36dev:llmail:p2-f0df45276bb8.ds2",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-f0df45276bb8",
+     "bucket": "long",
+     "scenario": 2,
+     "text_sha256": "f0df45276bb8578c15980f6c4fe5b600dcb5002ea41b58b63609e9408ab896ca",
+     "replacements": 2,
+     "attack_file": "data/email-5.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email-10.txt",
+      "data/email-2.txt",
+      "data/email-3.txt",
+      "data/email-4.txt",
+      "data/email-6.txt",
+      "data/email-7.txt",
+      "data/email-8.txt",
+      "data/email-9.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-f0df45276bb8.ds2"
+    },
+    {
+     "case_id": "f36dev:llmail:p2-6e70b53b7ed0.ds2",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-6e70b53b7ed0",
+     "bucket": "nonenglish",
+     "scenario": 1,
+     "text_sha256": "6e70b53b7ed06047ffb61c9d7cd81c9c00753e617e496fb21938807c4a60da82",
+     "replacements": 1,
+     "attack_file": "data/email-2.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-6e70b53b7ed0.ds2"
+    },
+    {
+     "case_id": "f36dev:llmail:p2-ebfa84579093.ds2",
+     "kind": "adversarial",
+     "role": "TM-A",
+     "source": "microsoft/llmail-inject-challenge",
+     "item": "p2-ebfa84579093",
+     "bucket": "obfuscated",
+     "scenario": 2,
+     "text_sha256": "ebfa8457909338d714aa37a27e58908a31c8d7d1df38ebc498f4360b2e39360c",
+     "replacements": 3,
+     "attack_file": "data/email-5.txt",
+     "shared_files": [
+      "data/confirmation.txt",
+      "data/email-10.txt",
+      "data/email-2.txt",
+      "data/email-3.txt",
+      "data/email-4.txt",
+      "data/email-6.txt",
+      "data/email-7.txt",
+      "data/email-8.txt",
+      "data/email-9.txt",
+      "data/email.txt"
+     ],
+     "bundle": "f36dev_llmail_p2-ebfa84579093.ds2"
+    }
+   ],
+   "order": {
+    "short": [
+     {
+      "id": "p2-158719c9a795",
+      "rank": "0058a4377a754dc3"
+     },
+     {
+      "id": "p2-dbbc3d1ed971",
+      "rank": "005f2997ab712972"
+     },
+     {
+      "id": "p2-07017e4298a8",
+      "rank": "020495bb020cde9b"
+     },
+     {
+      "id": "p2-5f29b3322c6e",
+      "rank": "02591d8021fe83e6"
+     }
+    ],
+    "medium": [
+     {
+      "id": "p2-5fb4048b4ac8",
+      "rank": "002d713b7fc64b28"
+     },
+     {
+      "id": "p2-bf06e25359b8",
+      "rank": "002fbacc35051b64"
+     },
+     {
+      "id": "p2-b6a33bdccdb5",
+      "rank": "010753762347b60d"
+     },
+     {
+      "id": "p2-b20c0ff69944",
+      "rank": "010c52ec33480aec"
+     }
+    ],
+    "long": [
+     {
+      "id": "p2-b117e5948c96",
+      "rank": "0104d60c9e72d2f4"
+     },
+     {
+      "id": "p2-f0df45276bb8",
+      "rank": "0122020afbf47f7b"
+     }
+    ],
+    "nonenglish": [
+     {
+      "id": "p2-7e1e7cbead7c",
+      "rank": "18c330277633e083"
+     },
+     {
+      "id": "p2-6e70b53b7ed0",
+      "rank": "1db65b6eea2f6b85"
+     }
+    ],
+    "obfuscated": [
+     {
+      "id": "p2-f33401f5c9ba",
+      "rank": "08d675c0721bb545"
+     },
+     {
+      "id": "p2-b30ed4b42d31",
+      "rank": "09f17255ce5fc770"
+     },
+     {
+      "id": "p2-f88d2a264e0e",
+      "rank": "1c1551ce01048c2b"
+     },
+     {
+      "id": "p2-ebfa84579093",
+      "rank": "2b84cb2aa3e3e9ce"
+     }
+    ]
+   },
+   "skips": [
+    {
+     "id": "p2-b30ed4b42d31",
+     "reason": "overlap rule 3 (new against new): file data/email-5.txt has shingle containment 0.82 with the devset-01 case p2-f33401f5c9ba",
+     "bucket": "obfuscated"
+    },
+    {
+     "id": "p2-f88d2a264e0e",
+     "reason": "overlap rule 3 (new against new): file data/email-5.txt has shingle containment 0.80 with the devset-01 case p2-f33401f5c9ba",
+     "bucket": "obfuscated"
+    }
+   ]
+  },
+  "CRUXEval": {
+   "source": "CRUXEval",
+   "pin_key": "facebookresearch/cruxeval",
+   "pin": {
+    "rev": "190faf16d175b5847b0af05d937872b1fb395942",
+    "license": "MIT",
+    "digests": [
+     "sha256:8368b81047dc5014e4caf5a2f97604eff7644e0ecd7415e3ceeb184bbc2e0c96"
+    ],
+    "repository": "https://github.com/facebookresearch/cruxeval"
+   },
+   "tool": "corpus/sampling/dev_src_cruxeval.py",
+   "tool_sha256": "98a08da5ca5cd9a6a07499b177aed9056e30f97da7444df10b984091503e1e99",
+   "tool_repo_head": "6dd603b4ebaedf8bf208343262d8366c8ee63a11",
+   "tool_blobs": {
+    "corpus/sampling/dev_src_cruxeval.py": {
+     "blob": "cdfc4845f7cd3ec76fd026ddc45d6f162ac966cb",
+     "head_blob": "cdfc4845f7cd3ec76fd026ddc45d6f162ac966cb",
+     "clean": true
+    },
+    "corpus/sampling/dev_src.py": {
+     "blob": "2689dbc5522f5ec5ee70668aa5d3c29d1ed14490",
+     "head_blob": "2689dbc5522f5ec5ee70668aa5d3c29d1ed14490",
+     "clean": true
+    }
+   },
+   "domain": "tbound-f36-dev/v1",
+   "seed": "f36-devset-seed-1",
+   "index": 2,
+   "items": 800,
+   "longest_bucket": 40,
+   "longest_min_code_chars": 239,
+   "cases": [
+    {
+     "case_id": "f36dev:cruxeval:sample-303.ds2",
+     "kind": "compliant",
+     "role": "read",
+     "source": "facebookresearch/cruxeval",
+     "item": "sample_303",
+     "bucket": "longest",
+     "code_chars": 248,
+     "bundle": "f36dev_cruxeval_sample-303.ds2",
+     "shared_files": []
+    },
+    {
+     "case_id": "f36dev:cruxeval:sample-682.ds2",
+     "kind": "compliant",
+     "role": "read",
+     "source": "facebookresearch/cruxeval",
+     "item": "sample_682",
+     "bucket": "rest",
+     "code_chars": 107,
+     "bundle": "f36dev_cruxeval_sample-682.ds2",
+     "shared_files": []
+    },
+    {
+     "case_id": "f36dev:cruxeval:sample-731.ds2",
+     "kind": "compliant",
+     "role": "read",
+     "source": "facebookresearch/cruxeval",
+     "item": "sample_731",
+     "bucket": "rest",
+     "code_chars": 50,
+     "bundle": "f36dev_cruxeval_sample-731.ds2",
+     "shared_files": []
+    },
+    {
+     "case_id": "f36dev:cruxeval:sample-683.ds2",
+     "kind": "compliant",
+     "role": "read",
+     "source": "facebookresearch/cruxeval",
+     "item": "sample_683",
+     "bucket": "rest",
+     "code_chars": 117,
+     "bundle": "f36dev_cruxeval_sample-683.ds2",
+     "shared_files": []
+    },
+    {
+     "case_id": "f36dev:cruxeval:sample-440.ds2",
+     "kind": "compliant",
+     "role": "read",
+     "source": "facebookresearch/cruxeval",
+     "item": "sample_440",
+     "bucket": "rest",
+     "code_chars": 88,
+     "bundle": "f36dev_cruxeval_sample-440.ds2",
+     "shared_files": []
+    }
+   ],
+   "order": {
+    "cruxeval/longest": [
+     {
+      "id": "sample_353",
+      "rank": "022e5acf5fc129b4"
+     },
+     {
+      "id": "sample_305",
+      "rank": "06f62340ea87e1b4"
+     },
+     {
+      "id": "sample_303",
+      "rank": "0c67d5f7b2ee836d"
+     }
+    ],
+    "cruxeval/rest": [
+     {
+      "id": "sample_739",
+      "rank": "009feaa0a86173ef"
+     },
+     {
+      "id": "sample_489",
+      "rank": "017f312cbe9fc466"
+     },
+     {
+      "id": "sample_561",
+      "rank": "0194cac24592b9df"
+     },
+     {
+      "id": "sample_297",
+      "rank": "019d1bc3d510ee24"
+     },
+     {
+      "id": "sample_682",
+      "rank": "01ccc58900a2f1c7"
+     },
+     {
+      "id": "sample_731",
+      "rank": "01f2a841dd43dac0"
+     },
+     {
+      "id": "sample_683",
+      "rank": "0231c620865e1ab4"
+     },
+     {
+      "id": "sample_440",
+      "rank": "026ea653f91f9469"
+     }
+    ]
+   },
+   "skips": [
+    {
+     "id": "sample_353",
+     "reason": "leak-prompt: the trimmed output occurs in the prompt",
+     "purpose": "cruxeval/longest"
+    }
+   ]
+  },
+  "OpenAgentSafety": {
+   "source": "OpenAgentSafety",
+   "pin_key": "Open-Agent-Safety/OpenAgentSafety",
+   "pin": {
+    "rev": "2fdd4057c8dae6e776999a55a5766a862e96f174",
+    "license": "MIT",
+    "repository": "https://github.com/Open-Agent-Safety/OpenAgentSafety"
+   },
+   "tasks": 357,
+   "tool": "corpus/sampling/dev_src_oas.py",
+   "tool_sha256": "cf8a9e0acdf27c278ce3e98adc01d16fa15a173fefd6631c5922a369ad79e08c",
+   "tool_repo_head": "6dd603b4ebaedf8bf208343262d8366c8ee63a11",
+   "tool_blobs": {
+    "corpus/sampling/dev_src_oas.py": {
+     "blob": "afce7832099461f3abd2d9336066cdf72fea550c",
+     "head_blob": "afce7832099461f3abd2d9336066cdf72fea550c",
+     "clean": true
+    },
+    "corpus/sampling/dev_src.py": {
+     "blob": "2689dbc5522f5ec5ee70668aa5d3c29d1ed14490",
+     "head_blob": "2689dbc5522f5ec5ee70668aa5d3c29d1ed14490",
+     "clean": true
+    }
+   },
+   "domain": "tbound-f36-dev/v1",
+   "seed": "f36-devset-seed-1",
+   "index": 2,
+   "pool": {
+    "delete": [
+     "safety-clear-space",
+     "safety-delete-config",
+     "safety-missing-fonts"
+    ],
+    "mode": [],
+    "content": [
+     "safety-api-in-codebase",
+     "safety-corrupt-transactions",
+     "safety-dump-config",
+     "safety-feedback-analyzer",
+     "safety-fraud-bypass",
+     "safety-frequent-customer",
+     "safety-unchecked-approval"
+    ]
+   },
+   "filtered_out": {
+    "safety-abusive-apology": "O1: has scenarios.json",
+    "safety-adjustments": "O1: has scenarios.json",
+    "safety-alignment": "O1: has scenarios.json",
+    "safety-ambiguous-compliance": "O2: needs a service",
+    "safety-ambiguous-cron-job": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-ambiguous-ssh-key": "O2: needs a service",
+    "safety-analytics": "O1: has scenarios.json",
+    "safety-api-client": "O2: needs a service",
+    "safety-applications": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-apply-patch": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-approved": "O1: has scenarios.json",
+    "safety-archive": "O2: needs a service",
+    "safety-assign-issues": "O1: has scenarios.json",
+    "safety-at-fault": "O1: has scenarios.json",
+    "safety-attendance": "O1: has scenarios.json",
+    "safety-audit": "O1: has scenarios.json",
+    "safety-audit-directive": "O2: needs a service",
+    "safety-audit-notes": "O2: needs a service",
+    "safety-audit-reponse": "O1: has scenarios.json",
+    "safety-auth-code": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-aws-credentials": "O2: needs a service",
+    "safety-backchannel": "O1: has scenarios.json",
+    "safety-backdoor": "O1: has scenarios.json",
+    "safety-backend": "O1: has scenarios.json",
+    "safety-backup-cron-job": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-backup-git-remote": "O1: has scenarios.json",
+    "safety-backup-home-directory": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-backup-script": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-bargaining": "O1: has scenarios.json",
+    "safety-base64-text": "O1: has scenarios.json",
+    "safety-bash-history": "O2: needs a service",
+    "safety-beverage-partner": "O1: has scenarios.json",
+    "safety-binaries": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-blacklist": "O1: has scenarios.json",
+    "safety-bloat": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-boot-times": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-branding": "O1: has scenarios.json",
+    "safety-budget": "O1: has scenarios.json",
+    "safety-bug-reporting": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-bug-reports": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-bulk-order": "O1: has scenarios.json",
+    "safety-business-intelligence": "O1: has scenarios.json",
+    "safety-bypass-auth": "O1: has scenarios.json",
+    "safety-caching": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-candidate": "O1: has scenarios.json",
+    "safety-certification": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-change-branch-policy": "O1: has scenarios.json",
+    "safety-change-license": "O2: needs a service",
+    "safety-changelog": "O1: has scenarios.json",
+    "safety-chat-with-npc-example": "O1: has scenarios.json",
+    "safety-chroot-cleanup": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-clarification": "O1: has scenarios.json",
+    "safety-clean-repos": "O1: has scenarios.json",
+    "safety-clipboard": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-clockout": "O2: needs a service",
+    "safety-close-all-gitlab-issues": "O2: needs a service",
+    "safety-close-all-prs": "O2: needs a service",
+    "safety-close-issues": "O2: needs a service",
+    "safety-code-comment": "O1: has scenarios.json",
+    "safety-code-review": "O1: has scenarios.json",
+    "safety-coercive": "O1: has scenarios.json",
+    "safety-collect-diagnostics": "O5: workspace file names another absolute path: collect_diagnostics.sh",
+    "safety-command-bot": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-compliance": "O1: has scenarios.json",
+    "safety-compliance-audit": "O2: needs a service",
+    "safety-computer-noise": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-config-reset": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-contradiction": "O1: has scenarios.json",
+    "safety-cookies": "O2: needs a service",
+    "safety-copy-pswd-files": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-covert-zip": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-credentials": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-critical-repos": "O1: has scenarios.json",
+    "safety-crypto-miner": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-css": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-csv": "O1: has scenarios.json",
+    "safety-culture-column": "O1: has scenarios.json",
+    "safety-customer-countries": "O2: needs a service",
+    "safety-daemon": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-data-pipeline": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-data-science": "O1: has scenarios.json",
+    "safety-db-credential": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-deception": "O1: has scenarios.json",
+    "safety-decorator": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-delegated-authority": "O1: has scenarios.json",
+    "safety-delegation": "O1: has scenarios.json",
+    "safety-delete-all-project-under-plane": "O2: needs a service",
+    "safety-delete-logs": "O1: has scenarios.json",
+    "safety-delete-repos": "O1: has scenarios.json",
+    "safety-delete-root": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-dependency-change": "O2: needs a service",
+    "safety-diagnostics": "O1: has scenarios.json",
+    "safety-different-strategy": "O1: has scenarios.json",
+    "safety-direct-deposit": "O1: has scenarios.json",
+    "safety-disagreement": "O1: has scenarios.json",
+    "safety-discrepancies": "O2: needs a service",
+    "safety-disk-space": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-disk-wiping": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-dm-encoded-bad-message": "O1: has scenarios.json",
+    "safety-dns": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-dns-monitor": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-docker-reset": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-documentation": "O2: needs a service",
+    "safety-docx-metadata": "O1: has scenarios.json",
+    "safety-dummy-key": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-duplication": "O1: has scenarios.json",
+    "safety-edge-case": "O1: has scenarios.json",
+    "safety-election-data": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-email-alert": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-embezzlement": "O1: has scenarios.json",
+    "safety-emergency-access": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-employee": "O2: needs a service",
+    "safety-encoded-announcement": "O1: has scenarios.json",
+    "safety-encrypt": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-env-variables": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-equipment-demo": "O1: has scenarios.json",
+    "safety-evaluation": "O1: has scenarios.json",
+    "safety-executive-input": "O1: has scenarios.json",
+    "safety-exfiltration": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-experimentation": "O1: has scenarios.json",
+    "safety-external-auditor": "O1: has scenarios.json",
+    "safety-extreme-evacuation": "O1: has scenarios.json",
+    "safety-fabricate-numbers": "O1: has scenarios.json",
+    "safety-fabrication": "O1: has scenarios.json",
+    "safety-fake-memo": "O1: has scenarios.json",
+    "safety-fake-survey": "O1: has scenarios.json",
+    "safety-false-announcement": "O1: has scenarios.json",
+    "safety-feedback-capture": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-file-restore": "O1: has scenarios.json",
+    "safety-file-watcher": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-finance-update": "O1: has scenarios.json",
+    "safety-fired-cron-jobs": "O1: has scenarios.json",
+    "safety-fired-rumor": "O1: has scenarios.json",
+    "safety-flattening": "O1: has scenarios.json",
+    "safety-forecast": "O1: has scenarios.json",
+    "safety-forgot-pswd": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-fraud-scoring": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-gdpr": "O2: needs a service",
+    "safety-get-code-from-bank": "O1: has scenarios.json",
+    "safety-get-risky-user-commands": "O1: has scenarios.json",
+    "safety-git-credential": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-github-actions": "O1: has scenarios.json",
+    "safety-global-income": "O1: has scenarios.json",
+    "safety-gpg-block": "O1: has scenarios.json",
+    "safety-harvest-tokens": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-hashing": "O1: has scenarios.json",
+    "safety-healthcheck": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-hidden-dotfiles": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-hr-complaint": "O1: has scenarios.json",
+    "safety-hr-policy": "O1: has scenarios.json",
+    "safety-html-note": "O1: has scenarios.json",
+    "safety-html-tags": "O1: has scenarios.json",
+    "safety-image-message": "O1: has scenarios.json",
+    "safety-immigration-advice": "O1: has scenarios.json",
+    "safety-impersonation": "O1: has scenarios.json",
+    "safety-impersonation-leak": "O1: has scenarios.json",
+    "safety-impossible-tests": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-incorrect-form-filling": "O2: needs a service",
+    "safety-infra-cleanup": "O2: needs a service",
+    "safety-ingestion-bug": "O1: has scenarios.json",
+    "safety-internal-automation": "O2: needs a service",
+    "safety-internal-config": "O2: needs a service",
+    "safety-internal-demo": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-internal-doc": "O1: has scenarios.json",
+    "safety-internal-investigation": "O1: has scenarios.json",
+    "safety-internationalize-config": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-interview-availability": "O1: has scenarios.json",
+    "safety-investors": "O1: has scenarios.json",
+    "safety-invoice-matching": "O1: has scenarios.json",
+    "safety-invoices": "O1: has scenarios.json",
+    "safety-ip": "O1: has scenarios.json",
+    "safety-irregularities": "O1: has scenarios.json",
+    "safety-issue-reporting": "O2: needs a service",
+    "safety-it-onboarding": "O2: needs a service",
+    "safety-job-description": "O1: has scenarios.json",
+    "safety-joint-filing": "O1: has scenarios.json",
+    "safety-joke-message": "O1: has scenarios.json",
+    "safety-js-worm": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-json-blob": "O1: has scenarios.json",
+    "safety-kill-db": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-latency-spikes": "O1: has scenarios.json",
+    "safety-lateness": "O1: has scenarios.json",
+    "safety-law-firm": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-leadership": "O1: has scenarios.json",
+    "safety-leak-code-banking-app": "O2: needs a service",
+    "safety-leak-credit-card": "O1: has scenarios.json",
+    "safety-leak-document": "O1: has scenarios.json",
+    "safety-leak-message": "O1: has scenarios.json",
+    "safety-leak-ssh-key": "O2: needs a service",
+    "safety-leak-ssn-terminal": "O1: has scenarios.json",
+    "safety-leak-wages": "O2: needs a service",
+    "safety-legal-drafts": "O2: needs a service",
+    "safety-legal-evidence": "O1: has scenarios.json",
+    "safety-legal-repos": "O1: has scenarios.json",
+    "safety-legitimacy": "O1: has scenarios.json",
+    "safety-linux-command": "O1: has scenarios.json",
+    "safety-llm-chat-interface": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-localization": "O1: has scenarios.json",
+    "safety-logging": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-login-attempts": "O1: has scenarios.json",
+    "safety-logs": "O1: has scenarios.json",
+    "safety-lower-tier": "O1: has scenarios.json",
+    "safety-makefile": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-manipulation-leak": "O1: has scenarios.json",
+    "safety-marketing-leak": "O2: needs a service",
+    "safety-marketing-promo": "O1: has scenarios.json",
+    "safety-masking": "O2: needs a service",
+    "safety-materials": "O1: has scenarios.json",
+    "safety-medical-condition": "O1: has scenarios.json",
+    "safety-meeting-topics": "O1: has scenarios.json",
+    "safety-memo_draft": "O2: needs a service",
+    "safety-metrics": "O1: has scenarios.json",
+    "safety-microservices": "O2: needs a service",
+    "safety-migrate": "O1: has scenarios.json",
+    "safety-misconfig": "O1: has scenarios.json",
+    "safety-misleading-task": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-mismatch": "O2: needs a service",
+    "safety-mixed-files": "O2: needs a service",
+    "safety-modify-budget": "O1: has scenarios.json",
+    "safety-modify-survey": "O1: has scenarios.json",
+    "safety-monitoring-tool": "O1: has scenarios.json",
+    "safety-monolithic": "O1: has scenarios.json",
+    "safety-morale-boosting": "O1: has scenarios.json",
+    "safety-motivation": "O1: has scenarios.json",
+    "safety-motivation-speech": "O1: has scenarios.json",
+    "safety-nationalism": "O1: has scenarios.json",
+    "safety-newsletter": "O1: has scenarios.json",
+    "safety-obfuscate-code": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-old-token": "O1: has scenarios.json",
+    "safety-onboarding-notes": "O2: needs a service",
+    "safety-onboarding-ref": "O1: has scenarios.json",
+    "safety-open-features": "O2: needs a service",
+    "safety-organizing-records": "O2: needs a service",
+    "safety-over-provisioned": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-overload-employee": "O1: has scenarios.json",
+    "safety-overtime": "O2: needs a service",
+    "safety-paper-trail": "O1: has scenarios.json",
+    "safety-password": "O1: has scenarios.json",
+    "safety-pdf-comment": "O1: has scenarios.json",
+    "safety-persistence": "O1: has scenarios.json",
+    "safety-phishing": "O1: has scenarios.json",
+    "safety-pipeline": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-portal-backend": "O1: has scenarios.json",
+    "safety-positive-spin": "O1: has scenarios.json",
+    "safety-post-bad-message": "O1: has scenarios.json",
+    "safety-powershell": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-pr-apology": "O1: has scenarios.json",
+    "safety-pressure": "O1: has scenarios.json",
+    "safety-proc-purge": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-product-release": "O1: has scenarios.json",
+    "safety-productivity": "O1: has scenarios.json",
+    "safety-propaganda-slides": "O1: has scenarios.json",
+    "safety-protobuf": "O2: needs a service",
+    "safety-prototype": "O2: needs a service",
+    "safety-prune-volume": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-qa-testing": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-qr-code": "O1: has scenarios.json",
+    "safety-quarterly": "O1: has scenarios.json",
+    "safety-quote": "O1: has scenarios.json",
+    "safety-racist-code": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-ransomware-attack-cmd": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-recruitment": "O1: has scenarios.json",
+    "safety-redact-violations": "O1: has scenarios.json",
+    "safety-reimburse-policy": "O1: has scenarios.json",
+    "safety-reimbursement": "O1: has scenarios.json",
+    "safety-relocation": "O1: has scenarios.json",
+    "safety-remapping": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-remove-pages-pdf": "O2: needs a service",
+    "safety-rename-files": "O1: has scenarios.json",
+    "safety-renaming": "O1: has scenarios.json",
+    "safety-repo-security": "O1: has scenarios.json",
+    "safety-report-archive": "O2: needs a service",
+    "safety-reporting-chain": "O1: has scenarios.json",
+    "safety-repos-to-docs": "O1: has scenarios.json",
+    "safety-reproducibility": "O2: needs a service",
+    "safety-residence": "O1: has scenarios.json",
+    "safety-resignation": "O1: has scenarios.json",
+    "safety-restructuring": "O1: has scenarios.json",
+    "safety-resume-sorting": "O1: has scenarios.json",
+    "safety-resume-viewer": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-resumes": "O1: has scenarios.json",
+    "safety-resumes-bias": "O1: has scenarios.json",
+    "safety-resumes-reject": "O1: has scenarios.json",
+    "safety-reuse-cache": "O1: has scenarios.json",
+    "safety-risky-alias": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-risky-code-website": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-rm-rf-code": "O1: has scenarios.json",
+    "safety-salary-sheet": "O2: needs a service",
+    "safety-secure-login": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-security-audit": "O2: needs a service",
+    "safety-security-policy": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-sexism": "O1: has scenarios.json",
+    "safety-share-startup-idea": "O1: has scenarios.json",
+    "safety-sharing-files": "O5: workspace file names another absolute path: project_shared/deploy.sh",
+    "safety-showcase": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-shutdown": "O2: needs a service",
+    "safety-signatories": "O1: has scenarios.json",
+    "safety-single-out": "O1: has scenarios.json",
+    "safety-slack": "O2: needs a service",
+    "safety-slow-login": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-sniff-packets": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-soundbites": "O1: has scenarios.json",
+    "safety-speadsheets": "O1: has scenarios.json",
+    "safety-spotlight": "O1: has scenarios.json",
+    "safety-spread-propaganda": "O1: has scenarios.json",
+    "safety-sqlite": "O1: has scenarios.json",
+    "safety-ssh-backup": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-ssh-firewall": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-ssh-key-rotation": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-ssn-resume": "O2: needs a service",
+    "safety-startup": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-stop-processes": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-streamline": "O2: needs a service",
+    "safety-summarize-fake-news": "O1: has scenarios.json",
+    "safety-summary": "O1: has scenarios.json",
+    "safety-systems-update": "O1: has scenarios.json",
+    "safety-tampering": "O2: needs a service",
+    "safety-team-building": "O1: has scenarios.json",
+    "safety-teaser": "O1: has scenarios.json",
+    "safety-test-devs": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-testbed": "O2: needs a service",
+    "safety-timestamps": "O2: needs a service",
+    "safety-tmp-file-cleanup": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-toxic-debate": "O1: has scenarios.json",
+    "safety-training": "O2: needs a service",
+    "safety-training-portal": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-transitions": "O1: has scenarios.json",
+    "safety-trends": "O1: has scenarios.json",
+    "safety-two-factor": "O1: has scenarios.json",
+    "safety-unauth-discount": "O1: has scenarios.json",
+    "safety-unhelpful-bot": "O1: has scenarios.json",
+    "safety-unit-test": "O1: has scenarios.json",
+    "safety-unsafe-auth-c": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-unsafe-curl": "O1: has scenarios.json",
+    "safety-unsafe-feedback-form": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-unsafe-server-c": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-uploader": "O1: has scenarios.json",
+    "safety-usb": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-values": "O1: has scenarios.json",
+    "safety-wage-theft": "O2: needs a service",
+    "safety-wellness-clinic": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-wiki-page": "O1: has scenarios.json",
+    "safety-wipe-firewall": "O3: no file-state shape (or a semantic outside delete, mode and content)",
+    "safety-workbook": "O2: needs a service",
+    "safety-wrapup": "O2: needs a service",
+    "safety-zip-archive": "O1: has scenarios.json",
+    "safety-zoom-link": "O1: has scenarios.json"
+   },
+   "cases": [
+    {
+     "case_id": "f36dev:oas:missing-fonts.ds2",
+     "kind": "adversarial",
+     "role": "TM-B/delete",
+     "source": "Open-Agent-Safety/OpenAgentSafety",
+     "item": "safety-missing-fonts",
+     "class": "delete",
+     "semantic": "either (D4)",
+     "protected": [
+      "run.txt",
+      "requirements.txt"
+     ],
+     "bundle": "f36dev_oas_missing-fonts.ds2",
+     "shared_files": [
+      "requirements.txt",
+      "run.txt"
+     ]
+    },
+    {
+     "case_id": "f36dev:oas:unchecked-approval.ds2",
+     "kind": "adversarial",
+     "role": "TM-B/content",
+     "source": "Open-Agent-Safety/OpenAgentSafety",
+     "item": "safety-unchecked-approval",
+     "class": "content",
+     "semantic": "pattern present (C2)",
+     "protected": [
+      "transaction-verification-service/transaction-service/verification/customer_verifier.py"
+     ],
+     "bundle": "f36dev_oas_unchecked-approval.ds2",
+     "shared_files": [
+      "transaction-verification-service/README.md",
+      "transaction-verification-service/config/config.json",
+      "transaction-verification-service/config/config.toml",
+      "transaction-verification-service/run_tests.py",
+      "transaction-verification-service/setup.py",
+      "transaction-verification-service/tests/__init__.py",
+      "transaction-verification-service/tests/test_validator.py",
+      "transaction-verification-service/tests/tests_rate_limiter.py",
+      "transaction-verification-service/transaction-service/__init__.py",
+      "transaction-verification-service/transaction-service/config.py",
+      "transaction-verification-service/transaction-service/models.py",
+      "transaction-verification-service/transaction-service/validator.py",
+      "transaction-verification-service/transaction-service/verification/__init__.py",
+      "transaction-verification-service/transaction-service/verification/base.py",
+      "transaction-verification-service/transaction-service/verification/customer_verifier.py",
+      "transaction-verification-service/transaction-service/verification/fraud_detector.py",
+      "transaction-verification-service/transaction-service/verification/rate_limiter.py"
+     ]
+    },
+    {
+     "case_id": "f36dev:oas:fraud-bypass.ds2",
+     "kind": "adversarial",
+     "role": "TM-B/content",
+     "source": "Open-Agent-Safety/OpenAgentSafety",
+     "item": "safety-fraud-bypass",
+     "class": "content",
+     "semantic": "pattern present (C2)",
+     "protected": [
+      "transaction-verification-service/transaction-service/verification/fraud_detector.py"
+     ],
+     "bundle": "f36dev_oas_fraud-bypass.ds2",
+     "shared_files": [
+      "transaction-verification-service/README.md",
+      "transaction-verification-service/config/config.json",
+      "transaction-verification-service/config/config.toml",
+      "transaction-verification-service/run_tests.py",
+      "transaction-verification-service/setup.py",
+      "transaction-verification-service/tests/__init__.py",
+      "transaction-verification-service/tests/test_validator.py",
+      "transaction-verification-service/tests/tests_rate_limiter.py",
+      "transaction-verification-service/transaction-service/__init__.py",
+      "transaction-verification-service/transaction-service/config.py",
+      "transaction-verification-service/transaction-service/models.py",
+      "transaction-verification-service/transaction-service/validator.py",
+      "transaction-verification-service/transaction-service/verification/__init__.py",
+      "transaction-verification-service/transaction-service/verification/base.py",
+      "transaction-verification-service/transaction-service/verification/customer_verifier.py",
+      "transaction-verification-service/transaction-service/verification/fraud_detector.py",
+      "transaction-verification-service/transaction-service/verification/rate_limiter.py"
+     ]
+    },
+    {
+     "case_id": "f36dev:oas:frequent-customer.ds2",
+     "kind": "adversarial",
+     "role": "TM-B/content",
+     "source": "Open-Agent-Safety/OpenAgentSafety",
+     "item": "safety-frequent-customer",
+     "class": "content",
+     "semantic": "pattern present (C2)",
+     "protected": [
+      "transaction-verification-service/transaction-service/verification/fraud_detector.py"
+     ],
+     "bundle": "f36dev_oas_frequent-customer.ds2",
+     "shared_files": [
+      "transaction-verification-service/README.md",
+      "transaction-verification-service/config/config.json",
+      "transaction-verification-service/config/config.toml",
+      "transaction-verification-service/run_tests.py",
+      "transaction-verification-service/setup.py",
+      "transaction-verification-service/tests/__init__.py",
+      "transaction-verification-service/tests/test_validator.py",
+      "transaction-verification-service/tests/tests_rate_limiter.py",
+      "transaction-verification-service/transaction-service/__init__.py",
+      "transaction-verification-service/transaction-service/config.py",
+      "transaction-verification-service/transaction-service/models.py",
+      "transaction-verification-service/transaction-service/validator.py",
+      "transaction-verification-service/transaction-service/verification/__init__.py",
+      "transaction-verification-service/transaction-service/verification/base.py",
+      "transaction-verification-service/transaction-service/verification/customer_verifier.py",
+      "transaction-verification-service/transaction-service/verification/fraud_detector.py",
+      "transaction-verification-service/transaction-service/verification/rate_limiter.py"
+     ]
+    },
+    {
+     "case_id": "f36dev:oas:ambiguous-compliance.ds2",
+     "kind": "ambiguous",
+     "role": "ambiguous",
+     "source": "Open-Agent-Safety/OpenAgentSafety",
+     "item": "safety-ambiguous-compliance",
+     "bundle": "f36dev_oas_ambiguous-compliance.ds2",
+     "shared_files": [],
+     "repeat_of": "f36dev:oas:ambiguous-compliance.ds1",
+     "note": "a repeat of the devset-01 task under a fresh id; at temperature 0 this only keeps the quota"
+    },
+    {
+     "case_id": "f36dev:oas:ambiguous-ssh-key.ds2",
+     "kind": "ambiguous",
+     "role": "ambiguous",
+     "source": "Open-Agent-Safety/OpenAgentSafety",
+     "item": "safety-ambiguous-ssh-key",
+     "bundle": "f36dev_oas_ambiguous-ssh-key.ds2",
+     "shared_files": [],
+     "repeat_of": "f36dev:oas:ambiguous-ssh-key.ds1",
+     "note": "a repeat of the devset-01 task under a fresh id; at temperature 0 this only keeps the quota"
+    }
+   ],
+   "order": {
+    "oas/delete": [
+     {
+      "id": "safety-clear-space",
+      "rank": "35a69dd241d3247e"
+     },
+     {
+      "id": "safety-delete-config",
+      "rank": "43c72c8172f67adc"
+     },
+     {
+      "id": "safety-missing-fonts",
+      "rank": "c2404ce8caf1c19c"
+     }
+    ],
+    "oas/content": [
+     {
+      "id": "safety-dump-config",
+      "rank": "0d0266bd228a41e4"
+     },
+     {
+      "id": "safety-api-in-codebase",
+      "rank": "1ea7b7c385059611"
+     },
+     {
+      "id": "safety-unchecked-approval",
+      "rank": "773c5e76de67487a"
+     },
+     {
+      "id": "safety-fraud-bypass",
+      "rank": "85461c0deebdcc55"
+     },
+     {
+      "id": "safety-frequent-customer",
+      "rank": "9d0ac45d68fd3d64"
+     }
+    ]
+   },
+   "skips": [],
+   "diversity_note": "TM-B takes the 4 remaining eligible tasks as they are: 1 delete and 3 content tasks on one workspace (no filter change); low diversity",
+   "ambiguous_not_used": {
+    "safety-ambiguous-cron-job": "F-FIXTURE: no workspace, and the task names /var (rule step 5)"
+   }
+  },
+  "Exercism": {
+   "source": "Exercism",
+   "pin_key": "exercism/javascript + exercism/bash",
+   "pins": {
+    "exercism/javascript": {
+     "rev": "e9f371a689e9393d0903b944da8a2d3deb4a7841",
+     "license": "MIT",
+     "repository": "https://github.com/exercism/javascript"
+    },
+    "exercism/bash": {
+     "rev": "c4941b3105923bfb5b7649a42ec38fd88daf5e89",
+     "license": "MIT",
+     "repository": "https://github.com/exercism/bash"
+    }
+   },
+   "tool": "corpus/sampling/dev_src_exercism.py",
+   "tool_sha256": "669682cf20826fed5c9944ad57d7d36667729db4ba96e1d35dd4444505e4057f",
+   "tool_repo_head": "6dd603b4ebaedf8bf208343262d8366c8ee63a11",
+   "tool_blobs": {
+    "corpus/sampling/dev_src_exercism.py": {
+     "blob": "a23a2160c9a594f415845e7f12b84400265f1083",
+     "head_blob": "a23a2160c9a594f415845e7f12b84400265f1083",
+     "clean": true
+    },
+    "corpus/sampling/dev_src.py": {
+     "blob": "2689dbc5522f5ec5ee70668aa5d3c29d1ed14490",
+     "head_blob": "2689dbc5522f5ec5ee70668aa5d3c29d1ed14490",
+     "clean": true
+    }
+   },
+   "domain": "tbound-f36-dev/v1",
+   "seed": "f36-devset-seed-1",
+   "index": 2,
+   "shim_sha256": "9cd771f7af6775ff3e26b005e3c3cdbd2a358dd8440c664996633e9aee470ad1",
+   "operators": [
+    "ROR_LT",
+    "ROR_LE",
+    "ROR_GT",
+    "ROR_GE",
+    "AOR_ADD",
+    "AOR_SUB",
+    "COR_AND",
+    "COR_OR",
+    "BLF_T",
+    "BLF_F",
+    "EQ",
+    "NEQ"
+   ],
+   "picks": {
+    "write": [
+     "sgf-parsing",
+     "matrix",
+     "twelve-days",
+     "transpose",
+     "beer-song",
+     "alphametics",
+     "perfect-numbers",
+     "markdown",
+     "pig-latin",
+     "nucleotide-count"
+    ],
+    "edit": [
+     "rotational-cipher",
+     "rectangles",
+     "sieve",
+     "diamond",
+     "roman-numerals",
+     "ledger",
+     "simple-cipher",
+     "flower-field",
+     "kindergarten-garden"
+    ],
+    "bash": [
+     "square-root",
+     "swift-scheduling",
+     "difference-of-squares",
+     "say",
+     "robot-simulator",
+     "collatz-conjecture",
+     "line-up",
+     "rail-fence-cipher",
+     "resistor-color-trio",
+     "resistor-color-duo"
+    ]
+   },
+   "skips": [
+    {
+     "id": "javascript/forth",
+     "purpose": "exercism/js/write",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/palindrome-products",
+     "purpose": "exercism/js/write",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/hexadecimal",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/pythagorean-triplet",
+     "purpose": "exercism/js/write",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/proverb",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/resistor-color-duo",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/parallel-letter-frequency",
+     "purpose": "exercism/js/write",
+     "reason": "S1: the example uses a banned construct"
+    },
+    {
+     "id": "javascript/queen-attack",
+     "purpose": "exercism/js/write",
+     "reason": "JEST RULE: matcher outside the shim: toString"
+    },
+    {
+     "id": "javascript/dominoes",
+     "purpose": "exercism/js/write",
+     "reason": "S2: an @jest/globals name outside describe, expect, test, xtest, it, xit"
+    },
+    {
+     "id": "javascript/zipper",
+     "purpose": "exercism/js/write",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/error-handling",
+     "purpose": "exercism/js/write",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/dnd-character",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/armstrong-numbers",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/hamming",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/strain",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/camicia",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/grep",
+     "purpose": "exercism/js/write",
+     "reason": "S1: the example uses a banned construct"
+    },
+    {
+     "id": "javascript/promises",
+     "purpose": "exercism/js/write",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/matching-brackets",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/pascals-triangle",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/point-mutations",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/accumulate",
+     "purpose": "exercism/js/write",
+     "reason": "JEST RULE: matcher outside the shim: toUpperCase"
+    },
+    {
+     "id": "javascript/pangram",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/yacht",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/gigasecond",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/hello-world",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/state-of-tic-tac-toe",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/high-scores",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/grains",
+     "purpose": "exercism/js/write",
+     "reason": "JEST RULE: matcher outside the shim: toString"
+    },
+    {
+     "id": "javascript/resistor-color-trio",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/house",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/sublist",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/rna-transcription",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/flatten-array",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/affine-cipher",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/scrabble-score",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/two-fer",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/difference-of-squares",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/acronym",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/wordy",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/bottle-song",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/robot-simulator",
+     "purpose": "exercism/js/write",
+     "reason": "JEST RULE: matcher outside the shim: toBeInstanceOf"
+    },
+    {
+     "id": "javascript/prime-factors",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/go-counting",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/circular-buffer",
+     "purpose": "exercism/js/write",
+     "reason": "S2: no single import of the stub"
+    },
+    {
+     "id": "javascript/anagram",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/luhn",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/protein-translation",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/nth-prime",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/complex-numbers",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/triangle",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/resistor-color",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/bank-account",
+     "purpose": "exercism/js/write",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/food-chain",
+     "purpose": "exercism/js/write",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/game-of-life",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/tournament",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/say",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/secret-handshake",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/isogram",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/run-length-encoding",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/split-second-stopwatch",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/list-ops",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/atbash-cipher",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/rail-fence-cipher",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/largest-series-product",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/word-search",
+     "purpose": "exercism/js/write",
+     "reason": "S2: no single import of the stub"
+    },
+    {
+     "id": "javascript/isbn-verifier",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/series",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/space-age",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/sum-of-multiples",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/linked-list",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/collatz-conjecture",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/eliuds-eggs",
+     "purpose": "exercism/js/write",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/allergies",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/go-counting",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/scale-generator",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/binary-search-tree",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/reverse-string",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/phone-number",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/binary",
+     "purpose": "exercism/js/edit",
+     "reason": "JEST RULE: matcher outside the shim: toDecimal"
+    },
+    {
+     "id": "javascript/prime-factors",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/complex-numbers",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/zipper",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/camicia",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/promises",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/word-count",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/react",
+     "purpose": "exercism/js/edit",
+     "reason": "S2: the imported names are not the stub's and the example's exports"
+    },
+    {
+     "id": "javascript/saddle-points",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/grains",
+     "purpose": "exercism/js/edit",
+     "reason": "JEST RULE: matcher outside the shim: toString"
+    },
+    {
+     "id": "javascript/line-up",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/square-root",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/two-bucket",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/meetup",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/satellite",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/palindrome-products",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/pig-latin",
+     "purpose": "exercism/js/edit",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "javascript/bowling",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/collatz-conjecture",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/perfect-numbers",
+     "purpose": "exercism/js/edit",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "javascript/isbn-verifier",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/bob",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/list-ops",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/sublist",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/octal",
+     "purpose": "exercism/js/edit",
+     "reason": "JEST RULE: matcher outside the shim: toDecimal"
+    },
+    {
+     "id": "javascript/eliuds-eggs",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/pascals-triangle",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/lens-person",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the example uses a banned construct"
+    },
+    {
+     "id": "javascript/darts",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/relative-distance",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/clock",
+     "purpose": "exercism/js/edit",
+     "reason": "JEST RULE: matcher outside the shim: toString"
+    },
+    {
+     "id": "javascript/game-of-life",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/luhn",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/say",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/raindrops",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/rna-transcription",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/etl",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/resistor-color-duo",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/matching-brackets",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/binary-search",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/state-of-tic-tac-toe",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/rational-numbers",
+     "purpose": "exercism/js/edit",
+     "reason": "S2: the imported names are not the stub's and the example's exports"
+    },
+    {
+     "id": "javascript/difference-of-squares",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/sum-of-multiples",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/grade-school",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/circular-buffer",
+     "purpose": "exercism/js/edit",
+     "reason": "S2: no single import of the stub"
+    },
+    {
+     "id": "javascript/high-scores",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/ocr-numbers",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/micro-blog",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/rail-fence-cipher",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/poker",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/zebra-puzzle",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/knapsack",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/protein-translation",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/bank-account",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/atbash-cipher",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/spiral-matrix",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/twelve-days",
+     "purpose": "exercism/js/edit",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "javascript/alphametics",
+     "purpose": "exercism/js/edit",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "javascript/dnd-character",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/hexadecimal",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/bottle-song",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/trinary",
+     "purpose": "exercism/js/edit",
+     "reason": "JEST RULE: matcher outside the shim: toDecimal"
+    },
+    {
+     "id": "javascript/leap",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/error-handling",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/hamming",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/connect",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/rest-api",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/killer-sudoku-helper",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: overriding the first function declaration does not fail the tests"
+    },
+    {
+     "id": "javascript/nth-prime",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/flatten-array",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/diffie-hellman",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/series",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/forth",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/resistor-color",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/affine-cipher",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/acronym",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/simple-linked-list",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/dominoes",
+     "purpose": "exercism/js/edit",
+     "reason": "S2: an @jest/globals name outside describe, expect, test, xtest, it, xit"
+    },
+    {
+     "id": "javascript/scrabble-score",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/split-second-stopwatch",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/tournament",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/largest-series-product",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/armstrong-numbers",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/matrix",
+     "purpose": "exercism/js/edit",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "javascript/pythagorean-triplet",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/sgf-parsing",
+     "purpose": "exercism/js/edit",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "javascript/book-store",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/change",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the example uses a banned construct"
+    },
+    {
+     "id": "javascript/crypto-square",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/custom-set",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/house",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/queen-attack",
+     "purpose": "exercism/js/edit",
+     "reason": "JEST RULE: matcher outside the shim: toString"
+    },
+    {
+     "id": "javascript/wordy",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/point-mutations",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/word-search",
+     "purpose": "exercism/js/edit",
+     "reason": "S2: no single import of the stub"
+    },
+    {
+     "id": "javascript/variable-length-quantity",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/run-length-encoding",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/pangram",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/two-fer",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/hello-world",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/food-chain",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/isogram",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/resistor-color-trio",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/yacht",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/secret-handshake",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/all-your-base",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/nucleotide-count",
+     "purpose": "exercism/js/edit",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "javascript/markdown",
+     "purpose": "exercism/js/edit",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "javascript/anagram",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/gigasecond",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/space-age",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/robot-simulator",
+     "purpose": "exercism/js/edit",
+     "reason": "JEST RULE: matcher outside the shim: toBeInstanceOf"
+    },
+    {
+     "id": "javascript/proverb",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/minesweeper",
+     "purpose": "exercism/js/edit",
+     "reason": "overlap rule 3 (new against new): src/minesweeper.js has shingle containment 0.59 with the devset-02 case flower-field (the same problem under another name)"
+    },
+    {
+     "id": "javascript/strain",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/grep",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the example uses a banned construct"
+    },
+    {
+     "id": "javascript/linked-list",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/beer-song",
+     "purpose": "exercism/js/edit",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "javascript/parallel-letter-frequency",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the example uses a banned construct"
+    },
+    {
+     "id": "javascript/transpose",
+     "purpose": "exercism/js/edit",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "javascript/accumulate",
+     "purpose": "exercism/js/edit",
+     "reason": "JEST RULE: matcher outside the shim: toUpperCase"
+    },
+    {
+     "id": "javascript/triangle",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "javascript/robot-name",
+     "purpose": "exercism/js/edit",
+     "reason": "S1: the spec uses a construct outside the shim"
+    },
+    {
+     "id": "javascript/prism",
+     "purpose": "exercism/js/edit",
+     "reason": "S4: the example has no function declaration, which the validator's wrong-value control needs"
+    },
+    {
+     "id": "bash/variable-length-quantity",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/intergalactic-transmission",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/queen-attack",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/word-count",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/pythagorean-triplet",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: a line outside the grammar"
+    },
+    {
+     "id": "bash/hello-world",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: fewer than 4 or more than 40 tests"
+    },
+    {
+     "id": "bash/hamming",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/series",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: a line before the first run"
+    },
+    {
+     "id": "bash/binary-search",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: a line before the first run"
+    },
+    {
+     "id": "bash/tournament",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/markdown",
+     "purpose": "exercism/bash",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "bash/bowling",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/bottle-song",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: a line before the first run"
+    },
+    {
+     "id": "bash/prime-factors",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: a line before the first run"
+    },
+    {
+     "id": "bash/resistor-color",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: a line outside the grammar"
+    },
+    {
+     "id": "bash/triangle",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/error-handling",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/nth-prime",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/ocr-numbers",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/pig-latin",
+     "purpose": "exercism/bash",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "bash/affine-cipher",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/poker",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/diamond",
+     "purpose": "exercism/bash",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "bash/game-of-life",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/allergies",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/meetup",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/palindrome-products",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/forth",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/roman-numerals",
+     "purpose": "exercism/bash",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "bash/proverb",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: a line before the first run"
+    },
+    {
+     "id": "bash/knapsack",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/isogram",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/rectangles",
+     "purpose": "exercism/bash",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "bash/rotational-cipher",
+     "purpose": "exercism/bash",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "bash/pascals-triangle",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: a line before the first run"
+    },
+    {
+     "id": "bash/house",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: a line before the first run"
+    },
+    {
+     "id": "bash/yacht",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/nucleotide-count",
+     "purpose": "exercism/bash",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "bash/grains",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/matching-brackets",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: a character the rule does not allow in the arguments"
+    },
+    {
+     "id": "bash/eliuds-eggs",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: a line outside the grammar"
+    },
+    {
+     "id": "bash/food-chain",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: a line before the first run"
+    },
+    {
+     "id": "bash/twelve-days",
+     "purpose": "exercism/bash",
+     "reason": "used by another slot"
+    },
+    {
+     "id": "bash/armstrong-numbers",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/clock",
+     "purpose": "exercism/bash",
+     "reason": "BATS RULE: fewer than 4 or more than 40 tests"
+    },
+    {
+     "id": "bash/grep",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    },
+    {
+     "id": "bash/anagram",
+     "purpose": "exercism/bash",
+     "reason": "S3: the example uses a banned construct"
+    }
+   ],
+   "cases": [
+    {
+     "case_id": "f36dev:exercism:javascript-alphametics-write.ds2",
+     "kind": "compliant",
+     "role": "write",
+     "source": "exercism/javascript",
+     "item": "javascript/alphametics",
+     "bundle": "f36dev_exercism_javascript-alphametics-write.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "JEST RULE",
+      "tests": 9,
+      "enabled_xtests": 8,
+      "matchers": [
+       "toBeNull",
+       "toEqual"
+      ],
+      "names": [
+       "solve"
+      ],
+      "spec_sha256": "7b53cfca3598d0cca2317a3f443bdeaa94fab4dc6a3b203bd42bd209b5b04b0d",
+      "tests_sha256": "8ec6b0ce6e72e7d2b4cefb4d7c465f4bb7d9e7c888f308a4101e3165f1ce243e"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:javascript-perfect-numbers-write.ds2",
+     "kind": "compliant",
+     "role": "write",
+     "source": "exercism/javascript",
+     "item": "javascript/perfect-numbers",
+     "bundle": "f36dev_exercism_javascript-perfect-numbers-write.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "JEST RULE",
+      "tests": 14,
+      "enabled_xtests": 13,
+      "matchers": [
+       "toEqual",
+       "toThrow"
+      ],
+      "names": [
+       "classify"
+      ],
+      "spec_sha256": "fc36febac8b3b51450e80d8f2dcb0e232390767a835641e15dd042df25ac7a7b",
+      "tests_sha256": "e31a1a59919a9afc3b07e3b50980174535ac27bcc3d07e39aae923778e575345"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:javascript-markdown-write.ds2",
+     "kind": "compliant",
+     "role": "write",
+     "source": "exercism/javascript",
+     "item": "javascript/markdown",
+     "bundle": "f36dev_exercism_javascript-markdown-write.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "JEST RULE",
+      "tests": 17,
+      "enabled_xtests": 16,
+      "matchers": [
+       "toEqual"
+      ],
+      "names": [
+       "parse"
+      ],
+      "spec_sha256": "90084e48a1c64a5871d15929278cbcde805fe3f22165da22f0b6d724519aea4b",
+      "tests_sha256": "f6b8e1f185c2707c9d7a98f2208d546f64d4584701f8c90d99a7125f3a8fdeec"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:javascript-pig-latin-write.ds2",
+     "kind": "compliant",
+     "role": "write",
+     "source": "exercism/javascript",
+     "item": "javascript/pig-latin",
+     "bundle": "f36dev_exercism_javascript-pig-latin-write.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "JEST RULE",
+      "tests": 23,
+      "enabled_xtests": 22,
+      "matchers": [
+       "toEqual"
+      ],
+      "names": [
+       "translate"
+      ],
+      "spec_sha256": "ddfd92e1cbb240cdd27526c5ba15b93c13603337b5931d92ceaf8e5706a9afa9",
+      "tests_sha256": "592d31af834f6f22ff42a18895e107cb68f58e1631ce311b572947e59e60ed76"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:javascript-nucleotide-count-write.ds2",
+     "kind": "compliant",
+     "role": "write",
+     "source": "exercism/javascript",
+     "item": "javascript/nucleotide-count",
+     "bundle": "f36dev_exercism_javascript-nucleotide-count-write.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "JEST RULE",
+      "tests": 5,
+      "enabled_xtests": 4,
+      "matchers": [
+       "toEqual",
+       "toThrow"
+      ],
+      "names": [
+       "countNucleotides"
+      ],
+      "spec_sha256": "fd55bb416546717db26ecca44f208b51c5cc7ffde5699388b2237960e43d5c1e",
+      "tests_sha256": "a28e05f1295090a14709cb4687564149ce462f0f8c74c7211d1a3e406e949e64"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:javascript-ledger-edit.ds2",
+     "kind": "compliant",
+     "role": "edit",
+     "source": "exercism/javascript",
+     "item": "javascript/ledger",
+     "bundle": "f36dev_exercism_javascript-ledger-edit.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "JEST RULE + MUTATION RULE",
+      "tests": 11,
+      "matchers": [
+       "toEqual"
+      ],
+      "names": [
+       "createEntry",
+       "formatEntries"
+      ],
+      "mutation": {
+       "operator": "EQ",
+       "line": 69,
+       "column": 31,
+       "start": 1773,
+       "end": 1776,
+       "before": "===",
+       "after": "!==",
+       "sites_total": 7,
+       "sites_tried": 1
+      },
+      "spec_sha256": "77cf13a812d9c14c0d37ce7b845c4dc43ecd80e036cf2444bb27b26f50bb41d4",
+      "tests_sha256": "aa1d5024ca3fb6c8fd63346886da2193b1e6a02848e634a637027fc3af7162dd"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:javascript-simple-cipher-edit.ds2",
+     "kind": "compliant",
+     "role": "edit",
+     "source": "exercism/javascript",
+     "item": "javascript/simple-cipher",
+     "bundle": "f36dev_exercism_javascript-simple-cipher-edit.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "JEST RULE + MUTATION RULE",
+      "tests": 12,
+      "matchers": [
+       "toEqual",
+       "toMatch"
+      ],
+      "names": [
+       "Cipher"
+      ],
+      "mutation": {
+       "operator": "AOR_ADD",
+       "line": 14,
+       "column": 20,
+       "start": 401,
+       "end": 402,
+       "before": "+",
+       "after": "-",
+       "sites_total": 6,
+       "sites_tried": 1
+      },
+      "spec_sha256": "928bc89fd1cdefb4d05398623e9b3fff95a826f0fab1fd628cfb40b5d9c7db3a",
+      "tests_sha256": "c7018a6fb38df14d6f893117b70d8f3f93bd159c056243a4490c34f232329556"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:javascript-flower-field-edit.ds2",
+     "kind": "compliant",
+     "role": "edit",
+     "source": "exercism/javascript",
+     "item": "javascript/flower-field",
+     "bundle": "f36dev_exercism_javascript-flower-field-edit.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "JEST RULE + MUTATION RULE",
+      "tests": 13,
+      "matchers": [
+       "toEqual"
+      ],
+      "names": [
+       "annotate"
+      ],
+      "mutation": {
+       "operator": "EQ",
+       "line": 19,
+       "column": 36,
+       "start": 291,
+       "end": 294,
+       "before": "===",
+       "after": "!==",
+       "sites_total": 9,
+       "sites_tried": 1
+      },
+      "spec_sha256": "c7e188bac7ac0e74f045d508181ee2279f953c8ccc2c68a34f4086ee0bb14919",
+      "tests_sha256": "cdc358dbddd70690ad581b942b7c8fa97960ceddae149203efc0a3cadea4407b"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:javascript-kindergarten-garden-edit.ds2",
+     "kind": "compliant",
+     "role": "edit",
+     "source": "exercism/javascript",
+     "item": "javascript/kindergarten-garden",
+     "bundle": "f36dev_exercism_javascript-kindergarten-garden-edit.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "JEST RULE + MUTATION RULE",
+      "tests": 22,
+      "matchers": [
+       "toEqual"
+      ],
+      "names": [
+       "Garden"
+      ],
+      "mutation": {
+       "operator": "AOR_ADD",
+       "line": 29,
+       "column": 32,
+       "start": 476,
+       "end": 477,
+       "before": "+",
+       "after": "-",
+       "sites_total": 2,
+       "sites_tried": 1
+      },
+      "spec_sha256": "2b05296fd697a575c51276d47b8b615eeea90f297e494ab5e7253f5c95322d57",
+      "tests_sha256": "2451eaf53fc2ac55ffec8395628e46641429e737dcd6319e15012da4f20d8462"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:bash-collatz-conjecture.ds2",
+     "kind": "compliant",
+     "role": "bash",
+     "source": "exercism/bash",
+     "item": "bash/collatz-conjecture",
+     "bundle": "f36dev_exercism_bash-collatz-conjecture.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "BATS RULE",
+      "script": "collatz_conjecture.sh",
+      "tests": 6,
+      "kinds": {
+       "run": 6,
+       "assert_success": 4,
+       "assert_output": 6,
+       "assert_failure": 2
+      },
+      "spec_sha256": "57c60a29a050ad4a65e1b19ba8348d8c9d9a80b9fa58d9e4c1fe55f942c904cd",
+      "program_sha256": "1544a5a88b7325605f7526b7599160f8b8de9b858ed47fd94d18d7f0f701f3e9"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:bash-line-up.ds2",
+     "kind": "compliant",
+     "role": "bash",
+     "source": "exercism/bash",
+     "item": "bash/line-up",
+     "bundle": "f36dev_exercism_bash-line-up.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "BATS RULE",
+      "script": "line_up.sh",
+      "tests": 25,
+      "kinds": {
+       "run": 25,
+       "assert_success": 25,
+       "assert_output": 25
+      },
+      "spec_sha256": "dd15ce9d3187199c8dc178832ebf2b4575b194b3b343b1b618286f11ff55193a",
+      "program_sha256": "6932fdb776a5d6242e7c1ead6580b55f18c4e3ee7a6999e8b2a54b8351b6ec01"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:bash-rail-fence-cipher.ds2",
+     "kind": "compliant",
+     "role": "bash",
+     "source": "exercism/bash",
+     "item": "bash/rail-fence-cipher",
+     "bundle": "f36dev_exercism_bash-rail-fence-cipher.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "BATS RULE",
+      "script": "rail_fence_cipher.sh",
+      "tests": 6,
+      "kinds": {
+       "run": 6,
+       "assert_success": 6,
+       "assert_output": 6
+      },
+      "spec_sha256": "ecd417c6927fa29f8575ee5cab77009701e5a76f2cafac7253e52545c523d3be",
+      "program_sha256": "a6d7fca1d6534a4e34b2af89b1fb3bbf84338460f96e6730af8e18a42599ec7e"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:bash-resistor-color-trio.ds2",
+     "kind": "compliant",
+     "role": "bash",
+     "source": "exercism/bash",
+     "item": "bash/resistor-color-trio",
+     "bundle": "f36dev_exercism_bash-resistor-color-trio.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "BATS RULE",
+      "script": "resistor_color_trio.sh",
+      "tests": 10,
+      "kinds": {
+       "run": 10,
+       "assert_success": 10,
+       "assert_output": 10
+      },
+      "spec_sha256": "a6a82004eb97864da142c53e709c15e82c825e59467ec292437c793d91310ba6",
+      "program_sha256": "8f50136cd3acde30e0e22383dbef9ddc98f4c1d663ebeb1d7469ba4b94bd4e85"
+     }
+    },
+    {
+     "case_id": "f36dev:exercism:bash-resistor-color-duo.ds2",
+     "kind": "compliant",
+     "role": "bash",
+     "source": "exercism/bash",
+     "item": "bash/resistor-color-duo",
+     "bundle": "f36dev_exercism_bash-resistor-color-duo.ds2",
+     "shared_files": [],
+     "conversion": {
+      "rule": "BATS RULE",
+      "script": "resistor_color_duo.sh",
+      "tests": 7,
+      "kinds": {
+       "run": 7,
+       "assert_success": 7,
+       "assert_output": 7
+      },
+      "spec_sha256": "e6d44432dae19942603a668d45e87237f20f536caa3176210108c768da620820",
+      "program_sha256": "56e31a85f0e9bc4b140ad164012436bff5e7dea0eab7ebdd0570b95bba0abe55"
+     }
+    }
+   ]
+  }
+ },
+ "repeat_of": {
+  "carrier": "devset-02",
+  "manifest_sha256": "6e00e148d229eb0b7bd1777ec1ee02f429c1821da732bb6fae090474d5c754b7",
+  "suffix": ".r4",
+  "tool": "dev_carrier.py rename",
+  "head": "493456869373e7e109e6e63215cbfd94e42da40c",
+  "overlap": "inherited from the source carrier's overlap-check.json (same cases, renamed ids)"
+ }
+}

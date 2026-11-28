@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/pig-latin.js",
+      "mode": "0644",
+      "content_b64": "Y29uc3QgVk9XRUxfU09VTkRfUkVHRVhQID0gL14oW2FlaW91XXx4cnx5dCkvOwpjb25zdCBDT05TT05BTlRfU09VTkRfUkVHRVhQID0KICAvXihbXmFlaW91XSsoPz15KXxbXmFlaW91XT9xdXxbXmFlaW91XSspKFthLXpdKykvOwoKZnVuY3Rpb24gdHJhbnNsYXRlV29yZCh3b3JkKSB7CiAgaWYgKFZPV0VMX1NPVU5EX1JFR0VYUC50ZXN0KHdvcmQpKSB7CiAgICByZXR1cm4gYCR7d29yZH1heWA7CiAgfQoKICBjb25zdCBuZXdXb3JkID0gd29yZC5yZXBsYWNlKENPTlNPTkFOVF9TT1VORF9SRUdFWFAsICckMiQxJyk7CiAgcmV0dXJuIGAke25ld1dvcmR9YXlgOwp9Cgpjb25zdCB0cmFuc2xhdGUgPSAoZW5nbGlzaCkgPT4gewogIHJldHVybiBlbmdsaXNoLnNwbGl0KCcgJykubWFwKHRyYW5zbGF0ZVdvcmQpLmpvaW4oJyAnKTsKfTsK"
+    }
+  ]
+}

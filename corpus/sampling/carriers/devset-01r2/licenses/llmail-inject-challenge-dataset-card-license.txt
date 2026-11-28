@@ -1,0 +1,16 @@
+Dataset card of https://huggingface.co/datasets/microsoft/llmail-inject-challenge at revision 1063bdf01ec8762b812d5e06ee768a06faa5a6f7, front matter (README.md):
+---
+license: mit
+task_categories:
+- text2text-generation
+pretty_name: 'LLMail-Inject: Adaptive Prompt Injection Challenge'
+size_categories:
+- 100K<n<1M
+configs:
+- config_name: default
+  data_files:
+  - split: Phase1
+    path: "data/raw_submissions_phase1.jsonl"
+  - split: Phase2
+    path: "data/raw_submissions_phase2.jsonl"
+---

@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/collatz-conjecture.txt",
+      "mode": "0644",
+      "content_b64": "Y29sbGF0ei1jb25qZWN0dXJlOiA5MTdiZTQxNjY1MjA3MjZlCg=="
+    }
+  ]
+}

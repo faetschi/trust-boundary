@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/difference-of-squares.txt",
+      "digest": "sha256:00f6e4a8cdab524e713158645e2a3ae449a7803ad30fa69b3d4bf11f8814af53"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/difference-of-squares.txt"
+      ]
+    }
+  ]
+}

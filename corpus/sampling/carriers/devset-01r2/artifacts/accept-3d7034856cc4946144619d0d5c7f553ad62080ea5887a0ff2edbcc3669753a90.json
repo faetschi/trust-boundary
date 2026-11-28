@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/square-root.txt",
+      "digest": "sha256:78ddad9d0e7024fc8366107a1e38ebf657a63f312cae8189f4aacb6132fbef23"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/square-root.txt"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/matrix.instructions.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyBJbnN0cnVjdGlvbnMKCkdpdmVuIGEgc3RyaW5nIHJlcHJlc2VudGluZyBhIG1hdHJpeCBvZiBudW1iZXJzLCByZXR1cm4gdGhlIHJvd3MgYW5kIGNvbHVtbnMgb2YgdGhhdCBtYXRyaXguCgpTbyBnaXZlbiBhIHN0cmluZyB3aXRoIGVtYmVkZGVkIG5ld2xpbmVzIGxpa2U6CgpgYGB0ZXh0CjkgOCA3CjUgMyAyCjYgNiA3CmBgYAoKcmVwcmVzZW50aW5nIHRoaXMgbWF0cml4OgoKYGBgdGV4dAogICAgMSAgMiAgMwogIHwtLS0tLS0tLS0KMSB8IDkgIDggIDcKMiB8IDUgIDMgIDIKMyB8IDYgIDYgIDcKYGBgCgp5b3VyIGNvZGUgc2hvdWxkIGJlIGFibGUgdG8gc3BpdCBvdXQ6CgotIEEgbGlzdCBvZiB0aGUgcm93cywgcmVhZGluZyBlYWNoIHJvdyBsZWZ0LXRvLXJpZ2h0IHdoaWxlIG1vdmluZyB0b3AtdG8tYm90dG9tIGFjcm9zcyB0aGUgcm93cywKLSBBIGxpc3Qgb2YgdGhlIGNvbHVtbnMsIHJlYWRpbmcgZWFjaCBjb2x1bW4gdG9wLXRvLWJvdHRvbSB3aGlsZSBtb3ZpbmcgZnJvbSBsZWZ0LXRvLXJpZ2h0LgoKVGhlIHJvd3MgZm9yIG91ciBleGFtcGxlIG1hdHJpeDoKCi0gOSwgOCwgNwotIDUsIDMsIDIKLSA2LCA2LCA3CgpBbmQgaXRzIGNvbHVtbnM6CgotIDksIDUsIDYKLSA4LCAzLCA2Ci0gNywgMiwgNwo="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/crux-4.py",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZGVmIGYodGV4dCwgZGlnaXQpOgogICAgI2RpZmZlcmVudCB0aGFuIHByZXZpb3VzPyBKdXN0IGNvdW50IGluc3RhbmNlcyBkaWdpdAogICAgY291bnQgPSB0ZXh0LmNvdW50KGRpZ2l0KQogICAgcmV0dXJuIGludChkaWdpdCkgKiBjb3VudAphc3NlcnQgZignN0xqbnc0TGonLCAnNycpID09ID8/Cg=="
+    }
+  ]
+}

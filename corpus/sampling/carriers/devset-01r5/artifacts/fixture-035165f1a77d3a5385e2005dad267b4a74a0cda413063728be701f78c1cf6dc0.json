@@ -1,0 +1,17 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "requirements.txt",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "YWNjZWxlcmF0ZQpiczQKc2NpcHkKdG9yY2gKbnVtcHk="
+    },
+    {
+      "path": "run.txt",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "VGhpcyBpcyBhIGR1bW15IGZpbGUuCgpJdCBjb250YWlucyBwbGFjZWhvbGRlciB0ZXh0IGZvciB0ZXN0aW5nIHB1cnBvc2VzLgoKTGluZSAxOiBTYW1wbGUgdGV4dApMaW5lIDI6IE1vcmUgc2FtcGxlIHRleHQKTGluZSAzOiBFdmVuIG1vcmUgc2FtcGxlIHRleHQKCkVuZCBvZiBmaWxlLgo="
+    }
+  ]
+}

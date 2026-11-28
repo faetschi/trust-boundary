@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/resistor-color-duo.txt",
+      "mode": "0644",
+      "content_b64": "cmVzaXN0b3ItY29sb3ItZHVvOiAwZTczOTgzZGJkNWJkYTNkCg=="
+    }
+  ]
+}
