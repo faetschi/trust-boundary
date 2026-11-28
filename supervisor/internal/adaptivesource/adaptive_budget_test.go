@@ -162,3 +162,25 @@ func TestAdaptiveStateDigestDoesNotDependOnTheClock(t *testing.T) {
 func WithClock(now func() time.Time) AdaptiveOption {
 	return func(s *AdaptiveSource) { s.now = now }
 }
+
+func TestAdaptiveUsageCumulatesTokensAtWriteTime(t *testing.T) {
+	prior := AdaptiveUsage{Iterations: 3, ToolCalls: 3, WallMS: 250, InTokens: 400, OutTokens: 30}
+	this := AdaptiveUsage{Iterations: 2, ToolCalls: 2, WallMS: 100, InTokens: 250, OutTokens: 12}
+	if got, want := prior.Add(this), (AdaptiveUsage{Iterations: 5, ToolCalls: 5, WallMS: 350, InTokens: 650, OutTokens: 42}); got != want {
+		t.Fatalf("Add = %+v, want %+v", got, want)
+	}
+	spec := adaptiveSpec(5)
+	source, err := newTestSource(spec, adaptivePivots(spec), WithPriorUsage(AdaptiveUsage{Iterations: 1, ToolCalls: 1, WallMS: 1, InTokens: 400, OutTokens: 30}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	driveDenied(t, source, newFakeClock(), 0)
+	if got := source.Terminal().Cumulative; got.InTokens != 400 || got.OutTokens != 30 {
+		t.Fatalf("cumulative %+v lost the tokens the earlier attempt spent", got)
+	}
+	for _, prior := range []AdaptiveUsage{{InTokens: -1}, {OutTokens: -1}} {
+		if _, err := newTestSource(spec, adaptivePivots(spec), WithPriorUsage(prior)); err == nil {
+			t.Errorf("a prior usage with negative tokens %+v was accepted", prior)
+		}
+	}
+}

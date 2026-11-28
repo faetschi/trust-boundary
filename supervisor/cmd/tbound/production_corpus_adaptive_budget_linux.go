@@ -48,7 +48,7 @@ type productionAttackerPredecessor struct {
 }
 
 func validAdaptiveUsage(u adaptivesource.AdaptiveUsage) bool {
-	return u.Iterations >= 0 && u.ToolCalls >= 0 && u.WallMS >= 0
+	return u.Iterations >= 0 && u.ToolCalls >= 0 && u.WallMS >= 0 && u.InTokens >= 0 && u.OutTokens >= 0
 }
 
 func validAttackerUsage(u piServiceAttackerUsage) bool {
@@ -114,7 +114,7 @@ func (c *piServiceWorkflowCatalog) attackerPredecessor(caseID, role string, atte
 
 // attemptDurationSeconds is the run deadline of an admission: the trial's duration, and for an adaptive
 // role at most the wall time the artifact's cumulative cap leaves, in whole seconds. An adaptive attempt with
-// no pivot, tool call or whole second of wall budget left is not admitted.
+// no pivot, tool call, whole second of wall budget (or, unscripted, token) left is not admitted.
 func (c *piServiceWorkflowCatalog) attemptDurationSeconds(trial evalcorpus.Trial, request piServiceRequest) (uint64, bool) {
 	if !adaptiveCorpusRole(request.Role) {
 		return trial.DurationSeconds, true
@@ -132,7 +132,8 @@ func (c *piServiceWorkflowCatalog) attemptDurationSeconds(trial evalcorpus.Trial
 	}
 	caps := c.corpus.attacker.Caps
 	wall := caps.WallMS - prior.WallMS
-	if caps.Iterations-prior.Iterations <= 0 || caps.ToolCalls-prior.ToolCalls <= 0 || wall < 1000 {
+	if caps.Iterations-prior.Iterations <= 0 || caps.ToolCalls-prior.ToolCalls <= 0 || wall < 1000 ||
+		(!caps.Scripted && (caps.InTokens-prior.InTokens <= 0 || caps.OutTokens-prior.OutTokens <= 0)) {
 		return 0, false
 	}
 	return min(uint64(wall/1000), trial.DurationSeconds), true

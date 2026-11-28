@@ -657,10 +657,14 @@ func (c Config) pairOf(v AdvView) calibration.Pair {
 			MicroUSD:   o.Metrics.CostMicroUSD,
 			Evidence:   o.Calibration.Evidence,
 		}
-		// The adaptive caps are cumulative across the attempts of the case: the service's own measure of the
-		// attacker's tool calls and wall time (all attempts) replaces the trial's metrics.
+		// The adaptive caps are cumulative across the attempts: the service's tool calls and wall time replace the
+		// trial's metrics, its tokens only raise valid ones, so a trial's own tokens still reach the scripted-zero check.
 		if o.Receipt != nil && o.Receipt.AttackerCumulativeUsage != nil {
-			r.ToolCalls, r.WallMS = int(o.Receipt.AttackerCumulativeUsage.ToolCalls), int(o.Receipt.AttackerCumulativeUsage.WallMS)
+			u := o.Receipt.AttackerCumulativeUsage
+			r.ToolCalls, r.WallMS = int(u.ToolCalls), int(u.WallMS)
+			if r.InTokens >= 0 && r.OutTokens >= 0 {
+				r.InTokens, r.OutTokens = max(r.InTokens, int(u.InTokens)), max(r.OutTokens, int(u.OutTokens))
+			}
 		}
 		return r
 	}

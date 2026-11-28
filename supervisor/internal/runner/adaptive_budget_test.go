@@ -2,10 +2,13 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
+	"tbound/supervisor/internal/calibration"
+	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
 )
 
@@ -228,5 +231,140 @@ func TestExportMarksAMismatchedBudgetPairAsAnIncompletePair(t *testing.T) {
 	}
 	if got := last.Classify(); got.Open || got.Disposition != evalscore.Unsupported || got.Reason != evalscore.ReasonCalibrationIncomplete {
 		t.Errorf("scored record = %+v; want UNSUPPORTED %s", got, evalscore.ReasonCalibrationIncomplete)
+	}
+}
+
+func TestScriptedAttackerUsageKeepsItsJournalBytes(t *testing.T) {
+	data, err := json.Marshal(ReceiptFacts{AttackerUsage: usage(2, 150), AttackerCumulativeUsage: usage(5, 400),
+		AttackerPredecessor: &AttackerPredecessor{AdmissionID: "case/adaptive-replay/1", StateDigest: "d", CumulativeUsage: *usage(3, 250)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(data, &members); err != nil {
+		t.Fatal(err)
+	}
+	for member, want := range map[string]string{
+		"attacker_usage":            `{"iterations":2,"tool_calls":2,"wall_ms":150}`,
+		"attacker_cumulative_usage": `{"iterations":5,"tool_calls":5,"wall_ms":400}`,
+		"attacker_predecessor":      `{"admission_id":"case/adaptive-replay/1","state_digest":"d","cumulative_usage":{"iterations":3,"tool_calls":3,"wall_ms":250}}`,
+	} {
+		if got := string(members[member]); got != want {
+			t.Errorf("scripted journal bytes of %s changed:\n got %s\nwant %s", member, got, want)
+		}
+	}
+}
+
+func TestScriptedAdaptiveRunWithTrialTokensIsInvalid(t *testing.T) {
+	cfg := testConfig()
+	cfg.AdaptiveCaps = calibration.Caps{Scripted: true, Iterations: 8, ToolCalls: 50, WallMS: 60000}
+	for name, set := range map[string]func(*Metrics){
+		"input tokens":           func(m *Metrics) { m.InTokens = 7 },
+		"output tokens":          func(m *Metrics) { m.OutTokens = 7 },
+		"negative input tokens":  func(m *Metrics) { m.InTokens = -3 },
+		"negative output tokens": func(m *Metrics) { m.OutTokens = -3 },
+		"none":                   func(*Metrics) {},
+	} {
+		v := goodAdv(cfg, evalcorpus.ClassTMA)
+		v.AdaptiveP.Metrics = Metrics{ToolCalls: 2, LatencyMS: 100}
+		set(&v.AdaptiveP.Metrics)
+		v.AdaptiveP.Receipt = &ReceiptFacts{AttackerUsage: usage(2, 100), AttackerCumulativeUsage: usage(2, 100)}
+		want := calibration.Invalid
+		if name == "none" {
+			want = calibration.Manifested
+		}
+		if got := cfg.AssembleAdversarial(v); got.Status != want {
+			t.Errorf("%s: status %v (%v); want %v", name, got.Status, got.StatusErr, want)
+		}
+	}
+}
+
+func TestAdaptiveBudgetFlagTextKeepsItsScriptedForm(t *testing.T) {
+	s, j, caseID := adaptiveBudgetJournal(t, nil, consistentReceipts)
+	res, err := Export(s, j, ExportOptions{})
+	if err != nil || len(res.AdaptiveBudgetFlags) != 1 {
+		t.Fatalf("flags %v, err %v", res.AdaptiveBudgetFlags, err)
+	}
+	want := caseID + ": the scored adaptive attempts of C and P started with different cumulative budgets already spent " +
+		"(C {Iterations:3 ToolCalls:3 WallMS:300}, P {Iterations:0 ToolCalls:0 WallMS:0})"
+	if got := res.AdaptiveBudgetFlags[0].String(); got != want {
+		t.Errorf("flag text changed:\n got %s\nwant %s", got, want)
+	}
+	spent := AdaptiveBudgetFlag{CaseID: "c", C: *tokens(usage(3, 300), 70, 18), P: AttackerUsage{}}
+	if got, want := spent.String(), "c: the scored adaptive attempts of C and P started with different cumulative budgets already spent "+
+		"(C {Iterations:3 ToolCalls:3 WallMS:300 InTokens:70 OutTokens:18}, P {Iterations:0 ToolCalls:0 WallMS:0})"; got != want {
+		t.Errorf("flag text with tokens:\n got %s\nwant %s", got, want)
+	}
+}
+
+func TestExportRefusesAnAdaptiveRerunOverTheTokenCaps(t *testing.T) {
+	for name, tok := range map[string][4]int64{
+		"input tokens":  {60_000, 100, 50_000, 100},
+		"output tokens": {100, 30_000, 100, 25_000},
+	} {
+		s, j, _ := adaptiveBudgetJournal(t, nil, func(st Step, attempt int, r *ReceiptFacts) {
+			consistentReceipts(st, attempt, r)
+			if st.Configuration != CfgC {
+				return
+			}
+			switch attempt {
+			case 1:
+				r.AttackerUsage, r.AttackerCumulativeUsage = tokens(usage(3, 300), tok[0], tok[1]), tokens(usage(3, 300), tok[0], tok[1])
+			case 2:
+				r.AttackerUsage = tokens(usage(2, 100), tok[2], tok[3])
+				r.AttackerCumulativeUsage = tokens(usage(5, 400), tok[0]+tok[2], tok[1]+tok[3])
+				r.AttackerPredecessor.CumulativeUsage = *tokens(usage(3, 300), tok[0], tok[1])
+			}
+		})
+		if _, err := Export(s, j, ExportOptions{}); !errors.Is(err, ErrAdaptiveBudget) {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+}
+
+func tokens(u *AttackerUsage, in, out int64) *AttackerUsage {
+	u.InTokens, u.OutTokens = in, out
+	return u
+}
+
+func TestAttestChecksTheCumulativeTokensOfAnAdaptiveReceipt(t *testing.T) {
+	retry := func(r *ReceiptFacts) {
+		r.AttackerUsage, r.AttackerCumulativeUsage = tokens(usage(2, 100), 30, 7), tokens(usage(5, 400), 100, 25)
+		r.AttackerPredecessor = &AttackerPredecessor{AdmissionID: "adv-p/adaptive-replay/1", StateDigest: hexOf('1'), CumulativeUsage: *tokens(usage(3, 300), 70, 18)}
+	}
+	for _, cfg := range []Configuration{CfgC, CfgP} {
+		s := adaptiveStep(cfg)
+		if out, err := attestRun(newAttest(nil), s, retry); err != nil || !out.E01.Verified {
+			t.Errorf("%s: a correct retry receipt with tokens: %+v %v", cfg, out, err)
+		}
+		for name, mutate := range map[string]func(*ReceiptFacts){
+			"input tokens that are not predecessor plus usage":  func(r *ReceiptFacts) { retry(r); r.AttackerCumulativeUsage.InTokens = 99 },
+			"output tokens that are not predecessor plus usage": func(r *ReceiptFacts) { retry(r); r.AttackerCumulativeUsage.OutTokens = 26 },
+			"a retry whose tokens start from zero": func(r *ReceiptFacts) {
+				retry(r)
+				r.AttackerCumulativeUsage.InTokens, r.AttackerCumulativeUsage.OutTokens = 30, 7
+			},
+			"negative tokens": func(r *ReceiptFacts) {
+				r.AttackerUsage, r.AttackerCumulativeUsage = tokens(usage(2, 100), -1, 0), tokens(usage(2, 100), -1, 0)
+			},
+		} {
+			if out, err := attestRun(newAttest(nil), s, mutate); !errors.Is(err, ErrReceiptPolicy) || out.E01.Verified {
+				t.Errorf("%s/%s: %+v %v", cfg, name, out, err)
+			}
+		}
+	}
+}
+
+func TestAdaptiveCalibrationUsesTheCumulativeTokens(t *testing.T) {
+	s := adaptiveStep(CfgP)
+	o := Outcome{Receipt: adaptiveReceipt("success_pivot", 2), Oracles: map[string]Finding{OracleWS01: FindingObserved},
+		OracleRefs: map[string]OracleRef{OracleWS01: {Version: "v", Report: "sha256:" + hexOf('r')}},
+		Metrics:    Metrics{ToolCalls: 2, LatencyMS: 77, InTokens: 30, OutTokens: 7}}
+	o.Receipt.AttackerStateDigest = hexOf('d')
+	o.Receipt.AttackerUsage, o.Receipt.AttackerCumulativeUsage = tokens(usage(2, 100), 30, 7), tokens(usage(5, 400), 100, 25)
+	mapReplay(&o, s)
+	run := Config{}.pairOf(AdvView{CaseID: s.CaseID, Predicate: "EFF-WS-01", WitnessID: "witness-1", Class: s.ThreatClass, AdaptiveP: &o}).Adaptive
+	if run.InTokens != 100 || run.OutTokens != 25 {
+		t.Fatalf("calibration run = %+v; want the cumulative 100 input and 25 output tokens of both attempts", run)
 	}
 }

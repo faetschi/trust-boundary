@@ -12,19 +12,32 @@ import (
 // The machine of attempt 2 restarts from its initial state (only the budget continues): the retry runs on a
 // reset fixture, and the thesis fixes the budget, not the tried steps, as cumulative.
 
-// AttackerUsage is the spend of an adaptive replay against the pinned caps: pivots issued, tool calls and
-// wall-clock milliseconds.
+// AttackerUsage is the spend of an adaptive replay against the pinned caps: pivots issued, tool calls,
+// wall-clock milliseconds and tokens. A scripted attacker spends none, so JSON and String omit them when zero.
 type AttackerUsage struct {
 	Iterations int64 `json:"iterations"`
 	ToolCalls  int64 `json:"tool_calls"`
 	WallMS     int64 `json:"wall_ms"`
+	InTokens   int64 `json:"in_tokens,omitempty"`
+	OutTokens  int64 `json:"out_tokens,omitempty"`
 }
 
 func (u AttackerUsage) add(other AttackerUsage) AttackerUsage {
-	return AttackerUsage{Iterations: u.Iterations + other.Iterations, ToolCalls: u.ToolCalls + other.ToolCalls, WallMS: u.WallMS + other.WallMS}
+	return AttackerUsage{Iterations: u.Iterations + other.Iterations, ToolCalls: u.ToolCalls + other.ToolCalls, WallMS: u.WallMS + other.WallMS,
+		InTokens: u.InTokens + other.InTokens, OutTokens: u.OutTokens + other.OutTokens}
 }
 
-func (u AttackerUsage) valid() bool { return u.Iterations >= 0 && u.ToolCalls >= 0 && u.WallMS >= 0 }
+func (u AttackerUsage) String() string {
+	s := fmt.Sprintf("{Iterations:%d ToolCalls:%d WallMS:%d", u.Iterations, u.ToolCalls, u.WallMS)
+	if u.InTokens != 0 || u.OutTokens != 0 {
+		s += fmt.Sprintf(" InTokens:%d OutTokens:%d", u.InTokens, u.OutTokens)
+	}
+	return s + "}"
+}
+
+func (u AttackerUsage) valid() bool {
+	return u.Iterations >= 0 && u.ToolCalls >= 0 && u.WallMS >= 0 && u.InTokens >= 0 && u.OutTokens >= 0
+}
 
 // AttackerPredecessor is the receipt's reference to the earlier attempt whose budget the run continued.
 type AttackerPredecessor struct {
@@ -108,9 +121,14 @@ func checkAdaptiveBudgets(s Schedule, j *Journal) ([]AdaptiveBudgetFlag, error) 
 				cumulative := *r.AttackerCumulativeUsage
 				if (caps.Iterations > 0 && cumulative.Iterations > int64(caps.Iterations)) ||
 					(caps.ToolCalls > 0 && cumulative.ToolCalls > int64(caps.ToolCalls)) ||
-					(caps.WallMS > 0 && cumulative.WallMS > int64(caps.WallMS)) {
-					return nil, fmt.Errorf("%w: %s attempt %d spent %+v in all, over the caps (iterations %d, tool calls %d, wall %d ms)",
-						ErrAdaptiveBudget, st.ID(), attempt, cumulative, caps.Iterations, caps.ToolCalls, caps.WallMS)
+					(caps.WallMS > 0 && cumulative.WallMS > int64(caps.WallMS)) ||
+					(caps.InTokens > 0 && cumulative.InTokens > int64(caps.InTokens)) ||
+					(caps.OutTokens > 0 && cumulative.OutTokens > int64(caps.OutTokens)) {
+					limits := fmt.Sprintf("iterations %d, tool calls %d, wall %d ms", caps.Iterations, caps.ToolCalls, caps.WallMS)
+					if caps.InTokens > 0 || caps.OutTokens > 0 {
+						limits += fmt.Sprintf(", tokens in %d out %d", caps.InTokens, caps.OutTokens)
+					}
+					return nil, fmt.Errorf("%w: %s attempt %d spent %+v in all, over the caps (%s)", ErrAdaptiveBudget, st.ID(), attempt, cumulative, limits)
 				}
 				p := r.AttackerPredecessor
 				switch {
