@@ -5,7 +5,10 @@ edit and bash compliant cases kept under fresh ids (adaptation rule 7.1 shape; c
     py -3 -I corpus/sampling/dev_carrier.py build --round devset-01 --suffix .ds1 --bundles DIR [--bundles DIR ...]
         --records FILE [--records FILE ...] --out corpus/sampling/carriers/devset-01 --selection-out FILE
 
-Placement is by kind and order: bundles of a class (TM-A, TM-B), of a compliant tool or of the ambiguous kind, sorted by
+    py -3 -I corpus/sampling/dev_carrier.py rename --source corpus/sampling/carriers/devset-01 --round devset-01r2 --suffix .r2
+        --out corpus/sampling/carriers/devset-01r2 [--selection-in FILE --selection-out FILE]
+
+rename is a repeat of an existing carrier under fresh ids (see rename()); no renderer runs. Placement (build) is by kind and order: bundles of a class (TM-A, TM-B), of a compliant tool or of the ambiguous kind, sorted by
 case_id, take the first slots of that class in ascending T5 case_id order, each in its slot's position. Artifacts that no
 case references are dropped. The cold and variance partitions are recomputed as evalcorpus.Allocate does. --out must not exist.
 """
@@ -147,6 +150,69 @@ def build(a):
     return hashlib.sha256(manifest_bytes).hexdigest()
 
 
+def rename(a):
+    """A repeat of an existing carrier under fresh ids (each case/role/attempt is admitted once per freeze): every case id gets the
+    suffix (carrier.rename_ids, which refuses a ledger row), the cold and variance partitions are recomputed, and everything else is
+    the source carrier's: artifacts, licences, sources and notices are copied byte for byte, and every case must equal its source
+    case except the renamed id fields and the partition fields. No renderer runs. The repeat inherits the source carrier's overlap
+    check (dev_overlap compares new cases; a repeat is the source's cases by construction)."""
+    import copy
+    import hashlib
+    head, _tool_blobs = G.require_clean([__file__])
+    src = a.source.rstrip("/\\")
+    if os.path.exists(a.out):
+        raise C.CarrierError(f"--out {a.out} already exists")
+    orig = C.read_json(os.path.join(src, "manifest.draft.json"))
+    manifest = copy.deepcopy(orig)
+    cases = manifest["cases"]
+    C.rename_ids(cases, a.suffix)
+    ids = [c["case_id"] for c in cases]
+    roots = [c["meaning_record"]["root_id"] for c in cases]
+    for what, vals in (("case_id", ids), ("root", roots)):
+        dup = sorted({v for v in vals if vals.count(v) > 1})
+        if dup:
+            raise C.CarrierError(f"duplicate {what} {dup[0]}")
+    C.load_build().assign_partitions([c for c in cases if c["kind"] == "adversarial"], manifest["split_seed"])
+
+    def back(c, ref):
+        c = copy.deepcopy(c)
+        c["case_id"], c["meaning_record"]["root_id"] = ref["case_id"], ref["meaning_record"]["root_id"]
+        if c.get("adversarial"):
+            for k in ("root_scenario_id", "calibration_witness_id", "partition", "variance_subset"):
+                c["adversarial"][k] = ref["adversarial"][k]
+        return c
+    if len(orig["cases"]) != len(cases) or any(back(r, o) != o for o, r in zip(orig["cases"], cases)):
+        raise C.CarrierError("a renamed case differs from its source case beyond the id and partition fields")
+    if {k: v for k, v in manifest.items() if k != "cases"} != {k: v for k, v in orig.items() if k != "cases"}:
+        raise C.CarrierError("the manifest's top-level fields changed")
+    mapping = dict(zip((c["case_id"] for c in orig["cases"]), ids))
+    os.makedirs(a.out)
+    for sub in ("artifacts", "licenses"):
+        os.makedirs(os.path.join(a.out, sub))
+        for name, data in C.read_tree(os.path.join(src, sub)).items():
+            with open(os.path.join(a.out, sub, name), "xb") as f:
+                f.write(data)
+    manifest_bytes = C.dump_json(manifest, 2)
+    for name, data in (("manifest.draft.json", manifest_bytes), ("sources.json", C.read_bytes(os.path.join(src, "sources.json"))),
+                       ("THIRD_PARTY_NOTICES.md", C.read_bytes(os.path.join(src, "THIRD_PARTY_NOTICES.md")))):
+        with open(os.path.join(a.out, name), "xb") as f:
+            f.write(data)
+    if a.selection_in:
+        sel = C.read_json(a.selection_in)
+        for e in sel.get("cases", []) + sel.get("retained", []):
+            if e["case_id"] not in mapping:
+                raise C.CarrierError(f"selection case {e['case_id']} is not a case of the source carrier")
+            e["case_id"] = mapping[e["case_id"]]
+        sel["carrier"], sel["round"] = os.path.basename(os.path.normpath(a.out)), a.round
+        sel["repeat_of"] = {"carrier": os.path.basename(src), "manifest_sha256": hashlib.sha256(C.dump_json(orig, 2)).hexdigest(),
+                            "suffix": a.suffix, "tool": "dev_carrier.py rename", "head": head,
+                            "overlap": "inherited from the source carrier's overlap-check.json (same cases, renamed ids)"}
+        os.makedirs(os.path.dirname(a.selection_out), exist_ok=True)
+        with open(a.selection_out, "xb") as f:
+            f.write(C.dump_json(sel, 1))
+    return hashlib.sha256(manifest_bytes).hexdigest()
+
+
 def notices_section(round_, bundles, retained):
     pins = {}
     for b in bundles:
@@ -192,9 +258,19 @@ def main():
     b.add_argument("--out", required=True)
     b.add_argument("--selection-out", required=True)
     b.add_argument("--retained-reason", default="T5 case kept under a fresh id", help="why a T5 case stays (recorded per retained case)")
+    r = sub.add_parser("rename", help="a repeat of an existing carrier under fresh ids (no renderer runs)")
+    r.add_argument("--source", required=True)
+    r.add_argument("--round", required=True)
+    r.add_argument("--suffix", required=True)
+    r.add_argument("--out", required=True)
+    r.add_argument("--selection-in")
+    r.add_argument("--selection-out")
     a = ap.parse_args()
+    if a.cmd == "rename" and bool(a.selection_in) != bool(a.selection_out):
+        print("dev_carrier: refused: --selection-in and --selection-out go together", file=sys.stderr)
+        return 2
     try:
-        print(build(a))
+        print(rename(a) if a.cmd == "rename" else build(a))
     except C.CarrierError as e:
         print(f"dev_carrier: refused: {e}", file=sys.stderr)
         return 2
